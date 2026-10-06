@@ -87,7 +87,10 @@ async def test_fresh_startup_and_restart_preserve_data(fresh_database):
                 )
             ).scalars()
         )
-        assert tables == set(Base.metadata.tables)
+        assert tables == set(Base.metadata.tables) | {"alembic_version"}
+        assert (
+            await connection.execute(text("SELECT version_num FROM alembic_version"))
+        ).scalar_one() == "20261006_initial_schema"
         await connection.execute(
             text("CREATE TABLE public.bootstrap_sentinel (value text NOT NULL)")
         )
@@ -101,6 +104,30 @@ async def test_fresh_startup_and_restart_preserve_data(fresh_database):
                 text("SELECT value FROM public.bootstrap_sentinel")
             )
         ).scalar_one() == "keep me"
+
+
+@pytest.mark.asyncio
+async def test_unversioned_schema_is_not_silently_adopted(fresh_database):
+    await bootstrap_database(fresh_database)
+    async with fresh_database.begin() as connection:
+        await connection.execute(text("DROP TABLE public.alembic_version"))
+    with pytest.raises(RuntimeError, match="Refusing automatic repair or stamping"):
+        await bootstrap_database(fresh_database)
+    async with fresh_database.connect() as connection:
+        assert (
+            await connection.execute(text("SELECT to_regclass('public.alembic_version')"))
+        ).scalar_one() is None
+
+
+@pytest.mark.asyncio
+async def test_outdated_revision_requires_explicit_upgrade(fresh_database):
+    await bootstrap_database(fresh_database)
+    async with fresh_database.begin() as connection:
+        await connection.execute(
+            text("UPDATE public.alembic_version SET version_num = 'unknown_old_revision'")
+        )
+    with pytest.raises(RuntimeError, match="requires an Alembic upgrade"):
+        await bootstrap_database(fresh_database)
 
 
 @pytest.mark.asyncio

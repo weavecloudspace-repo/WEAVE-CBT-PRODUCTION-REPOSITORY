@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from alembic.migration import MigrationContext
 from sqlalchemy import Column, inspect, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -12,6 +13,7 @@ from sqlalchemy.orm import configure_mappers
 
 import app.model_registry  # noqa: F401
 from app.core.database import Base, engine
+from app.core.migrations import migration_head
 from app.domains.exams.database_schema import (
     CONTRIBUTOR_TRIGGERS,
     create_contributor_triggers,
@@ -134,6 +136,7 @@ def _validate_existing_schema(connection: Connection) -> None:
 async def bootstrap_database(database_engine: AsyncEngine = engine) -> bool:
     """Initialize once under a transaction lock; return whether tables were created."""
     configure_mappers()
+    head = migration_head()
     expected_tables = {table.name for table in Base.metadata.tables.values()}
     if not expected_tables:
         raise RuntimeError("The model registry is empty; refusing database bootstrap.")
@@ -157,6 +160,16 @@ async def bootstrap_database(database_engine: AsyncEngine = engine) -> bool:
                     "Refusing automatic repair. Missing tables: "
                     + ", ".join(sorted(missing))
                 )
+            current = await connection.run_sync(
+                lambda sync: MigrationContext.configure(sync).get_current_heads()
+            )
+            if current != (head,):
+                raise RuntimeError(
+                    "The CBT database requires an Alembic upgrade or explicit adoption. "
+                    "Refusing automatic repair or stamping. Back up the database and "
+                    "run `alembic upgrade head` from backend/ for a versioned database. "
+                    f"Current revisions: {current}; expected: {head}."
+                )
             await connection.run_sync(_validate_existing_schema)
             logger.info("CBT database schema validated; initialization skipped")
             return False
@@ -164,6 +177,16 @@ async def bootstrap_database(database_engine: AsyncEngine = engine) -> bool:
             lambda sync: Base.metadata.create_all(sync, checkfirst=False)
         )
         await connection.run_sync(create_contributor_triggers)
+
+        def stamp(sync: Connection) -> None:
+            context = MigrationContext.configure(sync)
+            from alembic.script import ScriptDirectory
+
+            from app.core.migrations import migration_config
+
+            context.stamp(ScriptDirectory.from_config(migration_config()), head)
+
+        await connection.run_sync(stamp)
         logger.info("Created %s CBT tables in a fresh database", len(expected_tables))
         return True
 
