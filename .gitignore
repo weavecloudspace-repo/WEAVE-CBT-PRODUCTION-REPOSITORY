@@ -97,3 +97,6 @@ $RECYCLE.BIN/
 
 # Manager build metadata generated locally or by CI
 deployment/manager/src/weave_cbt_manager/generated_build.py
+
+# Local database backups
+.local-backups/

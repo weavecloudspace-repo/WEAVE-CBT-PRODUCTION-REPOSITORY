@@ -564,5 +564,3 @@ function getLifecycleConfirmation(action) {
     busyLabel: "Submitting…",
   };
 }
-
-export const ExamsPage = TeacherExamsPage;

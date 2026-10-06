@@ -56,5 +56,9 @@ fi
 
 test -x "${DIST_DIR}/weave-cbt"
 
+# Alembic loads revision modules from disk at runtime.
+cp "${BACKEND_ROOT}/alembic.ini" "${DIST_DIR}/alembic.ini"
+cp -R "${BACKEND_ROOT}/alembic" "${DIST_DIR}/alembic"
+
 echo "Unified WEAVE CBT runtime build created at:"
 echo "${DIST_DIR}"

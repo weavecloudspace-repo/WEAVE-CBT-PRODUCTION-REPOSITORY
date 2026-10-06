@@ -9,6 +9,14 @@ $targets = @(
     'frontend/node_modules/.vite-temp',
     'deployment/manager/.pytest_cache', 'deployment/manager/.ruff_cache'
 )
+# Vite verification builds can be created below either app root.
+foreach ($buildRoot in @('frontend', 'frontend/apps/staff', 'frontend/apps/student')) {
+    $buildPath = Join-Path $repositoryRoot $buildRoot
+    if (Test-Path -LiteralPath $buildPath) {
+        $targets += Get-ChildItem -LiteralPath $buildPath -Directory -Filter 'dist-*' |
+            ForEach-Object { $_.FullName }
+    }
+}
 $sourceRoots = @('backend/app', 'backend/tests', 'deployment/manager/src', 'deployment/manager/tests')
 foreach ($sourceRoot in $sourceRoots) {
     $sourcePath = Join-Path $repositoryRoot $sourceRoot

@@ -8,14 +8,15 @@ API lifespan and ARQ worker startup call the same asynchronous schema bootstrap.
 On an empty database it imports the complete model registry, creates all current
 tables, constraints and indexes, and installs the exam contributor triggers. A
 PostgreSQL transaction advisory lock serializes concurrent workers; schema
-creation and trigger installation commit together or roll back together.
+creation, trigger installation and stamping the current Alembic revision commit
+together or roll back together.
 
 On subsequent starts it validates the existing table and column definitions,
 primary keys, required indexes, checks, unique constraints, foreign keys and
 contributor triggers. It never drops tables, clears records, or silently repairs
 a partially initialized database. A leftover migration marker by itself is a
-partial schema and is rejected. An otherwise compatible existing schema may
-retain its historical marker; startup does not use or change it.
+partial schema and is rejected. Existing databases must be stamped at the current
+Alembic head. Startup refuses outdated or unversioned schemas.
 
 From `backend/`, initialize or validate explicitly with:
 
@@ -27,10 +28,30 @@ The compiled executable exposes `weave-cbt bootstrap`. Docker Compose runs that
 command as a one-shot `bootstrap` service before API and worker startup. Manager
 health checks require its successful exit.
 
-Automatic creation is for fresh installation, **not schema upgrades**. Removing
-the migration chain does not make SQLAlchemy alter existing columns. Future
-schema changes for installations with school data require an explicit reviewed
-upgrade and a backup. Never delete a school database to make startup pass.
+Automatic creation is for fresh installation. Alembic configuration lives in
+`backend/alembic.ini` and revisions in `backend/alembic/versions/`. The initial
+revision is frozen PostgreSQL DDL, independent of later model changes.
+
+For subsequent schema changes, from `backend/`:
+
+```powershell
+uv run alembic revision --autogenerate -m "describe schema change"
+# Review the generated migration, including data backfills and custom triggers.
+uv run alembic upgrade head
+uv run alembic current
+```
+
+Apply reviewed migrations with a backup before starting API and worker processes.
+Alembic autogeneration does not detect custom PostgreSQL functions and triggers;
+write those operations explicitly. A fresh database can also be initialized with
+`uv run alembic upgrade head`.
+
+For an existing unversioned database, verify its full schema against the initial
+revision before explicitly running `uv run alembic stamp 20261006_initial_schema`.
+Stamping only records a version; it never repairs missing tables or columns.
+Databases carrying revisions from a removed historical chain require an explicit
+schema reconciliation before adoption. Never delete a school database to make
+startup pass.
 
 To run the PostgreSQL integration tests, set
 `WEAVE_BOOTSTRAP_TEST_DATABASE_URL` to an explicitly designated local test database

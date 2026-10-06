@@ -1,2 +1,3 @@
 --mode=standalone
 --include-package=app
+--include-package=alembic
