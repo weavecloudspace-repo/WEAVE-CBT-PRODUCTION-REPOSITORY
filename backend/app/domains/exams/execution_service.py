@@ -653,7 +653,7 @@ class ExamExecutionService:
         exam_id: UUID,
         at: datetime | None = None,
     ) -> bool:
-        """Request automatic closure only when nobody can legitimately continue/start."""
+        """Wait the activated duration, then close when nobody can continue/start."""
 
         now = at or datetime.now(UTC)
         exam = await ExamRepository.get_exam_by_id(db, exam_id=exam_id, lock=True)
@@ -663,6 +663,22 @@ class ExamExecutionService:
 
         control = await ExamExecutionRepository.get_control(db, exam.id, lock=True)
         if control is not None and control.operation is not None:
+            await db.rollback()
+            return False
+
+        # Duration is a minimum sitting window measured from actual activation,
+        # not the scheduled start. Pauses do not consume that window. Candidate
+        # attempts retain their own full duration, including authorized late starts.
+        if exam.activated_at is None:
+            await db.rollback()
+            return False
+        elapsed = await AttemptService._active_segment_seconds(
+            db,
+            exam_id=exam.id,
+            active_since=exam.activated_at,
+            at=now,
+        )
+        if elapsed < exam.duration_minutes * 60:
             await db.rollback()
             return False
 

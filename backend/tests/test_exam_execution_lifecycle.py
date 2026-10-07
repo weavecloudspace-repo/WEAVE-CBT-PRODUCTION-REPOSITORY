@@ -16,6 +16,7 @@ os.environ.setdefault(
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 os.environ["DEBUG"] = "false"
 
+from app.domains.attempts.service import AttemptService
 from app.domains.exams.execution_models import (
     ExamExecutionOperation,
     ExamOperationSource,
@@ -179,12 +180,67 @@ class ExamExecutionLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(approved.results_decided_at)
         db.commit.assert_awaited_once()
 
+    async def test_auto_close_waits_for_actual_activation_duration_and_pauses(self):
+        now = datetime.now(UTC)
+        for elapsed in (0, 1800, 2699, 2700):
+            with self.subTest(elapsed=elapsed):
+                db = AsyncMock()
+                current_exam = exam(
+                    status=ExamStatus.ACTIVE, activated_at=now - timedelta(minutes=45)
+                )
+                current_exam.duration_minutes = 45
+                db.scalar.side_effect = [False, False]
+                with (
+                    patch.object(
+                        ExamRepository,
+                        "get_exam_by_id",
+                        new=AsyncMock(return_value=current_exam),
+                    ),
+                    patch.object(
+                        ExamExecutionRepository,
+                        "get_control",
+                        new=AsyncMock(return_value=None),
+                    ),
+                    patch.object(
+                        AttemptService,
+                        "_active_segment_seconds",
+                        new=AsyncMock(return_value=elapsed),
+                    ) as clock,
+                    patch.object(
+                        ExamExecutionService, "request_automatic_close", new=AsyncMock()
+                    ) as close,
+                ):
+                    requested = await ExamExecutionService.evaluate_automatic_close(
+                        db, exam_id=current_exam.id, at=now
+                    )
+                clock.assert_awaited_once_with(
+                    db,
+                    exam_id=current_exam.id,
+                    active_since=current_exam.activated_at,
+                    at=now,
+                )
+                self.assertEqual(requested, elapsed >= 2700)
+                if elapsed < 2700:
+                    close.assert_not_awaited()
+                    db.scalar.assert_not_awaited()
+                else:
+                    close.assert_awaited_once()
+
     async def test_auto_close_requests_close_when_every_candidate_is_done(self) -> None:
         db = AsyncMock()
-        current_exam = exam(status=ExamStatus.ACTIVE)
+        current_exam = exam(
+            status=ExamStatus.ACTIVE,
+            activated_at=datetime.now(UTC) - timedelta(hours=1),
+        )
+        current_exam.duration_minutes = 45
         db.scalar = AsyncMock(side_effect=[False, False])
 
         with (
+            patch.object(
+                AttemptService,
+                "_active_segment_seconds",
+                new=AsyncMock(return_value=3600),
+            ),
             patch.object(
                 ExamRepository,
                 "get_exam_by_id",
@@ -221,7 +277,8 @@ class ExamExecutionLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 current_exam = Exam(
                     id=uuid4(),
                     status=ExamStatus.ACTIVE,
-                    activated_at=None,
+                    activated_at=now - timedelta(hours=2),
+                    duration_minutes=45,
                     scheduled_start_at=now - timedelta(hours=2),
                     latest_normal_start_at=now - timedelta(hours=1),
                 )
@@ -235,23 +292,35 @@ class ExamExecutionLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 current_control = control()
                 with (
                     patch.object(
-                        ExamRepository, "get_exam_by_id",
+                        AttemptService,
+                        "_active_segment_seconds",
+                        new=AsyncMock(return_value=3600),
+                    ),
+                    patch.object(
+                        ExamRepository,
+                        "get_exam_by_id",
                         new=AsyncMock(return_value=current_exam),
                     ),
                     patch.object(
-                        ExamExecutionRepository, "get_control",
+                        ExamExecutionRepository,
+                        "get_control",
                         new=AsyncMock(return_value=None),
                     ),
                     patch.object(
-                        ExamExecutionRepository, "get_or_create_control",
+                        ExamExecutionRepository,
+                        "get_or_create_control",
                         new=AsyncMock(return_value=current_control),
                     ),
                     patch.object(
-                        ExamExecutionRepository, "save_control", new=AsyncMock(),
+                        ExamExecutionRepository,
+                        "save_control",
+                        new=AsyncMock(),
                     ),
                     patch.object(ExamRepository, "save_exam", new=AsyncMock()),
                     patch.object(
-                        RuntimeRepository, "add_outbox_event", new=AsyncMock(),
+                        RuntimeRepository,
+                        "add_outbox_event",
+                        new=AsyncMock(),
                     ),
                 ):
                     requested = await ExamExecutionService.evaluate_automatic_close(
@@ -268,10 +337,19 @@ class ExamExecutionLifecycleTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_auto_close_does_not_run_while_attempt_is_unfinished(self) -> None:
         db = AsyncMock()
-        current_exam = exam(status=ExamStatus.ACTIVE)
+        current_exam = exam(
+            status=ExamStatus.ACTIVE,
+            activated_at=datetime.now(UTC) - timedelta(hours=1),
+        )
+        current_exam.duration_minutes = 45
         db.scalar = AsyncMock(return_value=True)
 
         with (
+            patch.object(
+                AttemptService,
+                "_active_segment_seconds",
+                new=AsyncMock(return_value=3600),
+            ),
             patch.object(
                 ExamRepository,
                 "get_exam_by_id",
