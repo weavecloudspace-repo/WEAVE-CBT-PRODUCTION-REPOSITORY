@@ -47,7 +47,8 @@ class DockerRuntime:
         Execute a Docker CLI command.
 
         With stream=True, output goes directly to the terminal and the
-        returned output strings are empty. Pass timeout=None for follow mode.
+        returned output strings are empty. Pass timeout=None for commands
+        that should not have an execution timeout.
 
         Example:
             run_docker_command(["compose", "ps"])
@@ -131,9 +132,17 @@ class DockerRuntime:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+
         if process.poll() is None:
-            process.kill()
-        process.wait(timeout=5)
+            try:
+                process.kill()
+            except OSError:
+                pass
+
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
 
     @staticmethod
     def docker_cli_available() -> bool:

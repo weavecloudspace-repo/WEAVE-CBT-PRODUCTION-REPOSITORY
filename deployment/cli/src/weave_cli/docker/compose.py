@@ -34,6 +34,7 @@ class DockerCompose:
         command: list[str],
         *,
         stream: bool = False,
+        timeout: int | None = DEFAULT_TIMEOUT,
     ) -> CommandResult:
         """
         Runs a Docker Compose command with the specified arguments
@@ -62,7 +63,7 @@ class DockerCompose:
             ]
             + command,
             stream=stream,
-            timeout=None if stream else DEFAULT_TIMEOUT,
+            timeout=None if stream else timeout,
         )
 
         if not result.successful:
@@ -88,7 +89,7 @@ class DockerCompose:
             up -d
         """
 
-        return self._run_compose_command(command=["up", "-d"])
+        return self._run_compose_command(command=["up", "-d"], timeout=None)
 
     def stop(
         self,
@@ -105,7 +106,7 @@ class DockerCompose:
             down
         """
 
-        return self._run_compose_command(command=["down"])
+        return self._run_compose_command(command=["down"], timeout=None)
 
     def restart(
         self,
@@ -122,7 +123,7 @@ class DockerCompose:
             restart
         """
 
-        return self._run_compose_command(command=["restart"])
+        return self._run_compose_command(command=["restart"], timeout=None)
 
     def status(
         self,
@@ -157,7 +158,10 @@ class DockerCompose:
             pull bootstrap api worker
         """
 
-        return self._run_compose_command(command=["pull", "bootstrap", "api", "worker"])
+        return self._run_compose_command(
+            command=["pull", "bootstrap", "api", "worker"],
+            timeout=None,
+        )
 
     def pull_postgres_image(
         self,
@@ -174,7 +178,10 @@ class DockerCompose:
             pull postgres
         """
 
-        return self._run_compose_command(command=["pull", "postgres"])
+        return self._run_compose_command(
+            command=["pull", "postgres"],
+            timeout=None,
+        )
 
     def pull_redis_image(
         self,
@@ -191,7 +198,10 @@ class DockerCompose:
             pull redis
         """
 
-        return self._run_compose_command(command=["pull", "redis"])
+        return self._run_compose_command(
+            command=["pull", "redis"],
+            timeout=None,
+        )
 
     def pull_nginx_image(
         self,
@@ -208,24 +218,10 @@ class DockerCompose:
             pull nginx
         """
 
-        return self._run_compose_command(command=["pull", "nginx"])
-
-    def pull_all_images(
-        self,
-    ) -> CommandResult:
-        """
-        Pull all images used by the WEAVE CBT stack.
-
-        Equivalent to:
-
-        docker compose \
-            -f <compose_file> \
-            --env-file <env_file> \
-            -p <project_name> \
-            pull
-        """
-
-        return self._run_compose_command(command=["pull"])
+        return self._run_compose_command(
+            command=["pull", "nginx"],
+            timeout=None,
+        )
 
     def logs(
         self,
@@ -261,7 +257,8 @@ class DockerCompose:
         self,
     ) -> CommandResult:
         """
-        Show the configuration of the WEAVE CBT Compose stack.
+        Validate the WEAVE CBT Compose configuration without printing
+        resolved values.
 
         Equivalent to:
 
@@ -269,16 +266,17 @@ class DockerCompose:
             -f <compose_file> \
             --env-file <env_file> \
             -p <project_name> \
-            config
+            config --quiet
         """
 
-        return self._run_compose_command(command=["config"])
+        return self._run_compose_command(command=["config", "--quiet"])
 
     def destroy(
         self,
     ) -> CommandResult:
         """
-        Destroy the WEAVE CBT Compose stack and remove all associated resources.
+        Stop the WEAVE CBT Compose stack and remove its containers,
+        project networks, volumes, and orphaned containers.
 
         Equivalent to:
 
@@ -290,5 +288,6 @@ class DockerCompose:
         """
 
         return self._run_compose_command(
-            command=["down", "--volumes", "--remove-orphans"]
+            command=["down", "--volumes", "--remove-orphans"],
+            timeout=None,
         )
