@@ -23,7 +23,7 @@ wheels = [
 [[package]]
 name = "deployment"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "typer" },
 ]
@@ -34,14 +34,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "typer", specifier = ">=0.27.3" },
-]
+requires-dist = [{ name = "typer", specifier = ">=0.27.3" }]
 
 [package.metadata.requires-dev]
-dev = [
-    { name = "ruff", specifier = ">=0.16.10" },
-]
+dev = [{ name = "ruff", specifier = ">=0.16.10" }]
 
 [[package]]
 name = "markdown-it-py"

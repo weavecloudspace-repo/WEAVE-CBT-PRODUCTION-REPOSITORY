@@ -12,3 +12,11 @@ dependencies = [
 dev = [
     "ruff>=0.16.10",
 ]
+
+[build-system]
+requires = ["uv_build>=0.11.8,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "weave_cli"
+module-root = "cli/src"

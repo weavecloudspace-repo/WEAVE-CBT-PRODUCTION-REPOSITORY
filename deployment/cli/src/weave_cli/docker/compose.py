@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .runtime import (
+from weave_cli.docker.runtime import (
     DEFAULT_TIMEOUT,
     CommandResult,
     DockerRuntime,
