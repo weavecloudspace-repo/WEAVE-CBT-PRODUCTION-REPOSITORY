@@ -404,13 +404,16 @@ export function ExamOperationsDetail({ state, adminData, gateway, onNavigate }) 
 }
 
 function OperationalExamRow({ exam, onOpen, selection }) {
+  const handleAction = selection ? selection.toggle : onOpen
   return (
-    <article className={`admin-ops-timeline-row${needsAttention(exam) ? ' is-attention' : ''}${selection ? ' is-selectable' : ''}${selection?.selected ? ' is-selected' : ''}`}>
+    <article className={`admin-ops-timeline-row${needsAttention(exam) ? ' is-attention' : ''}${selection ? ' is-selectable' : ''}${selection?.selected ? ' is-selected' : ''}${selection?.disabled ? ' is-ineligible' : ''}`} onClick={selection ? (event) => {
+      if (!selection.disabled && !event.target.closest('button, input')) selection.toggle()
+    } : undefined}>
       {selection && <input className="admin-ops-bulk-checkbox" type="checkbox" aria-label={`Select ${exam.title}`} checked={selection.selected} disabled={selection.disabled} onChange={selection.toggle} />}
       <div className="admin-ops-timeline-time"><strong>{exam.scheduledStartAt ? formatClock(exam.scheduledStartAt) : '\u2014'}</strong><span>{formatDay(exam.scheduledStartAt)}</span></div>
       <span className={`admin-ops-timeline-marker admin-ops-timeline-marker--${exam.status}`}><ControlStateIcon status={exam.status} /></span>
-      <button type="button" className="admin-ops-timeline-exam" onClick={onOpen}><strong>{exam.title}</strong><small>{exam.academicLevelName} · {exam.rosterCandidateCount || 0} candidates {"\u00b7"} {exam.durationMinutes || 0} min</small><ExamState status={exam.status} compact /></button>
-      <button type="button" className="admin-ops-timeline-open" aria-label={`Open controls for ${exam.title}`} onClick={onOpen}><Icon name="chevronRight" size={18} /></button>
+      <button type="button" className="admin-ops-timeline-exam" disabled={selection?.disabled} aria-pressed={selection ? selection.selected : undefined} onClick={handleAction}><strong>{exam.title}</strong><small>{exam.academicLevelName} · {exam.rosterCandidateCount || 0} candidates {"\u00b7"} {exam.durationMinutes || 0} min</small><ExamState status={exam.status} compact /></button>
+      <button type="button" className="admin-ops-timeline-open" disabled={selection?.disabled} aria-label={selection ? `Toggle selection for ${exam.title}` : `Open controls for ${exam.title}`} aria-pressed={selection ? selection.selected : undefined} onClick={handleAction}><Icon name={selection ? selection.selected ? 'check' : 'plus' : 'chevronRight'} size={18} /></button>
     </article>
   )
 }

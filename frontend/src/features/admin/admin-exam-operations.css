@@ -403,6 +403,8 @@
 .admin-ops-bulk-menu b { font-size: 12px; text-align: center; }
 .admin-ops-page .admin-ops-timeline-row.is-selectable { grid-template-columns: 20px 76px 28px minmax(0, 1fr) 36px; }
 .admin-ops-timeline-row.is-selected { background: rgb(var(--color-primary) / .055); }
+.admin-ops-timeline-row.is-selectable { cursor: pointer; }
+.admin-ops-timeline-row.is-ineligible, .admin-ops-timeline-row.is-ineligible button { cursor: default; }
 .admin-ops-bulk-checkbox { width: 18px; height: 18px; margin: 0; accent-color: rgb(var(--color-primary)); cursor: pointer; }
 .admin-ops-bulk-checkbox:disabled { opacity: .4; cursor: default; }
 .admin-ops-bulk-dialog { --ops-surface: var(--color-surface, 255 255 255); width: min(700px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); margin: auto; padding: 0; border: 1px solid rgb(var(--color-border)); border-radius: 14px; background: rgb(var(--color-surface)); color: rgb(var(--color-text)); font: inherit; overflow: hidden; box-shadow: 0 24px 70px rgb(15 23 42 / .24); }
