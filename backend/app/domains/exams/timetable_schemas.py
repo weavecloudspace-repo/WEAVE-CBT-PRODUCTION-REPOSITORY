@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domains.exams.models import ExamStatus
 
@@ -110,3 +111,37 @@ class ActivationRescheduleRequest(BaseModel):
 class ActivationRescheduleResponse(BaseModel):
     rescheduled_exam_ids: list[UUID]
     preflight: ActivationPreflightResponse
+
+
+class BatchExamOperationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    operation: Literal["activate", "suspend", "resume", "close", "cancel"]
+    exam_ids: list[UUID] = Field(min_length=1, max_length=100)
+    reason: str | None = Field(default=None, max_length=500)
+
+    @field_validator("exam_ids")
+    @classmethod
+    def unique_ids(cls, value: list[UUID]) -> list[UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("exam_ids cannot contain duplicates")
+        return value
+
+    @model_validator(mode="after")
+    def require_audit_reason(self):
+        if self.operation in {"suspend", "cancel"} and not self.reason:
+            raise ValueError("A reason is required for suspension or cancellation")
+        return self
+
+
+class BatchExamOperationItemResponse(BaseModel):
+    exam_id: UUID
+    succeeded: bool
+    status: ExamStatus | None = None
+    error: str | None = None
+    warning: str | None = None
+    preflight: ActivationPreflightResponse | None = None
+
+
+class BatchExamOperationResponse(BaseModel):
+    results: list[BatchExamOperationItemResponse]

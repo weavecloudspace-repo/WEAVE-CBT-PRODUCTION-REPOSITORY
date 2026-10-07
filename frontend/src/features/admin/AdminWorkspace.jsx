@@ -29,7 +29,6 @@ const examViews = new Set(['exams', 'create-exam', 'exam-history'])
 const rosterViews = new Set(['roster', 'roster-history', 'roster-detail'])
 const operationViews = new Set(['operations', 'operation-detail'])
 const resultViews = new Set(['results', 'result-detail'])
-const placeholderViews = new Set(['invigilators', 'reports'])
 
 const questionGroupViews = new Set([...bankViews])
 const examinationGroupViews = new Set([
@@ -38,7 +37,6 @@ const examinationGroupViews = new Set([
   ...operationViews,
   ...resultViews,
   'timetable',
-  'invigilators',
 ])
 
 const adminNav = [
@@ -64,11 +62,8 @@ const adminNav = [
       ['timetable', 'clock', 'Timetable'],
       ['roster', 'roster', 'Roster'],
       ['operations', 'operations', 'Exam Operations'],
-      ['invigilators', 'shield', 'Invigilators'],
-      ['results', 'results', 'Results'],
     ],
   },
-  { type: 'link', section: 'reports', icon: 'reports', label: 'Reports' },
 ]
 
 export function AdminWorkspace({ state, dispatch, signOut, gateway }) {
@@ -259,24 +254,9 @@ export function AdminWorkspace({ state, dispatch, signOut, gateway }) {
           {workspaceView === 'operation-detail' && <ExamOperationsDetail state={state} adminData={adminData} gateway={gateway} onNavigate={navigate} />}
           {workspaceView === 'results' && <AdminResultsPage adminData={adminData} gateway={gateway} onNavigate={navigate} />}
           {workspaceView === 'result-detail' && <AdminResultDetailPage state={state} adminData={adminData} gateway={gateway} onNavigate={navigate} />}
-          {placeholderViews.has(workspaceView) && <AdminPlaceholderPage section={workspaceView} />}
         </div>
       </section>
     </main>
-  )
-}
-
-function AdminPlaceholderPage({ section }) {
-  const labels = {
-    invigilators: ['Invigilators', 'Invigilation assignment and monitoring will be connected in a later workspace pass.'],
-    reports: ['Reports', 'Administrative reporting will be connected in a later workspace pass.'],
-  }
-  const [title, copy] = labels[section] || ['Administrator', 'This workspace is not connected yet.']
-  return (
-    <div className="teacher-reference-page admin-placeholder-page">
-      <div className="teacher-page-heading"><div><div className="teacher-page-title-line"><h1>{title}</h1></div><p>{copy}</p></div></div>
-      <div className="teacher-reference-empty teacher-reference-empty--large"><div><strong>{title} placeholder</strong><p>No fake data or controls are shown until the required backend workflow is implemented.</p></div></div>
-    </div>
   )
 }
 
@@ -287,7 +267,7 @@ function groupForView(view) {
 }
 
 function topLevelView(section) {
-  if (section === 'overview') return 'dashboard'
+  if (section === 'overview' || section === 'invigilators' || section === 'reports') return 'dashboard'
   if (section === 'students') return 'roster'
   if (section === 'exam-operations') return 'operations'
   return section || 'dashboard'

@@ -531,7 +531,7 @@ function lifecycleMessage(exam) {
     return "This paper is sealed. Operational lifecycle controls belong to school administration.";
   }
   if (exam.status === "active" || exam.status === "suspended") {
-    return "This examination is in its live operational lifecycle. Teacher controls are handled through invigilation access, not paper authoring.";
+    return "This examination is in its live operational lifecycle. Operational controls are managed by the administrator.";
   }
   if (exam.status === "closed") {
     return "This examination is closed and preserved as academic evidence.";

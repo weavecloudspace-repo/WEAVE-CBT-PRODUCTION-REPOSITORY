@@ -252,7 +252,7 @@ export function AdminRosterDetailPage({ state, adminData, gateway, onNavigate })
         <div className="admin-roster-summary admin-roster-summary--live" aria-label="Live roster summary">
           <SummaryItem icon={RiTimeLine} tone="neutral" label="Not started" value={String(payload?.eligible_not_started_count ?? '—')} hint="Eligible candidates without an attempt" />
           <SummaryItem icon={RiEditLine} tone="primary" label="Writing" value={String(payload?.in_progress_count ?? '—')} hint="Active attempts" />
-          <SummaryItem icon={RiPauseCircleLine} tone="warning" label="Interrupted" value={String(payload?.interrupted_count ?? '—')} hint="Paused by an invigilator" />
+          <SummaryItem icon={RiPauseCircleLine} tone="warning" label="Interrupted" value={String(payload?.interrupted_count ?? '—')} hint="Attempt temporarily paused" />
           <SummaryItem icon={RiCheckboxCircleLine} tone="success" label="Submitted" value={String(payload?.submitted_count ?? '—')} hint={`${payload?.terminated_count || 0} terminated`} />
         </div>
       ) : (

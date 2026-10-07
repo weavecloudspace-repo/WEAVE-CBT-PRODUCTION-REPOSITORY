@@ -71,6 +71,7 @@ function makeAdminData(exams) {
 function makeGateway() {
   return {
     exams: {
+      activationPreflight: vi.fn().mockResolvedValue({ can_activate: true, blockers: [], affected_exams: [] }),
       activateExam: vi.fn().mockResolvedValue({}),
       suspendExam: vi.fn().mockResolvedValue({}),
       resumeExam: vi.fn().mockResolvedValue({}),
@@ -180,6 +181,31 @@ describe('Admin exam operations workspace', () => {
     expect(screen.queryByText(/0 attempts started/)).not.toBeInTheDocument()
   })
 
+  it('selects active sittings in the timeline and suspends them in one batch', async () => {
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', '') }
+    const data = makeAdminData([
+      makeExam({ id: 'active-one', title: 'Active English', status: 'active' }),
+      makeExam({ id: 'active-two', title: 'Active Mathematics', status: 'active' }),
+      makeExam({ id: 'sealed', title: 'Sealed Literature' }),
+    ])
+    const gateway = makeGateway()
+    gateway.exams.batchExamOperation = vi.fn().mockResolvedValue({ results: [
+      { exam_id: 'active-one', succeeded: true, status: 'suspended' },
+      { exam_id: 'active-two', succeeded: true, status: 'suspended' },
+    ] })
+    render(<ExamOperations adminData={data} gateway={gateway} onNavigate={vi.fn()} />)
+    const timeline = screen.getByRole('region', { name: 'Operations timeline' })
+    fireEvent.click(within(timeline).getByRole('button', { name: 'Bulk operations' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Suspend examinations/ }))
+    expect(screen.getByLabelText('Select Sealed Literature')).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Select all eligible' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue (2)' }))
+    fireEvent.change(screen.getByLabelText('Reason (required)'), { target: { value: 'Power outage' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Suspend selected examinations' }))
+    await screen.findByText('2 succeeded · 0 need review')
+    expect(gateway.exams.batchExamOperation).toHaveBeenCalledWith('suspend', ['active-one', 'active-two'], 'Power outage')
+  })
+
   it('activates a sealed examination from the operations control room', async () => {
     const exam = makeExam()
     const data = makeAdminData([exam])
@@ -197,6 +223,7 @@ describe('Admin exam operations workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: /activate examination/i }))
     const dialog = screen.getByRole('alertdialog')
     expect(dialog).toHaveTextContent(/activate this examination/i)
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: /^activate examination$/i })).toBeEnabled())
     fireEvent.click(within(dialog).getByRole('button', { name: /^activate examination$/i }))
 
     await waitFor(() => expect(gateway.exams.activateExam).toHaveBeenCalledWith('exam-1'))

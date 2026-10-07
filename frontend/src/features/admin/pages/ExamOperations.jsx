@@ -18,6 +18,8 @@ import { useOperationsMonitor } from '../useOperationsMonitor'
 import '../admin-exam-operations.css'
 import { AdminDatePicker } from '../AdminDatePicker'
 import { OperationsQuickActions } from '../OperationsQuickActions'
+import { ActivationReviewModal } from '../components/ActivationReviewModal'
+import { BulkExamOperations } from '../components/BulkExamOperations'
 
 const OPERATIONAL_STATUSES = new Set(['sealed', 'active', 'suspended', 'closing', 'cancelling', 'closed', 'cancelled'])
 const LIVE_STATUSES = new Set(['active', 'suspended', 'closing', 'cancelling'])
@@ -122,10 +124,12 @@ export function ExamOperations({ adminData, gateway, onNavigate }) {
             <div className="admin-ops-filter"><span>Subject</span><SelectControl label="Operations subject filter" value={subjectId} options={[{ value: 'all', label: 'All subjects' }, ...levelSubjects.map((subject) => ({ value: subject.id, label: subject.name }))]} onChange={setSubjectId} disabled={levelId === 'all'} /></div>
           </div>
           <nav className="admin-ops-view-tabs" aria-label="Operation views">{TABS.map(([key, label]) => <button key={key} type="button" aria-pressed={tab === key} onClick={() => setTab(key)}>{key === 'today' && !isToday ? 'Selected day' : label}{' '}<span>{counts[key]}</span></button>)}</nav>
-          <div className="admin-ops-timeline__list">
-            {timeline.map((exam) => <OperationalExamRow key={exam.id} exam={exam} onOpen={() => openExam(exam)} />)}
+          <BulkExamOperations exams={timeline} scopeKey={JSON.stringify([day, tab, query, levelId, subjectId])} gateway={gateway} onRefresh={refreshExams} onOpen={openExam} disabled={adminData.loading || Boolean(adminData.error)}>
+          {({ operation, selectedIds, canSelect, toggle, busy }) => <div className="admin-ops-timeline__list">
+            {timeline.map((exam) => <OperationalExamRow key={exam.id} exam={exam} onOpen={() => openExam(exam)} selection={operation ? { selected: selectedIds.has(exam.id), disabled: busy || !canSelect(exam), toggle: () => toggle(exam) } : null} />)}
             {!timeline.length && <PanelEmpty icon="calendar" title={adminData.loading ? 'Loading the schedule...' : 'No examinations in this view'} copy={adminData.loading ? 'Fetching examination state.' : 'Change the date or filters to find another sitting.'} />}
-          </div>
+          </div>}
+          </BulkExamOperations>
         </section>
 
         <section className="admin-ops-panel admin-ops-live" aria-label="Live exam status">
@@ -274,7 +278,6 @@ export function ExamOperationsDetail({ state, adminData, gateway, onNavigate }) 
     setBusy(true)
     setError('')
     try {
-      if (pendingAction === 'activate') await gateway.exams.activateExam(exam.id)
       if (pendingAction === 'suspend') await gateway.exams.suspendExam(exam.id, reason.trim())
       if (pendingAction === 'resume') await gateway.exams.resumeExam(exam.id, reason.trim() || undefined)
       if (pendingAction === 'close') await gateway.exams.closeExam(exam.id)
@@ -374,7 +377,17 @@ export function ExamOperationsDetail({ state, adminData, gateway, onNavigate }) 
         </aside>
       </div>
 
-      {pendingAction && (
+      {pendingAction === 'activate' ? (
+        <ActivationReviewModal
+          key={exam.id}
+          exam={exam}
+          exams={adminData.exams}
+          gateway={gateway}
+          onCancel={closeModal}
+          onRefresh={() => refreshExams({ silent: false })}
+          onActivated={() => setPendingAction(null)}
+        />
+      ) : pendingAction && (
         <OperationConfirmModal
           exam={exam}
           action={pendingAction}
@@ -390,9 +403,10 @@ export function ExamOperationsDetail({ state, adminData, gateway, onNavigate }) 
   )
 }
 
-function OperationalExamRow({ exam, onOpen }) {
+function OperationalExamRow({ exam, onOpen, selection }) {
   return (
-    <article className={`admin-ops-timeline-row${needsAttention(exam) ? ' is-attention' : ''}`}>
+    <article className={`admin-ops-timeline-row${needsAttention(exam) ? ' is-attention' : ''}${selection ? ' is-selectable' : ''}${selection?.selected ? ' is-selected' : ''}`}>
+      {selection && <input className="admin-ops-bulk-checkbox" type="checkbox" aria-label={`Select ${exam.title}`} checked={selection.selected} disabled={selection.disabled} onChange={selection.toggle} />}
       <div className="admin-ops-timeline-time"><strong>{exam.scheduledStartAt ? formatClock(exam.scheduledStartAt) : '\u2014'}</strong><span>{formatDay(exam.scheduledStartAt)}</span></div>
       <span className={`admin-ops-timeline-marker admin-ops-timeline-marker--${exam.status}`}><ControlStateIcon status={exam.status} /></span>
       <button type="button" className="admin-ops-timeline-exam" onClick={onOpen}><strong>{exam.title}</strong><small>{exam.academicLevelName} · {exam.rosterCandidateCount || 0} candidates {"\u00b7"} {exam.durationMinutes || 0} min</small><ExamState status={exam.status} compact /></button>
@@ -477,13 +491,6 @@ function OperationConfirmModal({ exam, action, reason, setReason, error, busy, o
 
 function operationCopy(action) {
   const copy = {
-    activate: {
-      title: 'Activate this examination?',
-      description: 'Candidates on the prepared roster will be allowed to start this sitting.',
-      confirm: 'Activate examination',
-      Icon: RiPlayCircleLine,
-      warning: 'Activation moves this paper into execution. Later Weave enrollment changes will not rewrite the active sitting roster.',
-    },
     suspend: {
       title: 'Suspend this examination?',
       description: 'The live sitting will pause while candidate execution state remains protected.',

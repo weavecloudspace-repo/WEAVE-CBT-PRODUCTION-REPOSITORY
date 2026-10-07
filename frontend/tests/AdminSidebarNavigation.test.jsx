@@ -43,6 +43,7 @@ describe('Admin grouped sidebar navigation', () => {
     )
 
     expect(screen.getByRole('navigation', { name: /administrator navigation/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Reports$/i })).not.toBeInTheDocument()
     const questionsGroup = screen.getByRole('button', { name: /^Questions$/i })
     const examinationsGroup = screen.getByRole('button', { name: /^Examinations$/i })
 
@@ -64,8 +65,8 @@ describe('Admin grouped sidebar navigation', () => {
     expect(screen.getByRole('button', { name: /^Exams$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Roster$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Exam Operations$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Invigilators$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Results$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Invigilators$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Results$/i })).not.toBeInTheDocument()
 
     await waitFor(() => expect(screen.getByRole('heading', { name: /administrator dashboard/i })).toBeInTheDocument())
   })

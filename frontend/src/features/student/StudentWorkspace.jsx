@@ -219,7 +219,7 @@ function StudentWorkspaceContent({ exam, resolution, gateway, dispatch, returnTo
   }
 
   if (interrupted) {
-    return <main className="premium-exam-shell"><section className="premium-lobby-card" role="status"><StatusBadge tone="warning">Attempt paused</StatusBadge><h1>Your examination has been paused</h1><p>An invigilator has temporarily interrupted your attempt. Your saved answers are safe and your timer is paused.</p><Notice>Please remain at your computer. The examination will reopen automatically when an invigilator resumes your attempt.</Notice></section></main>
+    return <main className="premium-exam-shell"><section className="premium-lobby-card" role="status"><StatusBadge tone="warning">Attempt paused</StatusBadge><h1>Your examination has been paused</h1><p>Your attempt has been temporarily paused. Your saved answers are safe and your timer is paused.</p><Notice>Please remain at your computer. The examination will reopen automatically when your attempt is resumed.</Notice></section></main>
   }
 
   if (exam.stage === 'active') {
@@ -395,7 +395,7 @@ async function startAttempt({ gateway, setAttempt, dispatch, setAttemptError, se
   try {
     const status = await gateway.auth.getStudentStatus()
     if (status.availability === 'suspended') { onExamSuspended?.(status.status_message); return }
-    if (!['ready', 'makeup'].includes(status.availability) || status.exam_id !== expectedExamId) { setAttemptError(status.status_message || 'This examination is not currently available. Please wait for your invigilator.'); return }
+    if (!['ready', 'makeup'].includes(status.availability) || status.exam_id !== expectedExamId) { setAttemptError(status.status_message || 'This examination is not currently available. Please wait for the examination to become available.'); return }
     const attempt = await gateway.attempts.startCurrentAttempt()
     if (attempt.exam_suspended) { onExamSuspended?.(); return }
     setAttempt({ ...attempt, clock_received_at: Date.now() })

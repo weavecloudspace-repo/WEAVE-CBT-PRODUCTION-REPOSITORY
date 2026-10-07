@@ -95,12 +95,23 @@ class ExamOperationsService:
             exam_id=exam_id,
             proposed_activation_at=proposed_activation_at,
             include_conflict_details=True,
-            apply_recovery_buffer=suggest_recovery_times,
+            apply_recovery_buffer=False,
         )
         exam = await ExamRepository.get_exam_by_id(db, exam_id=exam_id, lock=True)
         if exam is None:
             raise ExamNotFound("Examination does not exist")
         await cls._require_activation_static_readiness(db, exam)
+        # Recovery headroom belongs to suggestions, not activation readiness.
+        # Re-applying a rolling five-minute buffer to an already saved recovery
+        # schedule would manufacture another clash on every UI check.
+        if suggest_recovery_times and preflight.affected_exams:
+            preflight = await ExamTimetableService.activation_preflight(
+                db,
+                exam_id=exam_id,
+                proposed_activation_at=preflight.proposed_activation_at,
+                include_conflict_details=True,
+                apply_recovery_buffer=True,
+            )
         return preflight
 
     @classmethod

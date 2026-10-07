@@ -11,6 +11,7 @@ os.environ.setdefault(
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 
 from app.domains.exams.models import ExamStatus
+from app.domains.exams.operations_service import ExamOperationsService
 from app.domains.exams.repository import ExamRepository
 from app.domains.exams.timetable_service import (
     ACTIVATION_RECOVERY_BUFFER,
@@ -58,10 +59,16 @@ class ActivationPreflightTimingTests(unittest.IsolatedAsyncioTestCase):
         at=None,
         overrides=None,
         buffered=True,
+        ui=False,
     ):
         db = AsyncMock()
         db.scalar = AsyncMock(return_value=False)
         with (
+            patch.object(
+                ExamOperationsService,
+                "_require_activation_static_readiness",
+                new=AsyncMock(),
+            ),
             patch.object(
                 ExamRepository,
                 "get_exam_by_id",
@@ -93,6 +100,14 @@ class ActivationPreflightTimingTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=scopes),
             ),
         ):
+            if ui:
+                return await ExamOperationsService.activation_preflight(
+                    db,
+                    actor=SimpleNamespace(role="admin", is_active=True),
+                    exam_id=source.id,
+                    proposed_activation_at=at or self.checked_at,
+                    suggest_recovery_times=True,
+                )
             return await ExamTimetableService.activation_preflight(
                 db,
                 exam_id=source.id,
@@ -101,6 +116,50 @@ class ActivationPreflightTimingTests(unittest.IsolatedAsyncioTestCase):
                 include_conflict_details=False,
                 apply_recovery_buffer=buffered,
             )
+
+    async def test_saved_recovery_remains_activatable_on_later_ui_check(self):
+        source = self.exam(
+            title="English",
+            status=ExamStatus.SEALED,
+            scheduled_start_at=self.checked_at - timedelta(minutes=30),
+        )
+        later = self.exam(
+            title="Literature",
+            status=ExamStatus.SEALED,
+            scheduled_start_at=self.checked_at + timedelta(minutes=20),
+        )
+        scopes = {
+            source.id: frozenset({self.science_class}),
+            later.id: frozenset({self.science_class}),
+        }
+        proposal = await self.run_preflight(
+            source=source, rows=[later], scopes=scopes, ui=True
+        )
+        self.assertFalse(proposal.can_activate)
+        later.scheduled_start_at = proposal.affected_exams[0].suggested_start_at
+        later_check = self.checked_at + timedelta(seconds=13)
+        # A fresh buffered simulation shifts the suggestion again, even though
+        # the saved five-minute headroom is still safe for immediate activation.
+        rolling = await self.run_preflight(
+            source=source, rows=[later], scopes=scopes, at=later_check
+        )
+        self.assertFalse(rolling.can_activate)
+        actual = await self.run_preflight(
+            source=source, rows=[later], scopes=scopes, at=later_check, ui=True
+        )
+        self.assertTrue(actual.can_activate)
+        self.assertEqual(actual.affected_exams, ())
+        expired = await self.run_preflight(
+            source=source,
+            rows=[later],
+            scopes=scopes,
+            at=self.checked_at + timedelta(minutes=6),
+            ui=True,
+        )
+        self.assertFalse(expired.can_activate)
+        self.assertGreater(
+            expired.affected_exams[0].suggested_start_at, later.scheduled_start_at
+        )
 
     async def test_late_ui_preflight_reserves_five_minutes_of_recovery_headroom(self):
         source = self.exam(

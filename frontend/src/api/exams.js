@@ -103,6 +103,21 @@ export const activateExam = (examId) => weaveRequest(`/exams/${examId}/activate`
   successMessage: 'Examination activated.',
 })
 
+export const activationPreflight = (examId) => weaveRequest(`/exams/${examId}/activation-preflight`, {
+  method: 'POST',
+})
+
+export const batchExamOperation = (operation, examIds, reason) => weaveRequest('/exams/operations-batch', {
+  method: 'POST',
+  body: { operation, exam_ids: examIds, ...(reason ? { reason } : {}) },
+})
+
+export const rescheduleActivationImpact = (examId, changes, reason) => weaveRequest(`/exams/${examId}/activation-reschedule`, {
+  method: 'POST',
+  body: { changes, reason },
+  successMessage: 'Affected examinations rescheduled. Review activation to continue.',
+})
+
 export const closeExam = (examId) => weaveRequest(`/exams/${examId}/close`, {
   method: 'POST',
   successMessage: 'Examination closed.',

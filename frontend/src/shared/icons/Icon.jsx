@@ -55,6 +55,9 @@ const paths = {
   submit: <><path d="M4 4h16v16H4z"/><path d="m8 12 3 3 5-6"/></>,
   print: <><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></>,
   minus: <path d="M5 12h14"/>,
+  play: <><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/></>,
+  pause: <><circle cx="12" cy="12" r="9"/><path d="M9 8v8M15 8v8"/></>,
+  stop: <><circle cx="12" cy="12" r="9"/><path d="M8 8h8v8H8z"/></>,
 }
 
 export function Icon({ name, size = 20 }) {

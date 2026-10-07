@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, status
 from app.core.database import DbSession
 from app.core.exceptions import AcademicAuthorizationError
 from app.domains.auth.dependencies import CurrentLocalActor
+from app.domains.exams.batch_operations_service import ExamBatchOperationsService
 from app.domains.exams.exceptions import (
     ExamNotFound,
     ExamScheduleImpactError,
@@ -21,6 +22,8 @@ from app.domains.exams.timetable_schemas import (
     ActivationPreflightResponse,
     ActivationRescheduleRequest,
     ActivationRescheduleResponse,
+    BatchExamOperationRequest,
+    BatchExamOperationResponse,
     BatchExamStartItemResponse,
     BatchExamStartRequest,
     BatchExamStartResponse,
@@ -29,6 +32,17 @@ from app.domains.exams.timetable_schemas import (
 from app.domains.exams.timetable_service import ExamTimetableService
 
 router = APIRouter(prefix="/exams", tags=["Exam Timetable"])
+
+
+@router.post("/operations-batch", response_model=BatchExamOperationResponse)
+async def apply_exam_operations_batch(
+    payload: BatchExamOperationRequest,
+    db: DbSession,
+    actor: CurrentLocalActor,
+) -> BatchExamOperationResponse:
+    _require_admin(actor)
+    results = await ExamBatchOperationsService.apply(db, actor=actor, payload=payload)
+    return BatchExamOperationResponse(results=results)
 
 
 def _require_admin(actor) -> None:

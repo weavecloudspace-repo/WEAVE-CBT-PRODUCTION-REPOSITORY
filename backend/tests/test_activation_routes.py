@@ -196,7 +196,10 @@ class ActivationRouteContractTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertFalse(response.results[0].started)
-        self.assertIn("Candidates overlap", response.results[0].error)
+        self.assertIn(
+            "candidates are already taking another examination",
+            response.results[0].error,
+        )
         self.assertTrue(response.results[1].started)
         activate.assert_awaited_once()
         self.assertEqual(activate.await_args.kwargs["exam_id"], second)
