@@ -6,8 +6,7 @@ $targets = @(
     '.ruff_cache', '.uv-cache',
     'backend/.pytest_cache', 'backend/.ruff_cache',
     'frontend/dist', 'frontend/.vite', 'frontend/node_modules/.vite',
-    'frontend/node_modules/.vite-temp',
-    'deployment/manager/.pytest_cache', 'deployment/manager/.ruff_cache'
+    'frontend/node_modules/.vite-temp'
 )
 # Vite verification builds can be created below either app root.
 foreach ($buildRoot in @('frontend', 'frontend/apps/staff', 'frontend/apps/student')) {
@@ -17,7 +16,7 @@ foreach ($buildRoot in @('frontend', 'frontend/apps/staff', 'frontend/apps/stude
             ForEach-Object { $_.FullName }
     }
 }
-$sourceRoots = @('backend/app', 'backend/tests', 'deployment/manager/src', 'deployment/manager/tests')
+$sourceRoots = @('backend/app', 'backend/tests')
 foreach ($sourceRoot in $sourceRoots) {
     $sourcePath = Join-Path $repositoryRoot $sourceRoot
     if (Test-Path -LiteralPath $sourcePath) {
