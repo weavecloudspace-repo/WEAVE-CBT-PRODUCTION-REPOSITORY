@@ -16,6 +16,7 @@ from app.domains.candidates.schemas import (
     CandidateMakeupRevocationPayload,
     MakeupReviewResponse,
     MakeupReviewSetsResponse,
+    MakeupStudentAddPayload,
     MissedCandidateListResponse,
 )
 from app.domains.candidates.service import CandidateService
@@ -34,11 +35,16 @@ async def list_makeup_review_sets(db: DbSession, actor: CurrentLocalActor):
 
 @router.get("/exams/{exam_id}/makeup-review", response_model=MakeupReviewResponse)
 async def get_makeup_review(
-    exam_id: UUID, db: DbSession, actor: CurrentLocalActor,
-    offset: int = Query(default=0, ge=0), limit: int = Query(default=50, ge=1, le=200),
+    exam_id: UUID,
+    db: DbSession,
+    actor: CurrentLocalActor,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
 ):
     try:
-        return await MakeupReviewService.detail(db, actor=actor, exam_id=exam_id, offset=offset, limit=limit)
+        return await MakeupReviewService.detail(
+            db, actor=actor, exam_id=exam_id, offset=offset, limit=limit
+        )
     except (AcademicAuthorizationError, ExamNotFound, ValueError) as exc:
         raise _http_error(exc) from exc
 
@@ -130,6 +136,29 @@ async def revoke_makeup(
             db,
             actor=actor,
             authorization_id=authorization_id,
+            reason=payload.reason,
+        )
+    except (AcademicAuthorizationError, ExamNotFound, ValueError) as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post(
+    "/exams/{exam_id}/makeups/students",
+    response_model=CandidateMakeupAuthorizationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_makeup_student(
+    exam_id: UUID,
+    payload: MakeupStudentAddPayload,
+    db: DbSession,
+    actor: CurrentLocalActor,
+):
+    try:
+        return await CandidateService.add_makeup_student(
+            db,
+            actor=actor,
+            exam_id=exam_id,
+            admission_number=payload.admission_number,
             reason=payload.reason,
         )
     except (AcademicAuthorizationError, ExamNotFound, ValueError) as exc:

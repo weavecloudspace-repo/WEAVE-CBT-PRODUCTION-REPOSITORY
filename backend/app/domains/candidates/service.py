@@ -14,8 +14,11 @@ from app.domains.academics.electives import ElectiveEligibilityService
 from app.domains.academics.models import StudentEnrollment
 from app.domains.academics.repository import AcademicRepository
 from app.domains.attempts.repository import AttemptRepository
+from app.domains.audit.models import AuditActorType, AuditEvent
+from app.domains.audit.repository import AuditRepository
 from app.domains.auth.models import LocalActor
 from app.domains.candidates.exceptions import CandidateRosterError
+from app.domains.candidates.makeup_policy import require_current_makeup_term
 from app.domains.candidates.models import (
     CandidateLateStartAuthorization,
     CandidateMakeupAuthorization,
@@ -32,6 +35,8 @@ from app.domains.candidates.schemas import (
     MissedCandidateResponse,
 )
 from app.domains.exams.exceptions import ExamNotFound
+from app.domains.exams.execution_models import ExamResultDisposition
+from app.domains.exams.execution_repository import ExamExecutionRepository
 from app.domains.exams.models import Exam, ExamRosterStatus, ExamStatus
 from app.domains.exams.repository import ExamRepository
 from app.domains.exams.timetable_service import (
@@ -791,6 +796,76 @@ class CandidateService:
         )
 
     @classmethod
+    async def add_makeup_student(cls, db, *, actor, exam_id, admission_number, reason):
+        """Atomically add one currently eligible student and authorize a first attempt."""
+        cls._require_admin(actor)
+        reason = cls._require_reason(reason)
+        exam = await ExamRepository.get_exam_by_id(db, exam_id=exam_id, lock=True)
+        if exam is None:
+            raise ExamNotFound("Examination does not exist")
+        if exam.status != ExamStatus.CLOSED:
+            raise ValueError(
+                "Students can only be added for makeup to a closed examination"
+            )
+        await require_current_makeup_term(db, exam)
+        await SyncRepository.acquire_apply_lock(db)
+        targets = await ExamRepository.list_target_classes_for_exam(db, exam.id)
+        enrollments = await cls._eligible_enrollments_for_frozen_classes(
+            db, exam=exam, target_classes=targets
+        )
+        matches = [
+            item
+            for item in enrollments.values()
+            if item.admission_number == admission_number.strip()
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                "Admission number must identify one active synchronized student in this exam's classes and subject. Check enrollment and synchronization."
+            )
+        enrollment = matches[0]
+        existing = await CandidateRepository.get_candidate_by_student_id(
+            db, exam.id, enrollment.student_id, lock=True
+        )
+        if existing is not None:
+            raise ValueError(
+                "Student is already on this exam's candidate list. Use the existing makeup approval action if eligible."
+            )
+        candidate = ExamCandidate(
+            exam_id=exam.id,
+            enrollment_id=enrollment.id,
+            student_id=enrollment.student_id,
+            class_id=enrollment.class_id,
+            admission_number=enrollment.admission_number,
+            display_name=cls._display_name(enrollment),
+            status=CandidateStatus.ELIGIBLE,
+            roster_version=exam.roster_version,
+        )
+        try:
+            candidate = await CandidateRepository.add_candidate(db, candidate)
+            await AuditRepository.add_event(
+                db,
+                AuditEvent(
+                    actor_type=AuditActorType.LOCAL_ACTOR,
+                    actor_id=actor.id,
+                    actor_role=actor.role,
+                    action="candidate.makeup_student_added",
+                    entity_type="exam_candidate",
+                    entity_id=candidate.id,
+                    reason=reason,
+                    metadata_json={
+                        "exam_id": str(exam.id),
+                        "student_id": str(enrollment.student_id),
+                    },
+                ),
+            )
+            return await cls.approve_makeup(
+                db, actor=actor, candidate_id=candidate.id, reason=reason
+            )
+        except Exception:
+            await db.rollback()
+            raise
+
+    @classmethod
     async def approve_makeup(
         cls, db: AsyncSession, *, actor: LocalActor, candidate_id: UUID, reason: str
     ) -> CandidateMakeupAuthorizationResponse:
@@ -801,12 +876,24 @@ class CandidateService:
         now = datetime.now(UTC)
 
         candidate, exam = await cls._get_candidate_and_exam(
-            db, candidate_id=candidate_id, lock_candidate=True, lock_exam=True
+            db, candidate_id=candidate_id, lock_exam=True
         )
         if exam.status != ExamStatus.CLOSED:
             raise ValueError(
                 "Makeup can only be approved after the original examination is closed"
             )
+        await require_current_makeup_term(db, exam)
+        control = await ExamExecutionRepository.get_control(db, exam.id, lock=True)
+        if control is not None and (
+            control.operation is not None
+            or control.result_disposition == ExamResultDisposition.VOIDED
+        ):
+            raise ValueError(
+                "Makeup access is unavailable for voided or finalizing results"
+            )
+        candidate = await CandidateRepository.get_candidate_by_id(
+            db, candidate.id, lock=True
+        )
         if candidate.status != CandidateStatus.ELIGIBLE:
             raise ValueError(
                 "Only eligible candidates who missed the examination "

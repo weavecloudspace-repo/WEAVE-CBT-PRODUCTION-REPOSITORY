@@ -202,6 +202,7 @@ class MakeupReviewCounts(OutputBase):
 
 
 class MakeupReviewSetsResponse(OutputBase):
+    eligible_exam_ids: list[UUID]
     exams: list[MakeupReviewCounts]
 
 
@@ -244,3 +245,8 @@ class CandidateLateStartAuthorizationResponse(OutputBase):
     revocation_reason: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class MakeupStudentAddPayload(InputBase):
+    admission_number: str = Field(min_length=1, max_length=128)
+    reason: str = Field(min_length=1, max_length=1024)

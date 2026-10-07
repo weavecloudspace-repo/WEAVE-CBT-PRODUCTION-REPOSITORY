@@ -18,9 +18,9 @@
 .admin-makeup-pagination button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .admin-makeup-readiness p { margin: 12px 0; line-height: 1.6; }
 .admin-makeup-readiness small { color: rgb(var(--color-text-muted)); }
-.admin-makeups-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, .4fr); gap: 16px; align-items: end; }
+.admin-makeups-filters { display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, minmax(180px, .4fr)); gap: 16px; align-items: end; }
 .admin-makeups-filters label, .admin-makeup-dialog label { display: grid; gap: 8px; font-size: 13px; font-weight: 600; }
-.admin-makeups-filters input, .admin-makeup-dialog textarea { width: 100%; border: 1px solid rgb(var(--color-border)); border-radius: 10px; padding: 12px; background: rgb(var(--color-surface)); color: rgb(var(--color-text)); font: inherit; }
+.admin-makeups-filters input, .admin-makeup-dialog textarea, .admin-makeup-dialog input { width: 100%; border: 1px solid rgb(var(--color-border)); border-radius: 10px; padding: 12px; background: rgb(var(--color-surface)); color: rgb(var(--color-text)); font: inherit; }
 .admin-makeup-exams { display: grid; gap: 12px; }
 .admin-makeup-exams article { display: flex; flex-wrap: wrap; gap: 20px; padding: 22px; align-items: center; justify-content: space-between; }
 .admin-makeup-exams h2 { margin: 0 0 8px; font-size: 16px; }
@@ -40,3 +40,5 @@
 .admin-makeup-dialog textarea { min-height: 100px; resize: vertical; }
 .admin-makeup-dialog footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 22px; }
 @media (max-width: 640px) { .admin-makeups-filters { grid-template-columns: 1fr; } .admin-makeups-heading { align-items: flex-start; } .admin-makeups-heading h1 { font-size: 24px; } }
+
+.admin-makeup-add-error { border: 1px solid rgb(var(--color-border)); border-left: 3px solid currentColor; border-radius: 8px; padding: 10px 12px; }

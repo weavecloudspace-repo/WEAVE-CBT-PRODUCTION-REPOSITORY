@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -72,6 +73,7 @@ class ResultSyncApprovalTests(unittest.IsolatedAsyncioTestCase):
         current_exam = SimpleNamespace(id=exam_id, status=ExamStatus.CLOSED)
         control = SimpleNamespace(result_disposition=ExamResultDisposition.APPROVED)
         row = SimpleNamespace(
+            exam_date=date(2026, 10, 7),
             sync_status=ResultSyncStatus.PENDING,
             sync_batch_id=None,
             sync_attempts=0,
@@ -79,6 +81,8 @@ class ResultSyncApprovalTests(unittest.IsolatedAsyncioTestCase):
             sync_error=None,
             synced_at=None,
         )
+        later_row = SimpleNamespace(**vars(row))
+        later_row.exam_date = date(2026, 10, 8)
         service = ResultSyncService()
 
         with (
@@ -100,7 +104,7 @@ class ResultSyncApprovalTests(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 ResultRepository,
                 "list_pending_results_for_exam_sync",
-                new=AsyncMock(return_value=[row]),
+                new=AsyncMock(return_value=[row, later_row]),
             ),
             patch.object(
                 ResultRepository,
@@ -118,6 +122,8 @@ class ResultSyncApprovalTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(row.sync_status, ResultSyncStatus.SYNCING)
         self.assertEqual(row.sync_batch_id, batch_id)
         self.assertEqual(row.sync_attempts, 1)
+        self.assertEqual(later_row.sync_status, ResultSyncStatus.PENDING)
+        self.assertIsNone(later_row.sync_batch_id)
         db.commit.assert_awaited_once()
 
 
@@ -175,7 +181,8 @@ class ResultSyncFailureClassificationTests(unittest.IsolatedAsyncioTestCase):
                 service,
                 "_mark_batch_failed",
                 new=AsyncMock(),
-            ) as mark_failed,self.assertRaises(WeaveRequestRejectedError)
+            ) as mark_failed,
+            self.assertRaises(WeaveRequestRejectedError),
         ):
             await service.sync_next_batch(db, exam_id=uuid4())
 
@@ -213,7 +220,8 @@ class ResultSyncFailureClassificationTests(unittest.IsolatedAsyncioTestCase):
                 service,
                 "_mark_batch_failed",
                 new=AsyncMock(),
-            ) as mark_failed,self.assertRaises(WeaveRequestRejectedError)
+            ) as mark_failed,
+            self.assertRaises(WeaveRequestRejectedError),
         ):
             await service.sync_next_batch(db, exam_id=uuid4())
 

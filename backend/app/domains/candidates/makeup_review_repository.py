@@ -3,7 +3,13 @@
 from sqlalchemy import case, exists, func, or_, select
 from sqlalchemy.orm import aliased
 
-from app.domains.academics.models import AcademicClass, Curriculum, CurriculumSubject
+from app.domains.academics.models import (
+    AcademicClass,
+    AcademicSession,
+    AcademicTerm,
+    Curriculum,
+    CurriculumSubject,
+)
 from app.domains.attempts.models import ExamAttempt
 from app.domains.candidates.models import CandidateMakeupAuthorization, ExamCandidate
 from app.domains.exams.lineage import latest_exam_revision_clause
@@ -13,6 +19,34 @@ from app.domains.results.models import ExamResult
 
 
 class MakeupReviewRepository:
+    @staticmethod
+    def current_period_clause():
+        return exists().where(
+            AcademicSession.id == Exam.session_id,
+            AcademicSession.is_current.is_(True),
+            AcademicSession.source_deleted_at.is_(None),
+            AcademicTerm.id == Exam.term_id,
+            AcademicTerm.academic_session_id == AcademicSession.id,
+            AcademicTerm.is_current.is_(True),
+            AcademicTerm.source_deleted_at.is_(None),
+        )
+
+    @classmethod
+    async def eligible_exam_ids(cls, db):
+        return list(
+            (
+                await db.execute(
+                    select(Exam.id).where(
+                        Exam.status == ExamStatus.CLOSED,
+                        latest_exam_revision_clause(),
+                        cls.current_period_clause(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
     @staticmethod
     def candidate_from():
         latest = aliased(CandidateMakeupAuthorization)
@@ -95,6 +129,7 @@ class MakeupReviewRepository:
             .where(
                 Exam.status == ExamStatus.CLOSED,
                 latest_exam_revision_clause(),
+                cls.current_period_clause(),
                 or_(
                     ExamAttempt.id.is_(None),
                     CandidateMakeupAuthorization.id.is_not(None),

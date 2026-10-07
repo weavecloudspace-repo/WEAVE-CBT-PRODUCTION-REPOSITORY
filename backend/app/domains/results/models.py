@@ -6,13 +6,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum as PyEnum
 from uuid import UUID
 
 from sqlalchemy import (
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -213,6 +214,9 @@ class ExamResult(Base):
         Numeric(8, 2),
         nullable=False,
     )
+
+    # Frozen publication date; makeup scores use the actual attempt date.
+    exam_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     calculated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

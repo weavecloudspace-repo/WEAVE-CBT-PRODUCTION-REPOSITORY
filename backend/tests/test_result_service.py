@@ -1,5 +1,6 @@
 import os
 import unittest
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -33,6 +34,8 @@ class ResultScoringTests(unittest.IsolatedAsyncioTestCase):
             id=exam_id,
             assessment_component_id=uuid4(),
             component_maximum_score=Decimal("10.00"),
+            status="active",
+            activated_at=datetime.now(UTC),
         )
         questions = [SimpleNamespace(id=q1), SimpleNamespace(id=q2)]
         options = [

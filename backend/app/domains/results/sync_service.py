@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +14,7 @@ from app.domains.candidates.repository import CandidateRepository
 from app.domains.exams.exceptions import ExamNotFound
 from app.domains.exams.execution_models import ExamResultDisposition
 from app.domains.exams.execution_repository import ExamExecutionRepository
-from app.domains.exams.models import Exam, ExamStatus
+from app.domains.exams.models import ExamStatus
 from app.domains.exams.repository import ExamRepository
 from app.domains.node.identity_store import NodeIdentityStore, node_identity_store
 from app.domains.results.models import (
@@ -224,6 +224,10 @@ class ResultSyncService:
             await db.rollback()
             return None
 
+        # Weave validates enrollment and teacher ownership at the batch date.
+        # Never combine original scores and later makeup dates in one payload.
+        batch_date = rows[0].exam_date
+        rows = [row for row in rows if row.exam_date == batch_date]
         batch_id = uuid4()
         await self._mark_rows_syncing(db, rows=rows, batch_id=batch_id)
         # Commit BEFORE network I/O: the exact logical batch now survives a
@@ -330,6 +334,11 @@ class ResultSyncService:
                 )
             )
 
+        batch_dates = {row.exam_date for row in rows}
+        if len(batch_dates) != 1:
+            raise ResultSyncError(
+                "A result batch cannot contain multiple assessment dates."
+            )
         payload = WeaveResultBulkRequest(
             batch_id=batch_id,
             source_exam_id=exam.id,
@@ -338,29 +347,13 @@ class ResultSyncService:
             academic_level_id=curriculum.academic_level_id,
             curriculum_subject_id=exam.curriculum_subject_id,
             assessment_component_id=exam.assessment_component_id,
-            exam_date=self._exam_date(exam),
+            exam_date=rows[0].exam_date,
             scores=scores,
         )
         return _PreparedResultBatch(
             payload=payload,
             student_id_by_result_id=student_id_by_result_id,
         )
-
-    @staticmethod
-    def _exam_date(exam: Exam) -> date:
-        """Return the academic date of the actual sitting.
-
-        Activation is authoritative because it records when this concrete
-        sitting actually began. Scheduled start and close time are retained as
-        compatibility fallbacks for older/imported execution state.
-        """
-
-        timestamp = exam.activated_at or exam.scheduled_start_at or exam.closed_at
-        if timestamp is None:
-            raise ResultSyncError(
-                "The examination has no usable execution date for result sync."
-            )
-        return timestamp.date()
 
     @staticmethod
     def _validate_response(

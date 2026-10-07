@@ -31,3 +31,11 @@ export function revokeMakeup(authorizationId, reason) {
     successMessage: 'Make-up examination authorization revoked.',
   })
 }
+
+
+export function addMakeupStudent(examId, admissionNumber, reason) {
+  return weaveRequest(`/exams/${examId}/makeups/students`, {
+    method: 'POST', body: { admission_number: admissionNumber, reason },
+    successMessage: 'Student added and makeup access authorized.',
+  })
+}

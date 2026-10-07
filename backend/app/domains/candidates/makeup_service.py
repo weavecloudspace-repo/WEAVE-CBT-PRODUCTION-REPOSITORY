@@ -8,7 +8,12 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domains.academics.models import Curriculum, CurriculumSubject
+from app.domains.academics.models import (
+    AcademicSession,
+    AcademicTerm,
+    Curriculum,
+    CurriculumSubject,
+)
 from app.domains.attempts.models import AttemptStatus, ExamAttempt
 from app.domains.candidates.models import (
     CandidateMakeupAuthorization,
@@ -67,6 +72,21 @@ class CandidateMakeupService:
                 CandidateMakeupAuthorization.revoked_at.is_(None),
                 Exam.session_id == session_id,
                 Exam.term_id == term_id,
+                select(AcademicSession.id)
+                .where(
+                    AcademicSession.id == Exam.session_id,
+                    AcademicSession.is_current.is_(True),
+                    AcademicSession.source_deleted_at.is_(None),
+                )
+                .exists(),
+                select(AcademicTerm.id)
+                .where(
+                    AcademicTerm.id == Exam.term_id,
+                    AcademicTerm.academic_session_id == Exam.session_id,
+                    AcademicTerm.is_current.is_(True),
+                    AcademicTerm.source_deleted_at.is_(None),
+                )
+                .exists(),
             )
             .order_by(
                 Exam.scheduled_start_at.asc().nulls_last(),
@@ -126,7 +146,11 @@ class CandidateMakeupService:
                 ),
             )
 
-        pending_count = sum(1 for row in rows if row[4] is None or row[4].status != AttemptStatus.SUBMITTED)
+        pending_count = sum(
+            1
+            for row in rows
+            if row[4] is None or row[4].status != AttemptStatus.SUBMITTED
+        )
         for authorization, candidate, exam, _level_id, attempt in rows:
             if attempt is not None and attempt.status == AttemptStatus.SUBMITTED:
                 continue

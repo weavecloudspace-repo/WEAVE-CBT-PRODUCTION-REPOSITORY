@@ -50,6 +50,7 @@ async def test_makeup_readiness_and_candidate_permissions(blockers, fresh, avail
         (candidate, approved, attempt, None, "JSS1 A"),
     ]
     with (
+        patch("app.domains.candidates.makeup_review_service.require_current_makeup_term", AsyncMock()),
         patch(
             "app.domains.candidates.makeup_review_service.ExamRepository.get_exam_by_id",
             AsyncMock(return_value=exam),

@@ -15,6 +15,9 @@ export function AdminMakeupsPage({ examId, adminData, gateway, onNavigate }) {
   const [query, setQuery] = useState('')
   const [level, setLevel] = useState('all')
   const [status, setStatus] = useState('all')
+  const [component, setComponent] = useState('all')
+  const [admission, setAdmission] = useState('')
+  const [addError, setAddError] = useState('')
   const [selected, setSelected] = useState([])
   const [operation, setOperation] = useState(null)
   const [reason, setReason] = useState('')
@@ -55,6 +58,8 @@ export function AdminMakeupsPage({ examId, adminData, gateway, onNavigate }) {
     dialog.current?.close()
     setOperation(null)
     setReason('')
+    setAdmission('')
+    setAddError('')
   }, [busy])
 
   const rows = (payload?.candidates || []).filter((item) =>
@@ -67,6 +72,21 @@ export function AdminMakeupsPage({ examId, adminData, gateway, onNavigate }) {
     event.preventDefault()
     if (busy || !reason.trim()) return
     setBusy(true)
+    if (operation.kind === 'add') {
+      setAddError('')
+      try {
+        await gateway.makeups.addMakeupStudent(operation.exam.id, admission.trim(), reason.trim())
+        dialog.current?.close()
+        setOperation(null)
+        setReason('')
+        setAdmission('')
+        setVersion((value) => value + 1)
+        onNavigate('makeup-detail', { selectedExamId: operation.exam.id })
+      } catch (failure) {
+        setAddError(failure.userMessage || 'Could not add this student. Check their enrollment and try again.')
+      } finally { setBusy(false) }
+      return
+    }
     const failures = []
     let succeeded = 0
     try {
@@ -95,7 +115,10 @@ export function AdminMakeupsPage({ examId, adminData, gateway, onNavigate }) {
   }
 
   const summaries = new Map((payload?.exams || []).map((item) => [item.exam_id, item]))
-  const exams = adminData.exams.filter((item) => item.status === 'closed'
+  const eligibleExamIds = new Set(payload?.eligible_exam_ids || [])
+  const currentExams = adminData.exams.filter((item) => item.status === 'closed' && eligibleExamIds.has(item.id))
+  const componentOptions = [...new Set(currentExams.map((item) => item.assessmentName).filter(Boolean))].sort().map((name) => ({ value: name, label: name }))
+  const exams = currentExams.filter((item) => (component === 'all' || item.assessmentName === component)
     && (level === 'all' || item.academicLevelId === level)
     && `${item.title} ${item.subjectName}`.toLowerCase().includes(query.toLowerCase()))
   const levels = [...new Map(adminData.exams.filter((item) => item.academicLevelId).map((item) => [item.academicLevelId, { value: item.academicLevelId, label: item.academicLevelName }])).values()]
@@ -103,7 +126,7 @@ export function AdminMakeupsPage({ examId, adminData, gateway, onNavigate }) {
   return (
     <div className="admin-makeups-page">
       {examId && <button className="teacher-secondary-action" onClick={() => onNavigate('makeups')}>← Back to makeups</button>}
-      <header className="admin-makeups-heading"><div><h1>{examId ? exam?.title || 'Makeup examination' : 'Makeup examinations'}</h1><p>{examId ? 'Approve missed students, check readiness and follow their progress.' : 'Manage approved sittings for students who missed a closed examination.'}</p></div><button className="teacher-secondary-action" disabled={loading} onClick={() => setVersion((value) => value + 1)}>Refresh</button></header>
+      <header className="admin-makeups-heading"><div><h1>{examId ? exam?.title || 'Makeup examination' : 'Makeup examinations'}</h1><p>{examId ? 'Approve missed students, check readiness and follow their progress.' : 'Manage missed candidates and new enrollees for closed examinations in the current term.'}</p></div><button className="teacher-secondary-action" disabled={loading} onClick={() => setVersion((value) => value + 1)}>Refresh</button></header>
       {(error || adminData.error) && <Notice tone="danger">{error || adminData.error}</Notice>}
       {examId && payload && <section className="admin-makeup-readiness" aria-label="Makeup readiness">
         <StatusBadge tone={payload.available ? 'success' : 'warning'}>{payload.available ? 'Available to approved students' : 'Waiting for readiness'}</StatusBadge>
@@ -119,13 +142,14 @@ export function AdminMakeupsPage({ examId, adminData, gateway, onNavigate }) {
       <div className="admin-makeups-filters">
         <label>Search {examId ? 'students on this page' : 'examinations'}<input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setSelected([]) }} placeholder={examId ? 'Name, admission number or class' : 'Exam or subject name'} /></label>
         {examId ? <SelectControl label="Makeup status" value={status} onChange={(value) => { setStatus(value); setSelected([]) }} options={[{ value: 'all', label: 'All states' }, ...['awaiting_approval', 'approved', 'writing', 'paused', 'completed', 'revoked', 'terminated', 'needs_review', 'blocked', 'withdrawn'].map((value) => ({ value, label: label(value) }))]} /> : <SelectControl label="Academic level" value={level} onChange={setLevel} options={[{ value: 'all', label: 'All levels' }, ...levels]} />}
+        {!examId && <SelectControl label="Assessment component" value={component} onChange={setComponent} options={[{ value: 'all', label: 'All assessment components' }, ...componentOptions]} />}
       </div>
       {!examId ? <div className="admin-makeup-exams">
         {loading && !payload ? <p role="status">Loading makeup examinations…</p> : exams.map((item) => {
           const counts = summaries.get(item.id)
-          return <article key={item.id}><div><h2>{item.title}</h2><p>{item.academicLevelName} · {item.subjectName}</p><small>{item.scheduledStartAt ? new Date(item.scheduledStartAt).toLocaleString() : 'No original schedule'}</small></div><div className="admin-makeup-counts"><span>{counts?.awaiting_approval ?? 0} awaiting approval</span><span>{counts?.approved ?? 0} approved</span><span>{counts?.completed ?? 0} completed</span></div><button className="teacher-secondary-action" onClick={() => onNavigate('makeup-detail', { selectedExamId: item.id })}>Manage makeups →</button></article>
+          return <article key={item.id}><div><h2>{item.title}</h2><p>{item.academicLevelName} · {item.subjectName}</p><small>{item.scheduledStartAt ? new Date(item.scheduledStartAt).toLocaleString() : 'No original schedule'}</small></div><div className="admin-makeup-counts"><span>{counts?.awaiting_approval ?? 0} awaiting approval</span><span>{counts?.approved ?? 0} approved</span><span>{counts?.completed ?? 0} completed</span></div><button className="teacher-secondary-action" disabled={loading || Boolean(error)} onClick={() => { setAdmission(''); setReason(''); setAddError(''); setOperation({ kind: 'add', exam: item }) }}>Add student</button><button className="teacher-secondary-action" onClick={() => onNavigate('makeup-detail', { selectedExamId: item.id })}>Manage makeups →</button></article>
         })}
-        {!loading && !exams.length && <p>No closed examinations match these filters. Makeup approval becomes available after the original exam closes.</p>}
+        {!loading && !exams.length && <p>No current-term closed examinations match these filters. Past-term examinations cannot receive makeup access.</p>}
       </div> : <>
         <div className="admin-makeup-bulk"><span>{selectedRows.length} selected · {eligible.length} eligible on this page</span><button className="teacher-secondary-action" disabled={!eligible.length || loading || Boolean(error)} onClick={() => setSelected(eligible.map((item) => item.id))}>Select all eligible</button><button className="teacher-primary-action" disabled={!selectedRows.length || loading || Boolean(error)} onClick={() => setOperation({ kind: 'approve', rows: selectedRows })}>Approve selected ({selectedRows.length})</button></div>
         <div className="admin-makeup-table-scroll"><table><thead><tr><th>Select</th><th>Student</th><th>Class</th><th>Status</th><th>Progress / score</th><th>Action</th></tr></thead><tbody>
@@ -135,7 +159,16 @@ export function AdminMakeupsPage({ examId, adminData, gateway, onNavigate }) {
         <footer className="admin-makeup-pagination"><span>{payload?.total || 0} students · Page {page + 1}</span><button className="teacher-secondary-action" disabled={!page || loading} onClick={() => { setPage(page - 1); setSelected([]) }}><span aria-hidden="true">←</span> Previous</button><button className="teacher-secondary-action" disabled={loading || (page + 1) * PAGE_SIZE >= (payload?.total || 0)} onClick={() => { setPage(page + 1); setSelected([]) }}>Next <span aria-hidden="true">→</span></button></footer>
       </>}
       <dialog ref={dialog} className="admin-makeup-dialog" onCancel={(event) => { event.preventDefault(); closeDialog() }}>
-        {operation && <form onSubmit={submit}><h2>{operation.kind === 'approve' ? `Approve ${operation.rows.length} makeup sitting${operation.rows.length === 1 ? '' : 's'}?` : `Revoke ${operation.row.name}’s approval?`}</h2><p>{exam?.title}</p><p>{operation.kind === 'approve' ? 'Students can start once the normal exam cycle and question-bank checks are satisfied.' : 'This removes permission to start. It does not change a submitted score.'}</p><label>Reason<textarea required maxLength={1024} value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} /></label><footer><button type="button" className="teacher-secondary-action" disabled={busy} onClick={closeDialog}>Cancel</button><button className="teacher-primary-action" disabled={busy || !reason.trim()}>{busy ? 'Saving…' : operation.kind === 'approve' ? 'Confirm approval' : 'Revoke approval'}</button></footer></form>}
+        {operation?.kind === 'add' && <form onSubmit={submit}>
+          <h2>Add student for makeup</h2><p>{operation.exam.title}</p>
+          <p>Enter the admission number of an active student who was not on this exam roster. The system checks their class and subject before granting access.</p>
+          <p>Authorization does not override normal exam-cycle or question-bank readiness checks.</p>
+          {addError && <p role="alert" className="admin-makeup-add-error">{addError}</p>}
+          <label>Admission number<input required maxLength={128} autoComplete="off" value={admission} onChange={(event) => setAdmission(event.target.value)} disabled={busy} /></label>
+          <label>Reason<textarea required maxLength={1024} value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} /></label>
+          <footer><button type="button" className="teacher-secondary-action" disabled={busy} onClick={closeDialog}>Cancel</button><button className="teacher-primary-action" disabled={busy || !admission.trim() || !reason.trim()}>{busy ? 'Adding student...' : 'Add and authorize'}</button></footer>
+        </form>}
+        {operation && operation.kind !== 'add' && <form onSubmit={submit}><h2>{operation.kind === 'approve' ? `Approve ${operation.rows.length} makeup sitting${operation.rows.length === 1 ? '' : 's'}?` : `Revoke ${operation.row.name}’s approval?`}</h2><p>{exam?.title}</p><p>{operation.kind === 'approve' ? 'Students can start once the normal exam cycle and question-bank checks are satisfied.' : 'This removes permission to start. It does not change a submitted score.'}</p><label>Reason<textarea required maxLength={1024} value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} /></label><footer><button type="button" className="teacher-secondary-action" disabled={busy} onClick={closeDialog}>Cancel</button><button className="teacher-primary-action" disabled={busy || !reason.trim()}>{busy ? 'Saving…' : operation.kind === 'approve' ? 'Confirm approval' : 'Revoke approval'}</button></footer></form>}
       </dialog>
     </div>
   )

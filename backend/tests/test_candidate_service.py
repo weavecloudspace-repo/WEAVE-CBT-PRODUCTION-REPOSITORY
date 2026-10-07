@@ -788,6 +788,8 @@ class CandidateServiceTests(unittest.IsolatedAsyncioTestCase):
             return item
 
         with (
+            patch("app.domains.candidates.service.require_current_makeup_term", AsyncMock()),
+            patch("app.domains.candidates.service.ExamExecutionRepository.get_control", AsyncMock(return_value=None)),
             patch.object(
                 CandidateRepository,
                 "get_candidate_by_id",
@@ -834,6 +836,8 @@ class CandidateServiceTests(unittest.IsolatedAsyncioTestCase):
         row = candidate()
 
         with (
+            patch("app.domains.candidates.service.require_current_makeup_term", AsyncMock()),
+            patch("app.domains.candidates.service.ExamExecutionRepository.get_control", AsyncMock(return_value=None)),
             patch.object(
                 CandidateRepository,
                 "get_candidate_by_id",
@@ -867,6 +871,8 @@ class CandidateServiceTests(unittest.IsolatedAsyncioTestCase):
         row = candidate()
 
         with (
+            patch("app.domains.candidates.service.require_current_makeup_term", AsyncMock()),
+            patch("app.domains.candidates.service.ExamExecutionRepository.get_control", AsyncMock(return_value=None)),
             patch.object(
                 CandidateRepository,
                 "get_candidate_by_id",

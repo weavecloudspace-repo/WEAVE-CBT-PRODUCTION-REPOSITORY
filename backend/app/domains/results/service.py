@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AcademicAuthorizationError
@@ -88,7 +87,15 @@ class ResultService:
             Decimal(raw_score) * component_max / Decimal(raw_max)
         ).quantize(_TWO_DP, rounding=ROUND_HALF_UP)
 
+        timestamp = (
+            attempt.started_at
+            if exam.status == ExamStatus.CLOSED
+            else (exam.activated_at or exam.scheduled_start_at or exam.closed_at)
+        )
+        if timestamp is None:
+            raise ValueError("Examination result has no usable assessment date")
         result = ExamResult(
+            exam_date=timestamp.date(),
             attempt_id=attempt.id,
             candidate_id=candidate.id,
             exam_id=exam.id,
@@ -103,13 +110,43 @@ class ResultService:
             sync_batch_id=None,
             sync_attempts=0,
         )
-        try:
-            return await ResultRepository.add_result(db, result)
-        except IntegrityError:
-            # The caller owns the transaction. A concurrent duplicate will be
-            # resolved by its unique attempt/candidate-exam constraints after
-            # rollback at the service boundary rather than creating a duplicate.
-            raise
+        # A score created after the sitting closed must receive a new review.
+        # Previous approval is not permission to publish a future makeup score.
+        if exam.status == ExamStatus.CLOSED:
+            control = await ExamExecutionRepository.get_control(db, exam.id, lock=True)
+            if (
+                control is not None
+                and control.result_disposition == ExamResultDisposition.APPROVED
+            ):
+                await AuditRepository.add_event(
+                    db,
+                    AuditEvent(
+                        actor_type=AuditActorType.SYSTEM,
+                        action="exam.results_review_reopened",
+                        entity_type="exam",
+                        entity_id=exam.id,
+                        metadata_json={
+                            "attempt_id": str(attempt.id),
+                            "previous_decided_at": control.results_decided_at.isoformat()
+                            if control.results_decided_at
+                            else None,
+                            "previous_decided_by_actor_id": str(
+                                control.results_decided_by_actor_id
+                            )
+                            if control.results_decided_by_actor_id
+                            else None,
+                        },
+                        reason="A new makeup result requires administrator review",
+                    ),
+                )
+                control.result_disposition = ExamResultDisposition.PENDING_REVIEW
+                control.results_decided_at = None
+                control.results_decided_by_actor_id = None
+                control.results_decision_reason = None
+                await ExamExecutionRepository.save_control(db, control)
+        # The caller owns rollback if the unique attempt/candidate constraints
+        # reject a concurrent duplicate; never create an alternative score.
+        return await ResultRepository.add_result(db, result)
 
     @staticmethod
     async def _require_can_view_exam_results(

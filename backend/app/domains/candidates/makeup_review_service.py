@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from app.domains.attempts.models import AttemptStatus
 from app.domains.attempts.query_service import AttemptQueryService
 from app.domains.attempts.runtime_repository import AttemptRuntimeRepository
+from app.domains.candidates.makeup_policy import require_current_makeup_term
 from app.domains.candidates.makeup_review_repository import MakeupReviewRepository
 from app.domains.candidates.models import CandidateStatus
 from app.domains.candidates.service import CandidateService
@@ -36,7 +37,10 @@ class MakeupReviewService:
     @classmethod
     async def overview(cls, db, *, actor):
         CandidateService._require_admin(actor)
-        return {"exams": await MakeupReviewRepository.overview(db)}
+        return {
+            "exams": await MakeupReviewRepository.overview(db),
+            "eligible_exam_ids": await MakeupReviewRepository.eligible_exam_ids(db),
+        }
 
     @classmethod
     async def detail(cls, db, *, actor, exam_id, offset, limit):
@@ -48,6 +52,7 @@ class MakeupReviewService:
             raise ValueError(
                 "Makeups can only be reviewed after the original examination is closed"
             )
+        await require_current_makeup_term(db, exam)
         blockers = await MakeupReviewRepository.blockers(db, exam)
         fresh_count = await MakeupReviewRepository.fresh_question_count(db, exam)
         rows, total = await MakeupReviewRepository.candidates(
