@@ -1,6 +1,7 @@
 """Freeze assessment dates for original and new-enrollee makeup results."""
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "20261007_result_exam_date"

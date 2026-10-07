@@ -6,13 +6,14 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.dialects import postgresql
+
 from app.core.exceptions import AcademicAuthorizationError
 from app.domains.candidates.makeup_policy import require_current_makeup_term
 from app.domains.candidates.makeup_review_repository import MakeupReviewRepository
 from app.domains.candidates.service import CandidateService
 from app.domains.exams.execution_models import ExamResultDisposition
 from app.domains.results.service import ResultService
-from sqlalchemy.dialects import postgresql
 
 pytestmark = pytest.mark.anyio
 
