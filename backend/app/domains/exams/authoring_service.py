@@ -25,6 +25,7 @@ from app.domains.exams.models import (
     ExamStatus,
 )
 from app.domains.exams.repository import ExamRepository
+from app.domains.exams.schedule_validation import validate_normal_entry_window
 from app.domains.exams.schemas import (
     ExamCreate,
     ExamQuestionConfiguration,
@@ -408,14 +409,9 @@ class ExamService:
             if "latest_normal_start_at" in fields
             else exam.latest_normal_start_at
         )
-        if (
-            next_scheduled_start_at is not None
-            and next_latest_normal_start_at is not None
-            and next_latest_normal_start_at < next_scheduled_start_at
-        ):
-            raise ValueError(
-                "latest_normal_start_at cannot be earlier than scheduled_start_at"
-            )
+        validate_normal_entry_window(
+            next_scheduled_start_at, next_latest_normal_start_at
+        )
 
         existing_exam = await ExamRepository.get_exam_revision(
             db,

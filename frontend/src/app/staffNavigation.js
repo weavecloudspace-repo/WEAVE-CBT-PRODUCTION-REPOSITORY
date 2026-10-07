@@ -1,6 +1,6 @@
 const teacherSections = new Set(['overview', 'question-banks', 'bank-detail', 'questions', 'create-question', 'review-ai-questions', 'edit-question', 'preview-question', 'exams', 'exam-history', 'create-exam'])
-const adminSections = new Set(['ai-usage', 'ai-credit-requests', 'ai-credit-purchases', 'dashboard', 'question-banks', 'create-bank', 'bank-detail', 'questions', 'create-question', 'review-ai-questions', 'edit-question', 'preview-question', 'exams', 'create-exam', 'exam-history', 'roster', 'roster-history', 'roster-detail', 'timetable', 'operations', 'operation-detail', 'results', 'result-detail', 'students', 'settings'])
-const examViews = { history: 'exam-history', edit: 'create-exam', roster: 'roster-detail', operations: 'operation-detail', results: 'result-detail' }
+const adminSections = new Set(['ai-usage', 'ai-credit-requests', 'ai-credit-purchases', 'dashboard', 'question-banks', 'create-bank', 'bank-detail', 'questions', 'create-question', 'review-ai-questions', 'edit-question', 'preview-question', 'exams', 'create-exam', 'exam-history', 'roster', 'roster-history', 'roster-detail', 'timetable', 'operations', 'operation-detail', 'results', 'result-detail', 'makeups', 'makeup-detail', 'students', 'settings'])
+const examViews = { history: 'exam-history', edit: 'create-exam', roster: 'roster-detail', operations: 'operation-detail', results: 'result-detail', makeups: 'makeup-detail' }
 
 export function staffSectionForRole(role, section) {
   if (role === 'teacher' && teacherSections.has(section)) return section

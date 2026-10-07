@@ -9,16 +9,38 @@ from fastapi import APIRouter, HTTPException, Query, status
 from app.core.database import DbSession
 from app.core.exceptions import AcademicAuthorizationError
 from app.domains.auth.dependencies import CurrentLocalActor
+from app.domains.candidates.makeup_review_service import MakeupReviewService
 from app.domains.candidates.schemas import (
     CandidateMakeupApprovalPayload,
     CandidateMakeupAuthorizationResponse,
     CandidateMakeupRevocationPayload,
+    MakeupReviewResponse,
+    MakeupReviewSetsResponse,
     MissedCandidateListResponse,
 )
 from app.domains.candidates.service import CandidateService
 from app.domains.exams.exceptions import ExamNotFound
 
 router = APIRouter(tags=["Candidate Makeups"])
+
+
+@router.get("/makeups/exams", response_model=MakeupReviewSetsResponse)
+async def list_makeup_review_sets(db: DbSession, actor: CurrentLocalActor):
+    try:
+        return await MakeupReviewService.overview(db, actor=actor)
+    except AcademicAuthorizationError as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/exams/{exam_id}/makeup-review", response_model=MakeupReviewResponse)
+async def get_makeup_review(
+    exam_id: UUID, db: DbSession, actor: CurrentLocalActor,
+    offset: int = Query(default=0, ge=0), limit: int = Query(default=50, ge=1, le=200),
+):
+    try:
+        return await MakeupReviewService.detail(db, actor=actor, exam_id=exam_id, offset=offset, limit=limit)
+    except (AcademicAuthorizationError, ExamNotFound, ValueError) as exc:
+        raise _http_error(exc) from exc
 
 
 def _http_error(exc: Exception) -> HTTPException:

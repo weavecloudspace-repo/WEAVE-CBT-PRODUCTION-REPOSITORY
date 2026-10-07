@@ -51,7 +51,7 @@ def test_create_rejects_naive_schedule_timestamp() -> None:
     with pytest.raises(
         ValidationError, match="scheduled_start_at must include a timezone"
     ):
-        ExamCreate(**create_payload(scheduled_start_at=datetime.now()))
+        ExamCreate(**create_payload(scheduled_start_at=datetime.now(UTC).replace(tzinfo=None)))
 
 
 def test_create_rejects_latest_start_without_scheduled_start() -> None:
@@ -113,3 +113,40 @@ def test_update_allows_clearing_schedule() -> None:
     )
     assert update.scheduled_start_at is None
     assert update.latest_normal_start_at is None
+
+
+@pytest.mark.parametrize("offset_seconds", [0, -60])
+def test_create_rejects_zero_or_negative_normal_entry_window(offset_seconds) -> None:
+    scheduled = datetime.now(UTC) + timedelta(hours=2)
+    with pytest.raises(ValidationError, match="Normal entry deadline must be later"):
+        ExamCreate(
+            **create_payload(
+                scheduled_start_at=scheduled,
+                latest_normal_start_at=scheduled + timedelta(seconds=offset_seconds),
+            )
+        )
+
+
+def test_update_rejects_equal_start_and_deadline() -> None:
+    scheduled = datetime.now(UTC) + timedelta(hours=2)
+    with pytest.raises(ValidationError, match="Equal times leave no time"):
+        ExamUpdate(scheduled_start_at=scheduled, latest_normal_start_at=scheduled)
+
+
+def test_create_accepts_no_deadline_and_positive_entry_window() -> None:
+    scheduled = datetime.now(UTC) + timedelta(hours=2)
+    assert (
+        ExamCreate(
+            **create_payload(scheduled_start_at=scheduled)
+        ).latest_normal_start_at
+        is None
+    )
+    assert (
+        ExamCreate(
+            **create_payload(
+                scheduled_start_at=scheduled,
+                latest_normal_start_at=scheduled + timedelta(seconds=1),
+            )
+        ).latest_normal_start_at
+        > scheduled
+    )

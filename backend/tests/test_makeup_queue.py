@@ -58,6 +58,7 @@ class MakeupQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.available)
         self.assertTrue(result.resume_existing_attempt)
         self.assertEqual(result.next_candidate_id, first_candidate_id)
+        self.assertEqual(result.pending_count, 2)
 
     async def test_makeups_remain_locked_while_normal_cycle_is_unfinished(self):
         level_id = uuid4()

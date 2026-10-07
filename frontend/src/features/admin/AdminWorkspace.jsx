@@ -14,6 +14,7 @@ import { AdminOverview } from './pages/AdminOverview'
 import { AdminBankDetailPage, AdminQuestionBanksPage } from './pages/AdminQuestionBanks'
 import { AdminQuestionsPage } from './pages/AdminQuestionsPage'
 import { AdminResultDetailPage, AdminResultsPage } from './pages/AdminResultsPage'
+import { AdminMakeupsPage } from './pages/AdminMakeupsPage'
 import { AdminRosterDetailPage } from './pages/AdminRostersPage'
 import { AdminCurrentRostersPage, AdminRosterHistoryPage } from './pages/AdminRosterViews'
 import { useAdminData } from './useAdminData'
@@ -36,6 +37,7 @@ const examinationGroupViews = new Set([
   ...rosterViews,
   ...operationViews,
   ...resultViews,
+  'makeups', 'makeup-detail',
   'timetable',
 ])
 
@@ -62,6 +64,8 @@ const adminNav = [
       ['timetable', 'clock', 'Timetable'],
       ['roster', 'roster', 'Roster'],
       ['operations', 'operations', 'Exam Operations'],
+      ['results', 'results', 'Results'],
+      ['makeups', 'clock', 'Makeups'],
     ],
   },
 ]
@@ -121,6 +125,7 @@ export function AdminWorkspace({ state, dispatch, signOut, gateway }) {
     if (section === 'roster') return rosterViews.has(workspaceView)
     if (section === 'operations') return operationViews.has(workspaceView)
     if (section === 'results') return resultViews.has(workspaceView)
+    if (section === 'makeups') return ['makeups', 'makeup-detail'].includes(workspaceView)
     if (section === 'ai-usage') return ['ai-usage', 'ai-credit-requests', 'ai-credit-purchases'].includes(workspaceView)
     return workspaceView === section
   }
@@ -253,6 +258,7 @@ export function AdminWorkspace({ state, dispatch, signOut, gateway }) {
           {workspaceView === 'operations' && <ExamOperations adminData={adminData} gateway={gateway} onNavigate={navigate} />}
           {workspaceView === 'operation-detail' && <ExamOperationsDetail state={state} adminData={adminData} gateway={gateway} onNavigate={navigate} />}
           {workspaceView === 'results' && <AdminResultsPage adminData={adminData} gateway={gateway} onNavigate={navigate} />}
+          {['makeups', 'makeup-detail'].includes(workspaceView) && <AdminMakeupsPage key={workspaceView === 'makeup-detail' ? state.staff.selectedExamId : 'overview'} examId={workspaceView === 'makeup-detail' ? state.staff.selectedExamId : null} adminData={adminData} gateway={gateway} onNavigate={navigate} />}
           {workspaceView === 'result-detail' && <AdminResultDetailPage state={state} adminData={adminData} gateway={gateway} onNavigate={navigate} />}
         </div>
       </section>

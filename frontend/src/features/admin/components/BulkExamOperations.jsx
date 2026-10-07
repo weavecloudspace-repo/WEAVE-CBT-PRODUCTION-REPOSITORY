@@ -90,7 +90,9 @@ export function BulkExamOperations({ exams, scopeKey, gateway, onRefresh, onOpen
       }
     }
     setResults(collected)
-    setIds(new Set(collected.filter((item) => !item.succeeded).map((item) => item.exam_id)))
+    setOperation('')
+    setIds(new Set())
+    setReason('')
     try { await onRefresh({ silent: false }) }
     catch { setError('The batch finished, but the examination list could not refresh. Check current state before retrying.') }
     finally { setBusy(false) }

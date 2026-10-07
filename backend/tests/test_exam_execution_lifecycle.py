@@ -7,6 +7,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from sqlalchemy.orm import Session, make_transient_to_detached
+
 os.environ.setdefault(
     "DATABASE_URL",
     "postgresql+asyncpg://weave:weave@localhost:5432/weave_cbt_test",
@@ -21,7 +23,7 @@ from app.domains.exams.execution_models import (
 )
 from app.domains.exams.execution_repository import ExamExecutionRepository
 from app.domains.exams.execution_service import ExamExecutionService
-from app.domains.exams.models import ExamStatus, ExamSuspensionSource
+from app.domains.exams.models import Exam, ExamStatus, ExamSuspensionSource
 from app.domains.exams.repository import ExamRepository
 from app.domains.runtime.repository import RuntimeRepository
 
@@ -206,6 +208,63 @@ class ExamExecutionLifecycleTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(requested)
         request_close.assert_awaited_once()
+        db.rollback.assert_not_awaited()
+
+    async def test_auto_close_commits_without_releasing_completion_lock(self) -> None:
+        now = datetime.now(UTC)
+        for has_absent_candidate in (False, True):
+            with self.subTest(has_absent_candidate=has_absent_candidate):
+                db = AsyncMock()
+                db.scalar.side_effect = (
+                    [False, True, False] if has_absent_candidate else [False, False]
+                )
+                current_exam = Exam(
+                    id=uuid4(),
+                    status=ExamStatus.ACTIVE,
+                    activated_at=None,
+                    scheduled_start_at=now - timedelta(hours=2),
+                    latest_normal_start_at=now - timedelta(hours=1),
+                )
+                # Use real ORM expiration: the old rollback expires even id and
+                # breaks the subsequent attribute read. No database is needed.
+                orm_session = Session()
+                self.addCleanup(orm_session.close)
+                make_transient_to_detached(current_exam)
+                orm_session.add(current_exam)
+                db.rollback.side_effect = orm_session.rollback
+                current_control = control()
+                with (
+                    patch.object(
+                        ExamRepository, "get_exam_by_id",
+                        new=AsyncMock(return_value=current_exam),
+                    ),
+                    patch.object(
+                        ExamExecutionRepository, "get_control",
+                        new=AsyncMock(return_value=None),
+                    ),
+                    patch.object(
+                        ExamExecutionRepository, "get_or_create_control",
+                        new=AsyncMock(return_value=current_control),
+                    ),
+                    patch.object(
+                        ExamExecutionRepository, "save_control", new=AsyncMock(),
+                    ),
+                    patch.object(ExamRepository, "save_exam", new=AsyncMock()),
+                    patch.object(
+                        RuntimeRepository, "add_outbox_event", new=AsyncMock(),
+                    ),
+                ):
+                    requested = await ExamExecutionService.evaluate_automatic_close(
+                        db, exam_id=current_exam.id, at=now
+                    )
+                self.assertTrue(requested)
+                self.assertEqual(current_exam.status, ExamStatus.CLOSING)
+                self.assertEqual(
+                    current_control.operation_source, ExamOperationSource.AUTOMATIC
+                )
+                self.assertEqual(current_control.operation_requested_at, now)
+                db.commit.assert_awaited_once()
+                db.rollback.assert_not_awaited()
 
     async def test_auto_close_does_not_run_while_attempt_is_unfinished(self) -> None:
         db = AsyncMock()

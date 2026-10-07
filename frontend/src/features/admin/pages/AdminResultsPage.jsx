@@ -12,6 +12,7 @@ import {
 import { buildAcademicLevels, listSubjectsForLevel } from '../../../shared/academics/authoringScope'
 import { Icon } from '../../../shared/icons/Icon'
 import { Notice, SelectControl } from '../../../shared/ui'
+import { useToast } from '../../../shared/ui/useToast'
 import '../admin-results.css'
 
 const OVERVIEW_PAGE_SIZE = 12
@@ -215,6 +216,8 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [refreshToken, setRefreshToken] = useState(0)
+  const [individualResult, setIndividualResult] = useState(null)
+  const { showError } = useToast()
 
   const total = payload?.total || 0
   const pageCount = Math.max(1, Math.ceil(total / RESULT_PAGE_SIZE))
@@ -280,7 +283,7 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
 
   const runDecision = async () => {
     if (!decision || busy) return
-    if (decision === 'void' && !reason.trim()) {
+    if (decision !== 'approve' && !reason.trim()) {
       setError('Enter a reason before voiding this examination result set.')
       return
     }
@@ -289,11 +292,15 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
     try {
       if (decision === 'approve') await gateway.results.approveExamResults(exam.id)
       if (decision === 'void') await gateway.results.voidExamResults(exam.id, reason.trim())
+      if (decision === 'void-individual') await gateway.results.voidResult(individualResult.id, reason.trim())
+      if (decision === 'restore-individual') await gateway.results.restoreResult(individualResult.id, reason.trim())
       setDecision(null)
+      setIndividualResult(null)
       setReason('')
       setRefreshToken((value) => value + 1)
     } catch (requestError) {
-      setError(requestError.userMessage || `Weave could not ${decision} this result set.`)
+      if (individualResult) showError(requestError.userMessage || 'Could not update this candidate result.')
+      else setError(requestError.userMessage || `Weave could not ${decision} this result set.`)
     } finally {
       setBusy(false)
     }
@@ -331,7 +338,7 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
       {error && <Notice tone="danger">{error}</Notice>}
 
       <section className="admin-result-summary" aria-label="Result set summary">
-        <ResultSummaryItem label="Candidate results" value={String(summary?.result_count ?? total)} hint="Calculated local results" />
+        <ResultSummaryItem label="Candidate results" value={String(summary?.result_count ?? total)} hint={summary?.voided_count ? `${summary.voided_count} individually voided` : 'Calculated local results'} />
         <ResultSummaryItem label="Component maximum" value={formatNumber(exam.componentMaximumScore)} hint={exam.assessmentName || 'Assessment component'} />
         <ResultSummaryItem label="Decision" value={decisionLabel(disposition)} hint={control?.results_decided_at ? `Decided ${formatCompactDate(control.results_decided_at)}` : 'Awaiting administrator review'} />
         <ResultSummaryItem label="Completed" value={formatCompactDate(exam.closedAt || exam.cancelledAt)} hint={exam.status === 'cancelled' ? 'Sitting cancelled' : 'Examination closed'} />
@@ -367,27 +374,27 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
           <thead>
             <tr>
               <th>Candidate</th>
-              <th>Admission number</th>
               <th>Raw score</th>
-              <th>Percentage</th>
               <th>Component score</th>
               <th>Sync</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
             {!loading && (payload?.results || []).map((result) => (
               <tr key={result.id}>
-                <td><div className="admin-result-candidate"><span>{initials(result.candidate_display_name)}</span><strong>{result.candidate_display_name}</strong></div></td>
-                <td><span className="admin-result-admission">{result.admission_number}</span></td>
-                <td><strong>{result.raw_score} / {result.raw_max_score}</strong></td>
-                <td>{formatNumber(result.percentage)}%</td>
+                <td><div className="admin-result-candidate"><span>{initials(result.candidate_display_name)}</span><div><strong>{result.candidate_display_name}</strong><small className="admin-result-admission">{result.admission_number}</small></div></div></td>
+                <td><strong>{result.raw_score} / {result.raw_max_score}</strong><small className="admin-result-score-percentage">{formatNumber(result.percentage)}%</small></td>
                 <td><strong>{formatNumber(result.component_score)} / {formatNumber(result.component_maximum_score)}</strong></td>
-                <td><SyncBadge value={result.sync_status} error={result.sync_error} /></td>
+                <td>{result.voided_at ? <span className="admin-result-void-audit"><DecisionBadge value="voided" /><small>{result.void_reason}</small><small>{formatCompactDate(result.voided_at)}</small></span> : <SyncBadge value={result.sync_status} error={result.sync_error} />}</td>
+                <td>{!result.voided_at && disposition !== 'voided' && (
+                  <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy || !control || Boolean(control.operation) || Boolean(result.sync_batch_id) || !['pending', 'failed'].includes(result.sync_status)} title={result.sync_batch_id || ['syncing', 'synced'].includes(result.sync_status) ? 'Synchronization has started. Resolve this result in Weave.' : 'Void this candidate’s result only'} onClick={() => { setIndividualResult(result); setReason(''); setDecision('void-individual') }}>Void result</button>
+                )}{result.voided_at && disposition !== 'voided' && <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy || !control || Boolean(control.operation)} onClick={() => { setIndividualResult(result); setReason(''); setDecision('restore-individual') }}>Undo void</button>}</td>
               </tr>
             ))}
-            {loading && <tr><td colSpan={6}><div className="admin-results-table-state">Loading candidate results…</div></td></tr>}
+            {loading && <tr><td colSpan={5}><div className="admin-results-table-state">Loading candidate results…</div></td></tr>}
             {!loading && !error && (payload?.results || []).length === 0 && (
-              <tr><td colSpan={6}><div className="admin-results-table-state"><strong>No candidate results match these filters</strong><span>Try another admission number, candidate name, or sync state.</span></div></td></tr>
+              <tr><td colSpan={5}><div className="admin-results-table-state"><strong>No candidate results match these filters</strong><span>Try another admission number, candidate name, or sync state.</span></div></td></tr>
             )}
           </tbody>
         </table>
@@ -405,6 +412,7 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
       {decision && (
         <ResultDecisionModal
           action={decision}
+          result={['void-individual', 'restore-individual'].includes(decision) ? individualResult : null}
           exam={exam}
           count={summary?.result_count ?? total}
           reason={reason}
@@ -474,34 +482,35 @@ function ResultDecisionPanel({ disposition, summary, reason, busy, onApprove, on
   )
 }
 
-function ResultDecisionModal({ action, exam, count, reason, setReason, busy, onCancel, onConfirm }) {
+function ResultDecisionModal({ action, exam, result, count, reason, setReason, busy, onCancel, onConfirm }) {
   const approving = action === 'approve'
+  const restoring = action === 'restore-individual'
   return createPortal(
     <div className="admin-result-modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target && !busy) onCancel() }}>
       <section className={`admin-result-modal${approving ? '' : ' is-danger'}`} role="alertdialog" aria-modal="true" aria-labelledby="result-decision-title">
         <div className="admin-result-modal__heading">
           <span>{approving ? <RiCheckLine size={22} /> : <RiCloseCircleLine size={22} />}</span>
           <div>
-            <h2 id="result-decision-title">{approving ? 'Approve this result set?' : 'Void this result set?'}</h2>
-            <p>{approving ? 'Approval authorizes these local CBT scores for synchronization to Weave.' : 'Voiding prevents this examination sitting from contributing valid academic results.'}</p>
+            <h2 id="result-decision-title">{approving ? 'Approve this result set?' : restoring ? 'Undo this candidate’s result void?' : result ? 'Void this candidate result?' : 'Void this result set?'}</h2>
+            <p>{approving ? 'Approval authorizes these local CBT scores for synchronization to Weave.' : restoring ? 'This restores the recorded score. Both decisions remain in the audit history.' : result ? 'This score will be excluded from synchronization. The score and reason remain on record.' : 'Voiding prevents this examination sitting from contributing valid academic results.'}</p>
           </div>
         </div>
-        <div className="admin-result-modal__exam"><span>Examination</span><strong>{exam.title}</strong><small>{count} candidate result{count === 1 ? '' : 's'} · {[exam.academicLevelName, exam.subjectName, exam.assessmentName].filter(Boolean).join(' · ')}</small></div>
+        <div className="admin-result-modal__exam"><span>{result ? 'Candidate' : 'Examination'}</span><strong>{result ? result.candidate_display_name : exam.title}</strong><small>{result ? `${result.admission_number} · ${exam.title}` : `${count} candidate result${count === 1 ? '' : 's'} · ${[exam.academicLevelName, exam.subjectName, exam.assessmentName].filter(Boolean).join(' · ')}`}</small></div>
         {!approving && (
           <label className="admin-result-modal__reason">
-            <span>Reason for voiding</span>
-            <textarea rows="4" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Explain why this entire examination result set must be voided..." />
+            <span>{restoring ? 'Reason for restoring' : 'Reason for voiding'}</span>
+            <textarea rows="4" maxLength={1024} disabled={busy} value={reason} onChange={(event) => setReason(event.target.value)} placeholder={restoring ? 'Explain why this candidate result should be restored...' : result ? 'Explain why this candidate result must be voided...' : 'Explain why this entire examination result set must be voided...'} />
           </label>
         )}
         <div className={`admin-result-modal__warning${approving ? '' : ' is-danger'}`}>
           {approving
             ? 'Once synchronization begins, this result set can no longer be voided through the local review workflow.'
-            : 'This decision applies to the entire examination result set, not a single candidate.'}
+            : restoring ? 'If this exam’s result set is approved, the restored score becomes eligible for synchronization again.' : result ? 'Only this candidate’s result will be voided. Other candidate results remain eligible for approval and synchronization.' : 'This decision applies to the entire examination result set, not a single candidate.'}
         </div>
         <div className="admin-result-modal__actions">
           <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy} onClick={onCancel}>Cancel</button>
-          <button type="button" className={`admin-result-button ${approving ? 'admin-result-button--primary' : 'admin-result-button--danger'}`} disabled={busy} onClick={onConfirm}>
-            {busy ? 'Working…' : approving ? 'Approve results' : 'Void result set'}
+          <button type="button" className={`admin-result-button ${approving ? 'admin-result-button--primary' : 'admin-result-button--danger'}`} disabled={busy || (Boolean(result) && !reason.trim())} onClick={onConfirm}>
+            {busy ? 'Working…' : approving ? 'Approve results' : restoring ? 'Restore candidate result' : result ? 'Void candidate result' : 'Void result set'}
           </button>
         </div>
       </section>
@@ -521,10 +530,11 @@ function SyncBadge({ value, error }) {
 }
 
 function SyncSummary({ review }) {
-  const total = Number(review.result_count || 0)
+  const total = Math.max(0, Number(review.result_count || 0) - Number(review.voided_count || 0))
   const failed = Number(review.failed_count || 0)
   const syncing = Number(review.syncing_count || 0)
   const synced = Number(review.synced_count || 0)
+  if (review.result_count > 0 && total === 0) return <span className="admin-result-sync-summary is-voided"><strong>Not sent</strong><small>All candidate results voided</small></span>
   if (failed) return <span className="admin-result-sync-summary is-failed"><strong>{failed} failed</strong><small>{synced} of {total} synced</small></span>
   if (syncing) return <span className="admin-result-sync-summary is-syncing"><strong>Syncing</strong><small>{synced} of {total} synced</small></span>
   if (total > 0 && synced === total) return <span className="admin-result-sync-summary is-synced"><strong>Synced</strong><small>{total} delivered</small></span>

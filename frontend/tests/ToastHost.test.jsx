@@ -56,18 +56,36 @@ describe('shared toast confirmations', () => {
     expect(container.querySelector('.weave-toast--error')).toBeInTheDocument()
   })
 
-  it('auto-dismisses errors after four seconds without resurrecting them on unrelated renders', () => {
+  it('keeps errors until dismissed without resurrecting them on unrelated renders', () => {
     vi.useFakeTimers()
     const view = render(<><Notice tone="danger">Failed to save.</Notice><ToastHost /></>)
-    act(() => vi.advanceTimersByTime(3999))
+    act(() => vi.advanceTimersByTime(60000))
     expect(screen.getByRole('alert')).toBeInTheDocument()
-    act(() => vi.advanceTimersByTime(1))
+    expect(screen.getByRole('alert')).not.toHaveClass('is-leaving')
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss notification' }))
     expect(screen.getByRole('alert')).toHaveClass('is-leaving')
     act(() => vi.advanceTimersByTime(200))
     view.rerender(<><Notice tone="danger">Failed to save.</Notice><ToastHost /></>)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     view.rerender(<><Notice tone="danger">A different error.</Notice><ToastHost /></>)
     expect(screen.getByRole('alert')).toHaveTextContent('A different error.')
+  })
+
+  it('keeps an error visible after its originating page unmounts', () => {
+    const view = render(<><Notice tone="danger">Failed to save.</Notice><ToastHost /></>)
+    view.rerender(<ToastHost />)
+    expect(screen.getByRole('alert')).toHaveTextContent('Failed to save.')
+  })
+
+  it('keeps API errors persistent even when a duration is supplied', () => {
+    vi.useFakeTimers()
+    render(<ToastHost />)
+    act(() => toastBus.error('Request failed.', { duration: 1000 }))
+    act(() => vi.advanceTimersByTime(60000))
+    expect(screen.getByRole('alert')).toHaveTextContent('Request failed.')
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss notification' }))
+    act(() => vi.advanceTimersByTime(200))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('deduplicates messages and removes scoped notices when the page unmounts', () => {

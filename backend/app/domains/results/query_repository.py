@@ -96,7 +96,8 @@ class ResultQueryRepository:
 
         result_count = func.count(ExamResult.id)
         pending_count = func.count(ExamResult.id).filter(
-            ExamResult.sync_status == ResultSyncStatus.PENDING
+            ExamResult.sync_status == ResultSyncStatus.PENDING,
+            ExamResult.voided_at.is_(None),
         )
         syncing_count = func.count(ExamResult.id).filter(
             ExamResult.sync_status == ResultSyncStatus.SYNCING
@@ -105,7 +106,11 @@ class ResultQueryRepository:
             ExamResult.sync_status == ResultSyncStatus.SYNCED
         )
         failed_count = func.count(ExamResult.id).filter(
-            ExamResult.sync_status == ResultSyncStatus.FAILED
+            ExamResult.sync_status == ResultSyncStatus.FAILED,
+            ExamResult.voided_at.is_(None),
+        )
+        voided_count = func.count(ExamResult.id).filter(
+            ExamResult.voided_at.is_not(None)
         )
         completed_at = func.coalesce(Exam.closed_at, Exam.cancelled_at)
 
@@ -123,6 +128,7 @@ class ResultQueryRepository:
                 syncing_count.label("syncing_count"),
                 synced_count.label("synced_count"),
                 failed_count.label("failed_count"),
+                voided_count.label("voided_count"),
             )
             .outerjoin(ExamExecutionControl, ExamExecutionControl.exam_id == Exam.id)
             .outerjoin(ExamResult, ExamResult.exam_id == Exam.id)

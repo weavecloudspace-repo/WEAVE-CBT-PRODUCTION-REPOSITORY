@@ -126,11 +126,10 @@ class CandidateMakeupService:
                 ),
             )
 
-        pending_count = 0
+        pending_count = sum(1 for row in rows if row[4] is None or row[4].status != AttemptStatus.SUBMITTED)
         for authorization, candidate, exam, _level_id, attempt in rows:
             if attempt is not None and attempt.status == AttemptStatus.SUBMITTED:
                 continue
-            pending_count += 1
 
             if attempt is not None:
                 if attempt.status in {

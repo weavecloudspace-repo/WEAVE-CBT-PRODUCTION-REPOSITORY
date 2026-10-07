@@ -692,8 +692,9 @@ class ExamExecutionService:
             )
         )
         if not unstarted_candidate_exists:
-            await db.rollback()
-            await cls.request_automatic_close(db, exam_id=exam.id, requested_at=now)
+            # Keep the exam lock until the close request commits. Rollback would
+            # both expire ORM fields and allow a new starter between these steps.
+            await cls.request_automatic_close(db, exam_id=exam_id, requested_at=now)
             return True
 
         deadline = await AttemptService._effective_late_start_deadline(exam)
@@ -721,8 +722,7 @@ class ExamExecutionService:
             await db.rollback()
             return False
 
-        await db.rollback()
-        await cls.request_automatic_close(db, exam_id=exam.id, requested_at=now)
+        await cls.request_automatic_close(db, exam_id=exam_id, requested_at=now)
         return True
 
     @classmethod

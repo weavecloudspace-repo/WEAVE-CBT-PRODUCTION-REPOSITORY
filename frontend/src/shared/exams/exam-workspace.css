@@ -433,3 +433,4 @@
   .admin-exams-page .exam-collection { gap: 18px; }
   .admin-exams-page .exam-collection--grid .exam-card { padding: 20px 16px 0 26px; }
 }
+.exam-schedule-guidance { margin: 0; color: rgb(var(--color-text-muted)); font-size: 12px; line-height: 1.6; }

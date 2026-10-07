@@ -118,6 +118,8 @@ class AttemptOperatorResponse(OutputBase):
 
 
 class AttemptSubmissionResponse(OutputBase):
+    voided_at: datetime | None = None
+    subject_name: str
     attempt_id: UUID
     status: AttemptStatus
     end_reason: AttemptEndReason | None

@@ -136,7 +136,7 @@ class TimetableDeliveryScopeTests(unittest.IsolatedAsyncioTestCase):
         subject_id = uuid4()
         level_id = uuid4()
         shared_class_id = uuid4()
-        start = datetime.now(UTC) + timedelta(days=1)
+        start = datetime(2026, 10, 8, 7, 0, tzinfo=UTC)
         other = SimpleNamespace(
             id=uuid4(),
             session_id=session_id,
@@ -144,9 +144,18 @@ class TimetableDeliveryScopeTests(unittest.IsolatedAsyncioTestCase):
             curriculum_subject_id=uuid4(),
             status=ExamStatus.DRAFT,
             scheduled_start_at=start,
-            latest_normal_start_at=None,
+            latest_normal_start_at=start + timedelta(minutes=20),
             duration_minutes=60,
             title="SS1 English",
+        )
+        later = SimpleNamespace(
+            **{
+                **vars(other),
+                "id": uuid4(),
+                "title": "SS1 Literature",
+                "scheduled_start_at": start + timedelta(minutes=30),
+                "latest_normal_start_at": None,
+            }
         )
 
         with (
@@ -174,7 +183,7 @@ class TimetableDeliveryScopeTests(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 ExamTimetableService,
                 "list_leaf_exams",
-                new=AsyncMock(return_value=[other]),
+                new=AsyncMock(return_value=[later, other]),
             ),
             patch.object(
                 ExamTimetableService,
@@ -185,8 +194,8 @@ class TimetableDeliveryScopeTests(unittest.IsolatedAsyncioTestCase):
             ),
             self.assertRaisesRegex(
                 ExamStateError,
-                "overlapping student delivery scope",
-            ),
+                "reserves shared students",
+            ) as context,
         ):
             await ExamTimetableService.require_planned_slot_available(
                 db,
@@ -196,6 +205,12 @@ class TimetableDeliveryScopeTests(unittest.IsolatedAsyncioTestCase):
                 scheduled_start_at=start,
                 duration_minutes=60,
             )
+        message = str(context.exception)
+        self.assertIn("SS1 English", message)
+        self.assertNotIn("SS1 Literature", message)
+        self.assertIn("08 Oct 2026, 08:00 AM WAT", message)
+        self.assertIn("08 Oct 2026, 09:20 AM WAT", message)
+        self.assertIn("including the entry window", message)
 
 
 class TimetableOperationalScopeTests(unittest.IsolatedAsyncioTestCase):

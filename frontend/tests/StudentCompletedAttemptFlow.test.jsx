@@ -49,6 +49,7 @@ it('sends a returning submitted candidate straight to the score page even if the
     if (path.endsWith('/student/attempts/current/result')) {
       return reply({
         attempt_id: 'attempt-1',
+        subject_name: 'Literature',
         status: 'submitted',
         end_reason: 'candidate_submitted',
         ended_at: '2026-09-28T18:30:00Z',
@@ -67,6 +68,7 @@ it('sends a returning submitted candidate straight to the score page even if the
   render(<BrowserRouter><StudentApp /></BrowserRouter>)
 
   expect(await screen.findByRole('heading', { name: /exam submitted/i })).toBeInTheDocument()
+  expect(screen.getByText('Literature')).toBeInTheDocument()
   expect(screen.getByLabelText(/score 8 \/ 10, 80.00 percent/i)).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /start exam/i })).not.toBeInTheDocument()
   expect(screen.queryByText(/exam suspended/i)).not.toBeInTheDocument()

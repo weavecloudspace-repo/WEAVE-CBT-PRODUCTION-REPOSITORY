@@ -19,11 +19,39 @@ from app.domains.results.schemas import (
     ResultReviewSetListResponse,
     ResultReviewSetResponse,
     ResultSyncRetryResponse,
+    ResultVoidPayload,
 )
 from app.domains.results.service import ResultService
 from app.workers.producer import arq_producer
 
 router = APIRouter(tags=["Results"])
+
+
+@router.post("/results/{result_id}/void", response_model=ResultResponse)
+async def void_individual_result(
+    result_id: UUID, payload: ResultVoidPayload, db: DbSession, actor: CurrentLocalActor
+):
+    try:
+        result = await ResultService.void_result(
+            db, actor=actor, result_id=result_id, reason=payload.reason
+        )
+    except (
+        AcademicAuthorizationError,
+        ExamNotFound,
+        ExamStateError,
+        ValueError,
+    ) as exc:
+        raise _http_error(exc) from exc
+    return ResultResponse.model_validate(result)
+
+
+@router.post("/results/{result_id}/restore", response_model=ResultResponse)
+async def restore_individual_result(result_id: UUID, payload: ResultVoidPayload, db: DbSession, actor: CurrentLocalActor):
+    try:
+        result = await ResultService.restore_result(db, actor=actor, result_id=result_id, reason=payload.reason)
+    except (AcademicAuthorizationError, ExamNotFound, ExamStateError, ValueError) as exc:
+        raise _http_error(exc) from exc
+    return ResultResponse.model_validate(result)
 
 
 def _http_error(exc: Exception) -> HTTPException:

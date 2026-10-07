@@ -558,6 +558,31 @@ class ActivationOperationsTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ActivationStaticReadinessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_persisted_zero_entry_window_blocks_activation(self):
+        start = datetime.now(UTC) + timedelta(hours=1)
+        exam = SimpleNamespace(
+            id=uuid4(),
+            status=ExamStatus.SEALED,
+            roster_status=ExamRosterStatus.READY,
+            question_count=50,
+            sealed_at=datetime.now(UTC),
+            component_maximum_score=40,
+            scheduled_start_at=start,
+            latest_normal_start_at=start,
+        )
+        with (
+            patch.object(
+                ExamOperationsService, "_require_latest_revision", new=AsyncMock()
+            ),
+            patch.object(
+                ExamRepository, "count_exam_questions", new=AsyncMock(return_value=50)
+            ),
+            self.assertRaisesRegex(ExamStateError, "Equal times leave no time"),
+        ):
+            await ExamOperationsService._require_activation_static_readiness(
+                AsyncMock(), exam
+            )
+
     async def test_stale_roster_blocks_preflight(self):
         exam = SimpleNamespace(
             id=uuid4(),

@@ -1,3 +1,4 @@
+import { toStudentResolution } from './studentResolution';
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { appReducer, createInitialState } from "./state/appState";
@@ -13,28 +14,6 @@ const setupViews = new Set([
   "paired-success",
 ]);
 const applications = new Set(["combined", "staff", "student"]);
-
-function toStudentResolution(session) {
-  return {
-    state: session.availability,
-    statusMessage: session.status_message,
-    exam: session.exam_id
-      ? {
-          id: session.exam_id,
-          title: session.exam_title,
-          scheduledStartAt: session.scheduled_start_at,
-          activatedAt: session.activated_at,
-        }
-      : null,
-    candidate: {
-      id: session.candidate_id || null,
-      name: session.display_name,
-      studentId: session.student_id,
-    },
-    isMakeup: session.is_makeup,
-    hasUnfinishedAttempt: session.has_unfinished_attempt === true,
-  };
-}
 
 export function useAppController({ application = "combined", gateway } = {}) {
   if (!applications.has(application)) {

@@ -30,6 +30,7 @@ from app.domains.exams.models import (
     ExamStatus,
 )
 from app.domains.exams.repository import ExamRepository
+from app.domains.exams.schedule_validation import validate_normal_entry_window
 from app.domains.exams.schemas import ExamCreate, ExamUpdate, ManualQuestionRemove
 from app.domains.exams.timetable_service import ExamTimetableService
 from app.domains.questions.repository import QuestionRepository
@@ -304,10 +305,10 @@ class ExamService(
                 f"Reschedule the examination before {action}."
             )
 
-        if latest is not None and latest < scheduled:
-            raise ExamStateError(
-                "Latest normal start cannot be earlier than the scheduled start"
-            )
+        try:
+            validate_normal_entry_window(scheduled, latest)
+        except ValueError as exc:
+            raise ExamStateError(str(exc)) from exc
 
     @classmethod
     async def assign_lead_teacher(

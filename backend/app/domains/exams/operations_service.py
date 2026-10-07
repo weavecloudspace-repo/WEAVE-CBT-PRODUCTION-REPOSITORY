@@ -18,6 +18,7 @@ from app.domains.exams.exceptions import (
 )
 from app.domains.exams.models import Exam, ExamRosterStatus, ExamStatus
 from app.domains.exams.repository import ExamRepository
+from app.domains.exams.schedule_validation import validate_normal_entry_window
 from app.domains.exams.timetable_service import (
     ActivationPreflight,
     ExamTimetableService,
@@ -71,6 +72,12 @@ class ExamOperationsService:
             raise ExamStateError("Exam is missing required sealed state")
         if exam.scheduled_start_at is None:
             raise ExamStateError("Examination is missing a scheduled start time")
+        try:
+            validate_normal_entry_window(
+                exam.scheduled_start_at, exam.latest_normal_start_at
+            )
+        except ValueError as exc:
+            raise ExamStateError(str(exc)) from exc
 
     @classmethod
     async def activation_preflight(

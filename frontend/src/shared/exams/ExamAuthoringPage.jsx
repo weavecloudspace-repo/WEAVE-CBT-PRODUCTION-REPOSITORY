@@ -71,6 +71,7 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
   const [shuffleOptions, setShuffleOptions] = useState(editingExam?.shuffleOptions !== false)
   const [scheduledStartAt, setScheduledStartAt] = useState(initialScheduledStartAt)
   const [latestNormalStartAt, setLatestNormalStartAt] = useState(initialLatestNormalStartAt)
+  const [entryDeadlineOmitted, setEntryDeadlineOmitted] = useState(Boolean(initialScheduledStartAt && !initialLatestNormalStartAt))
   const [manualSelection, setManualSelection] = useState({ bankId: '', ids: [], ready: !editing })
   const manualQuestionIds = manualSelection.bankId === bankId ? manualSelection.ids : []
   const manualSelectionReady = !editing || Boolean(manualSelection.bankId === bankId && manualSelection.ready)
@@ -203,17 +204,13 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
       return
     }
 
-    if (scheduledStartAt && latestNormalStartAt) {
+    if (!entryDeadlineOmitted) {
       const previousStart = new Date(scheduledStartAt).getTime()
       const previousLatest = new Date(latestNormalStartAt).getTime()
       const nextStart = new Date(nextScheduledStartAt).getTime()
-      const graceMs = previousLatest - previousStart
-      if (
-        Number.isFinite(previousStart) &&
-        Number.isFinite(previousLatest) &&
-        Number.isFinite(nextStart) &&
-        graceMs >= 0
-      ) {
+      const previousGrace = previousLatest - previousStart
+      const graceMs = Number.isFinite(previousGrace) && previousGrace > 0 ? previousGrace : 20 * 60_000
+      if (Number.isFinite(nextStart)) {
         setLatestNormalStartAt(toDateTimeLocal(new Date(nextStart + graceMs).toISOString()))
       }
     }
@@ -287,9 +284,9 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
     if (
       scheduledStartAt &&
       latestNormalStartAt &&
-      new Date(latestNormalStartAt).getTime() < new Date(scheduledStartAt).getTime()
+      new Date(latestNormalStartAt).getTime() <= new Date(scheduledStartAt).getTime()
     ) {
-      setError('Latest normal start cannot be earlier than the scheduled start.')
+      setError('Normal entry deadline must be later than the scheduled start. Equal times leave no time for candidates to enter. Choose a later deadline or leave it unset.')
       return
     }
 
@@ -663,7 +660,8 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
 
           <ExamSection number="3" title="Schedule & instructions" description="Optional while drafting. A future schedule is required before submission." kind="schedule">
             <ExamDateTimePicker label="Scheduled start" value={scheduledStartAt} onChange={changeScheduledStart} disabled={readOnly || saving || leadSaving || questionSaving} />
-            <ExamDateTimePicker label="Latest normal start" value={latestNormalStartAt} min={scheduledStartAt} onChange={(value) => { setLatestNormalStartAt(value); setError('') }} disabled={readOnly || saving || leadSaving || questionSaving || !scheduledStartAt} />
+            <ExamDateTimePicker label="Latest normal start" value={latestNormalStartAt} min={scheduledStartAt} minExclusive onChange={(value) => { setLatestNormalStartAt(value); setEntryDeadlineOmitted(!value); setError('') }} disabled={readOnly || saving || leadSaving || questionSaving || !scheduledStartAt} />
+            <p className="exam-schedule-guidance teacher-exam-field--wide">We suggest a 20-minute normal-entry window: an 8:00 AM start gets an 8:20 AM deadline. Adjust it or clear it to remove the normal-entry cutoff. The timetable reserves the full exam duration after that deadline.</p>
             <label className="teacher-exam-field teacher-exam-field--wide">
               <span>Student instructions <small>(optional)</small></span>
               <textarea aria-label="Student instructions" rows="3" value={instructions} disabled={readOnly} onChange={(event) => setInstructions(event.target.value)} placeholder="Instructions students will see before they start." />

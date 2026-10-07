@@ -186,6 +186,51 @@ class MissedCandidateListResponse(OutputBase):
     candidates: list[MissedCandidateResponse]
 
 
+class MakeupReviewCounts(OutputBase):
+    exam_id: UUID
+    total: int
+    awaiting_approval: int
+    approved: int
+    writing: int
+    paused: int
+    completed: int
+    revoked: int
+    needs_review: int
+    terminated: int
+    blocked: int
+    withdrawn: int
+
+
+class MakeupReviewSetsResponse(OutputBase):
+    exams: list[MakeupReviewCounts]
+
+
+class MakeupReviewCandidate(OutputBase):
+    id: UUID
+    name: str
+    admission_number: str
+    class_name: str
+    state: str
+    authorization_id: UUID | None
+    reason: str | None
+    can_approve: bool
+    can_revoke: bool
+    remaining_seconds: int | None
+    percentage: str | None
+
+
+class MakeupReviewResponse(OutputBase):
+    exam_id: UUID
+    total: int
+    offset: int
+    limit: int
+    blockers: list[str]
+    fresh_question_count: int
+    required_question_count: int
+    available: bool
+    candidates: list[MakeupReviewCandidate]
+
+
 class CandidateLateStartAuthorizationResponse(OutputBase):
     id: UUID
     candidate_id: UUID

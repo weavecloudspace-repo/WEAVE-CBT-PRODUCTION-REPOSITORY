@@ -45,7 +45,7 @@ export default function StudentApp() {
         />
       )}
       {state.view === 'student' && completed && (
-        <StudentCompletedExamPage gateway={studentGateway} returnToSignIn={signOut} />
+        <StudentCompletedExamPage gateway={studentGateway} returnToSignIn={signOut} dispatch={dispatch} isMakeup={state.studentResolution?.isMakeup} />
       )}
       {state.view === 'student' && !completed && (
         <StudentWorkspace serverName={state.installation.status?.server_name} onExamSuspended={handleStudentSuspension}

@@ -1,10 +1,15 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { TeacherExamsPage } from '../src/features/teacher/TeacherExamsPage'
 
 import { ExamHistoryPage } from '../src/shared/exams/ExamHistoryPage'
 
 import { ExamAuthoringPage } from '../src/shared/exams/ExamAuthoringPage'
+
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', '') }
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new Event('close')) }
+})
 
 const teacherData = {
   exams: [
@@ -97,6 +102,35 @@ function completeNewExamContext() {
 }
 
 describe('Teacher exams', () => {
+  it('suggests twenty minutes for entry, preserves adjustments, and respects clearing', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-23T06:00:00'))
+    try {
+      render(<ExamAuthoringPage state={teacherState} dispatch={vi.fn()} teacherData={{ ...teacherData, exams: [] }} gateway={{ exams: {} }} />)
+      const setTime = (label, hour, minute) => {
+        fireEvent.click(screen.getByRole('button', { name: label }))
+        chooseSelectOption(`${label} hour`, hour)
+        chooseSelectOption(`${label} minute`, minute)
+        fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+      }
+      const expectDeadline = (hour, minute) => {
+        const expected = new Date(`2026-09-23T${hour}:${minute}`).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+        expect(screen.getByRole('button', { name: 'Normal entry deadline' })).toHaveTextContent(expected)
+      }
+      setTime('Scheduled start', '08', '00')
+      expectDeadline('08', '20')
+      setTime('Normal entry deadline', '08', '35')
+      setTime('Scheduled start', '09', '00')
+      expectDeadline('09', '35')
+      fireEvent.click(screen.getByRole('button', { name: 'Normal entry deadline' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+      setTime('Scheduled start', '10', '00')
+      expect(screen.getByRole('button', { name: 'Normal entry deadline' })).toHaveTextContent('Choose date & time')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('renders a readable exam collection and opens the create workflow', () => {
     const dispatch = vi.fn()
     render(

@@ -3,6 +3,7 @@ import { RiCheckboxCircleFill } from '@remixicon/react'
 import { Notice } from '../../shared/ui'
 import './student.css'
 import { StudentLogoutConfirmation } from './StudentLogoutConfirmation'
+import { StudentMakeupContinuation } from './StudentMakeupContinuation'
 
 const SCORE_RADIUS = 58
 const SCORE_CIRCUMFERENCE = 2 * Math.PI * SCORE_RADIUS
@@ -15,7 +16,7 @@ export function StudentCompletedExamPage(props) {
   )
 }
 
-function StudentCompletedExamContent({ gateway, returnToSignIn }) {
+function StudentCompletedExamContent({ gateway, returnToSignIn, dispatch, isMakeup = false }) {
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
   const [refreshToken, setRefreshToken] = useState(0)
@@ -76,10 +77,11 @@ function StudentCompletedExamContent({ gateway, returnToSignIn }) {
           <span className="premium-submission-card__icon" aria-hidden="true">
             <RiCheckboxCircleFill size={40} />
           </span>
-          <h1 id="completed-result-title">Exam submitted</h1>
-          <p className="premium-submission-card__lead">You have already completed this examination. Here is your recorded score.</p>
+          <h1 id="completed-result-title">{result.voided_at ? 'Result voided' : 'Exam submitted'}</h1>
+          <p className="premium-submission-card__subject">{result.subject_name}</p>
+          <p className="premium-submission-card__lead">{result.voided_at ? 'Your result has been voided by an administrator. Contact the school for guidance.' : 'You have already completed this examination. Here is your recorded score.'}</p>
         </div>
-        <div className="premium-submission-score" aria-label={`Score ${scoreValue}, ${result.percentage} percent`}>
+        {!result.voided_at && <div className="premium-submission-score" aria-label={`Score ${scoreValue}, ${result.percentage} percent`}>
           <div className="premium-submission-score__ring">
             <svg viewBox="0 0 140 140" aria-hidden="true">
               <circle className="premium-submission-score__track" cx="70" cy="70" r={SCORE_RADIUS} />
@@ -96,7 +98,8 @@ function StudentCompletedExamContent({ gateway, returnToSignIn }) {
               <span>{scoreValue}</span>
             </div>
           </div>
-        </div>
+        </div>}
+        {isMakeup && <StudentMakeupContinuation gateway={gateway} dispatch={dispatch} />}
         <button className="premium-btn-primary premium-submission-card__logout" type="button" onClick={returnToSignIn}>Logout</button>
       </section>
     </main>

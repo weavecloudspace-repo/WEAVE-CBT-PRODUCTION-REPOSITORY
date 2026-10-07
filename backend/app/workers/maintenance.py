@@ -215,6 +215,7 @@ async def _list_result_exam_ids_needing_recovery(*, now: datetime) -> list[UUID]
             )
             .where(
                 Exam.status == ExamStatus.CLOSED,
+                ExamResult.voided_at.is_(None),
                 ExamExecutionControl.result_disposition
                 == ExamResultDisposition.APPROVED,
                 or_(

@@ -87,7 +87,7 @@ class ExamSchemaValidationTests(unittest.TestCase):
     def test_update_rejects_invalid_window_when_both_fields_are_supplied(self) -> None:
         start_at = datetime.now(UTC) + timedelta(days=1)
         with self.assertRaisesRegex(
-            ValueError, "latest_normal_start_at cannot be earlier"
+            ValueError, "Normal entry deadline must be later"
         ):
             ExamUpdate(
                 scheduled_start_at=start_at,
@@ -221,7 +221,7 @@ class ExamServiceTests(unittest.IsolatedAsyncioTestCase):
         )
         payload = ExamUpdate(
             expected_authoring_version=1,
-            latest_normal_start_at=start_at - timedelta(minutes=5),
+            latest_normal_start_at=start_at,
         )
 
         with (
@@ -281,7 +281,7 @@ class ExamServiceTests(unittest.IsolatedAsyncioTestCase):
             patch.object(ExamRepository, "save_exam", new=AsyncMock()) as save_exam,
         ):
             with self.assertRaisesRegex(
-                ExamStateError, "earlier than the scheduled start"
+                ExamStateError, "must be later than the scheduled start"
             ):
                 await ExamService.update_exam(
                     db, actor=current_actor, payload=payload, exam_id=current_exam.id

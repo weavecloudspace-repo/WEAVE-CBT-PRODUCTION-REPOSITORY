@@ -66,7 +66,8 @@ describe('Admin grouped sidebar navigation', () => {
     expect(screen.getByRole('button', { name: /^Roster$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Exam Operations$/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Invigilators$/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Results$/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Results$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Makeups$/i })).toBeInTheDocument()
 
     await waitFor(() => expect(screen.getByRole('heading', { name: /administrator dashboard/i })).toBeInTheDocument())
   })
@@ -86,6 +87,10 @@ describe('Admin grouped sidebar navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Roster$/i }))
 
     expect(dispatch).toHaveBeenCalledWith({ type: 'staff', patch: { section: 'roster', timetableLevelId: null } })
+    fireEvent.click(screen.getByRole('button', { name: /^Results$/i }))
+    expect(dispatch).toHaveBeenCalledWith({ type: 'staff', patch: { section: 'results', timetableLevelId: null } })
+    fireEvent.click(screen.getByRole('button', { name: /^Makeups$/i }))
+    expect(dispatch).toHaveBeenCalledWith({ type: 'staff', patch: { section: 'makeups', timetableLevelId: null } })
     expect(screen.getByRole('button', { name: /^Examinations$/i })).toHaveAttribute('aria-expanded', 'true')
   })
 })

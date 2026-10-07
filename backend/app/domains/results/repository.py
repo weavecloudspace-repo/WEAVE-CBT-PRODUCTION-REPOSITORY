@@ -69,7 +69,9 @@ class ResultRepository:
     ) -> ExamResult | None:
         query = select(ExamResult).where(ExamResult.id == result_id)
         if lock:
-            query = query.with_for_update(of=ExamResult)
+            query = query.with_for_update(of=ExamResult).execution_options(
+                populate_existing=True
+            )
         return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
@@ -113,6 +115,7 @@ class ResultRepository:
             .where(
                 ExamResult.exam_id == exam_id,
                 ExamResult.sync_status == ResultSyncStatus.FAILED,
+                ExamResult.voided_at.is_(None),
                 ExamResult.sync_batch_id.is_not(None),
             )
             .order_by(
@@ -140,6 +143,7 @@ class ResultRepository:
             .where(
                 ExamResult.exam_id == exam_id,
                 ExamResult.sync_status == ResultSyncStatus.PENDING,
+                ExamResult.voided_at.is_(None),
                 ExamResult.sync_batch_id.is_(None),
             )
             .order_by(
@@ -270,7 +274,9 @@ class ResultRepository:
         if not statuses:
             return []
 
-        query = select(ExamResult).where(ExamResult.sync_status.in_(statuses))
+        query = select(ExamResult).where(
+            ExamResult.sync_status.in_(statuses), ExamResult.voided_at.is_(None)
+        )
         if retry_before is not None:
             query = query.where(
                 (ExamResult.last_sync_attempt_at.is_(None))

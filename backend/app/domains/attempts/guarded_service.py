@@ -204,7 +204,7 @@ class AttemptService(_AttemptService):
     ) -> AttemptSubmissionResponse:
         """Return the immutable score for the exact submitted student attempt."""
 
-        attempt, _candidate, _exam = await cls._get_current_attempt(
+        attempt, _candidate, exam = await cls._get_current_attempt(
             db,
             context=context,
             lock=False,
@@ -217,6 +217,8 @@ class AttemptService(_AttemptService):
             raise AttemptStateError("Submitted attempt is missing its result")
 
         return AttemptSubmissionResponse(
+            voided_at=result.voided_at,
+            subject_name=await cls._exam_subject_name(db, exam),
             attempt_id=attempt.id,
             status=attempt.status,
             end_reason=attempt.end_reason,

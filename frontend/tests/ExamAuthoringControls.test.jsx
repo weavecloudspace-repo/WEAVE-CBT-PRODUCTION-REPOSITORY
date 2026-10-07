@@ -34,14 +34,29 @@ describe('Exam date and time picker', () => {
   it('blocks an earlier latest-start time and supports cancellation and clearing', () => {
     const onChange = vi.fn()
     render(<ExamDateTimePicker label="Latest normal start" value="2026-09-23T08:00" min="2026-09-23T09:00" onChange={onChange} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Latest normal start' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Normal entry deadline' }))
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled()
     expect(screen.getByRole('button', { name: /22.*September|September.*22/ })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(onChange).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Latest normal start' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Normal entry deadline' }))
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
     expect(onChange).toHaveBeenCalledWith('')
+  })
+
+  it('rejects an equal entry deadline, accepts the next minute, and allows clearing it', () => {
+    const onChange = vi.fn()
+    render(<ExamDateTimePicker label="Latest normal start" value="2026-09-23T08:00" min="2026-09-23T08:00" minExclusive onChange={onChange} />)
+    expect(screen.getByRole('alert')).toHaveTextContent(/Equal times leave no time/)
+    fireEvent.click(screen.getByRole('button', { name: 'Normal entry deadline' }))
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('combobox', { name: 'Normal entry deadline minute' }))
+    fireEvent.click(screen.getByRole('option', { name: '01' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(onChange).toHaveBeenCalledWith('2026-09-23T08:01')
+    fireEvent.click(screen.getByRole('button', { name: 'Normal entry deadline' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(onChange).toHaveBeenLastCalledWith('')
   })
 
   it('clearly flags an existing authoring time after it has elapsed', () => {

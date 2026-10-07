@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AcademicAuthorizationError
+from app.domains.academics.repository import AcademicRepository
 from app.domains.attempts.models import (
     AttemptAnswer,
     AttemptAnswerSelection,
@@ -935,12 +936,15 @@ class AttemptService:
             candidate=candidate,
             exam=exam,
         )
-        await cls._revoke_student_sessions(
-            db,
-            candidate_id=candidate.id,
-            at=now,
-            reason=revoke_reason,
-        )
+        # A makeup session can advance through approved papers using the
+        # waiting-room resolver. Submitted attempts still reject answer changes.
+        if not await cls._is_makeup_candidate(db, candidate.id):
+            await cls._revoke_student_sessions(
+                db,
+                candidate_id=candidate.id,
+                at=now,
+                reason=revoke_reason,
+            )
         await db.commit()
         return result
 
@@ -961,6 +965,8 @@ class AttemptService:
             raise AttemptStateError(
                 "Examination is suspended and cannot be submitted yet"
             )
+
+        subject_name = await cls._exam_subject_name(db, exam)
 
         end_reason = AttemptEndReason.CANDIDATE_SUBMITTED
         if (
@@ -986,6 +992,8 @@ class AttemptService:
         )
 
         return AttemptSubmissionResponse(
+            voided_at=result.voided_at,
+            subject_name=subject_name,
             attempt_id=attempt.id,
             status=attempt.status,
             end_reason=attempt.end_reason,
@@ -997,6 +1005,20 @@ class AttemptService:
             component_score=str(result.component_score),
             component_maximum_score=str(result.component_maximum_score),
         )
+
+    @staticmethod
+    async def _exam_subject_name(db: AsyncSession, exam: Exam) -> str:
+        curriculum_subject = await AcademicRepository.get_curriculum_subject_by_id(
+            db, exam.curriculum_subject_id
+        )
+        if curriculum_subject is None:
+            raise AttemptStateError("Examination curriculum subject is unavailable")
+        subject = await AcademicRepository.get_subject_by_id(
+            db, curriculum_subject.subject_id
+        )
+        if subject is None:
+            raise AttemptStateError("Examination subject is unavailable")
+        return subject.name
 
     @staticmethod
     async def _require_operator(

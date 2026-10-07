@@ -161,12 +161,16 @@
 .admin-results-overview-table th:last-child,
 .admin-results-overview-table td:last-child { padding-left: 12px; padding-right: 12px; }
 
-.admin-results-candidate-table th:nth-child(1) { width: 24%; }
-.admin-results-candidate-table th:nth-child(2) { width: 18%; }
-.admin-results-candidate-table th:nth-child(3) { width: 13%; }
-.admin-results-candidate-table th:nth-child(4) { width: 13%; }
+.admin-results-candidate-table { min-width: 640px; }
+.admin-results-candidate-table th:nth-child(1) { width: 34%; }
+.admin-results-candidate-table th:nth-child(2) { width: 14%; }
+.admin-results-candidate-table th:nth-child(3) { width: 18%; }
+.admin-results-candidate-table th:nth-child(4) { width: 17%; }
 .admin-results-candidate-table th:nth-child(5) { width: 17%; }
-.admin-results-candidate-table th:nth-child(6) { width: 15%; }
+.admin-results-candidate-table th, .admin-results-candidate-table td { padding-left: 12px; padding-right: 12px; }
+.admin-results-candidate-table td:last-child .admin-result-button { white-space: nowrap; padding: 0 10px; }
+.admin-result-candidate > div { min-width: 0; }
+.admin-result-candidate small, .admin-result-score-percentage { display: block; margin-top: 3px; color: rgb(var(--color-text-muted)); font-size: 12px; overflow-wrap: anywhere; }
 
 .admin-results-overview-table td,
 .admin-results-candidate-table td {
@@ -719,3 +723,5 @@
   .admin-result-metric__icon { width: 30px; height: 30px; }
   .admin-result-summary { grid-template-columns: 1fr; }
 }
+.admin-result-void-audit { display: grid; gap: 6px; max-width: 220px; }
+.admin-result-void-audit small { color: rgb(var(--color-text-muted)); overflow-wrap: anywhere; }

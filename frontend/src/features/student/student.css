@@ -1,3 +1,15 @@
+.premium-submission-card__subject {
+  margin: 8px 0 0;
+  color: rgb(var(--color-primary));
+  font-size: 15px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.student-makeup-details { display: grid; gap: 8px; margin-top: 20px; padding: 16px; border: 1px solid rgb(var(--color-border)); border-radius: 12px; text-align: left; }
+.student-makeup-details span, .student-makeup-details p { font-size: 13px; color: rgb(var(--color-text-muted)); line-height: 1.6; margin: 0; }
+.student-makeup-next { width: min(420px, calc(100vw - 32px)); margin: 16px auto 0; text-align: center; font-size: 14px; }
+.student-makeup-next button { width: 100%; }
+
 .premium-exam-shell {
   min-height: 100vh;
   background-color: rgb(var(--color-background));
@@ -771,6 +783,9 @@
 .premium-exam-shell .premium-exam-header { display: block; }
 .premium-exam-shell .premium-exam-header__inner { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, .8fr) auto; gap: 18px 24px; padding: 18px 28px 20px; }
 .premium-exam-shell .premium-exam-header--session {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   flex-shrink: 0;
   padding: 0;
   border-bottom: 1px solid rgb(var(--color-border));

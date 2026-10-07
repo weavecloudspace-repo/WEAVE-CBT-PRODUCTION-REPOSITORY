@@ -19,6 +19,7 @@ from app.domains.exams.models import (
     ExamRosterStatus,
     ExamStatus,
 )
+from app.domains.exams.schedule_validation import validate_normal_entry_window
 
 
 def _validate_future_exam_datetime(
@@ -96,16 +97,9 @@ class ExamCreate(InputBase):
             self.latest_normal_start_at,
             field_name="latest_normal_start_at",
         )
-        if self.scheduled_start_at is None and self.latest_normal_start_at is not None:
-            raise ValueError("latest_normal_start_at requires scheduled_start_at")
-        if (
-            self.scheduled_start_at is not None
-            and self.latest_normal_start_at is not None
-            and self.latest_normal_start_at < self.scheduled_start_at
-        ):
-            raise ValueError(
-                "latest_normal_start_at cannot be earlier than scheduled_start_at"
-            )
+        validate_normal_entry_window(
+            self.scheduled_start_at, self.latest_normal_start_at
+        )
         return self
 
 
@@ -168,20 +162,9 @@ class ExamUpdate(InputBase):
         if (
             "scheduled_start_at" in self.model_fields_set
             and "latest_normal_start_at" in self.model_fields_set
-            and self.scheduled_start_at is None
-            and self.latest_normal_start_at is not None
         ):
-            raise ValueError("latest_normal_start_at requires scheduled_start_at")
-
-        if (
-            "scheduled_start_at" in self.model_fields_set
-            and "latest_normal_start_at" in self.model_fields_set
-            and self.scheduled_start_at is not None
-            and self.latest_normal_start_at is not None
-            and self.latest_normal_start_at < self.scheduled_start_at
-        ):
-            raise ValueError(
-                "latest_normal_start_at cannot be earlier than scheduled_start_at"
+            validate_normal_entry_window(
+                self.scheduled_start_at, self.latest_normal_start_at
             )
         return self
 

@@ -77,5 +77,11 @@ def test_latest_normal_start_requires_scheduled_start() -> None:
 
 def test_latest_normal_start_cannot_precede_scheduled_start() -> None:
     scheduled = datetime.now(UTC) + timedelta(hours=2)
-    with pytest.raises(ExamStateError, match="cannot be earlier"):
+    with pytest.raises(ExamStateError, match="must be later"):
         require_schedule(scheduled, scheduled - timedelta(minutes=10))
+
+
+def test_persisted_equal_deadline_cannot_pass_authoring_boundaries() -> None:
+    scheduled = datetime.now(UTC) + timedelta(hours=2)
+    with pytest.raises(ExamStateError, match="Equal times leave no time"):
+        require_schedule(scheduled, scheduled)

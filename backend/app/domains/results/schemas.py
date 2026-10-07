@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.domains.exams.execution_models import ExamResultDisposition
 from app.domains.results.models import ResultSyncStatus
@@ -32,6 +32,13 @@ class ResultResponse(BaseModel):
     last_sync_attempt_at: datetime | None
     synced_at: datetime | None
     sync_error: str | None
+    voided_at: datetime | None = None
+    voided_by_actor_id: UUID | None = None
+    void_reason: str | None = None
+
+
+class ResultVoidPayload(BaseModel):
+    reason: str = Field(min_length=1, max_length=1024)
 
 
 class ResultReviewRowResponse(ResultResponse):
@@ -61,6 +68,7 @@ class ResultReviewSetResponse(BaseModel):
     syncing_count: int
     synced_count: int
     failed_count: int
+    voided_count: int = 0
 
 
 class ResultReviewSetListResponse(BaseModel):

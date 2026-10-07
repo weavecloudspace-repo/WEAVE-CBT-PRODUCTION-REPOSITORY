@@ -116,12 +116,36 @@ function makeGateway({ review = pendingReview(), control = null, results = [make
       }),
       approveExamResults: vi.fn().mockResolvedValue({ result_disposition: 'approved' }),
       voidExamResults: vi.fn().mockResolvedValue({ result_disposition: 'voided' }),
+      voidResult: vi.fn().mockResolvedValue({}),
       retryExamResultSync: vi.fn().mockResolvedValue({ reset_count: 1, queued: true }),
     },
   }
 }
 
 describe('Admin result review workspace', () => {
+  it('voids only the selected candidate with a reason, then refreshes the audit row', async () => {
+    const gateway = makeGateway()
+    render(<AdminResultDetailPage state={{ staff: { selectedExamId: 'exam-1' } }} adminData={makeAdminData([makeExam()])} gateway={gateway} onNavigate={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Void result' }))
+    const dialog = screen.getByRole('alertdialog')
+    expect(dialog).toHaveTextContent('David Obi')
+    expect(within(dialog).getByRole('button', { name: 'Void candidate result' })).toBeDisabled()
+    gateway.results.listExamResults.mockResolvedValue({ total: 1, results: [makeResult({ voided_at: '2026-10-07T10:00:00Z', void_reason: 'Confirmed incident' })] })
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Confirmed incident' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Void candidate result' }))
+    await waitFor(() => expect(gateway.results.voidResult).toHaveBeenCalledWith('result-1', 'Confirmed incident'))
+    expect(gateway.results.voidExamResults).not.toHaveBeenCalled()
+    expect(await screen.findByText('Confirmed incident')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Void result' })).not.toBeInTheDocument()
+    expect(screen.getByText('13 / 20')).toBeInTheDocument()
+  })
+
+  it('disables individual void for uncertain or already delivered results', async () => {
+    const gateway = makeGateway({ results: [makeResult({ sync_status: 'failed', sync_batch_id: 'uncertain-batch' }), makeResult({ id: 'result-2', sync_status: 'synced', sync_batch_id: 'sent-batch' })] })
+    render(<AdminResultDetailPage state={{ staff: { selectedExamId: 'exam-1' } }} adminData={makeAdminData([makeExam()])} gateway={gateway} onNavigate={vi.fn()} />)
+    const buttons = await screen.findAllByRole('button', { name: 'Void result' })
+    buttons.forEach((button) => expect(button).toBeDisabled())
+  })
   it('defaults to result sets awaiting review and opens the exact examination', async () => {
     const pendingExam = makeExam()
     const approvedExam = makeExam({ id: 'exam-2', title: 'English CA 1', curriculumSubjectId: 'jss2-english', subjectName: 'English Language' })

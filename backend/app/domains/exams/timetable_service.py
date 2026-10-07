@@ -460,7 +460,13 @@ class ExamTimetableService:
                 ExamStatus.CANCELLING,
             ),
         )
-        for row in rows:
+        for row in sorted(
+            rows,
+            key=lambda exam: (
+                exam.scheduled_start_at or datetime.max.replace(tzinfo=UTC),
+                str(exam.id),
+            ),
+        ):
             if row.scheduled_start_at is None:
                 continue
             row_end = cls.planned_end_at(
@@ -498,9 +504,16 @@ class ExamTimetableService:
                 if proposed_student_ids.isdisjoint(row_student_ids):
                     continue
 
+            def local_time(value: datetime) -> str:
+                return value.astimezone(SCHOOL_CALENDAR_TIMEZONE).strftime(
+                    "%d %b %Y, %I:%M %p WAT"
+                )
+
             raise ExamStateError(
-                "Another examination with an overlapping student delivery scope "
-                f"is already planned for this slot: {row.title}"
+                f"Schedule clash: '{row.title}' reserves shared students from "
+                f"{local_time(row.scheduled_start_at)} to {local_time(row_end)} "
+                "(including the entry window). Start this exam at or after that "
+                "window ends, or choose an earlier slot that finishes before it begins."
             )
 
     @staticmethod

@@ -34,7 +34,7 @@ export const toastBus = {
       id,
       message: normalizedMessage,
       type,
-      duration: options.duration ?? 4000,
+      duration: type === 'error' ? 0 : options.duration ?? 4000,
       revision: Date.now(),
     }]
     publish()

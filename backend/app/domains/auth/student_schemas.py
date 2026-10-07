@@ -32,6 +32,8 @@ class StudentLoginResponse(BaseModel):
     candidate_id: UUID | None = None
     exam_id: UUID | None = None
     exam_title: str | None = None
+    subject_name: str | None = None
+    duration_minutes: int | None = None
     display_name: str
     availability: StudentExamAvailability
     status_message: str

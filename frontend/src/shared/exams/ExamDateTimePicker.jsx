@@ -5,6 +5,7 @@ import './exam-date-time-picker.css'
 
 const pad = (value) => String(value).padStart(2, '0')
 const dateKey = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+const localMinute = (date) => `${dateKey(date)}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 const dateLabel = (date) => date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
 const timeOptions = (count) => Array.from({ length: count }, (_, value) => ({ value: pad(value), label: pad(value) }))
 const HOURS = timeOptions(24)
@@ -12,7 +13,7 @@ const MINUTES = timeOptions(60)
 
 function nextLocalMinute() {
   const date = new Date(Date.now() + 60_000)
-  return `${dateKey(date)}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  return localMinute(date)
 }
 
 function hasElapsed(value, now) {
@@ -21,7 +22,7 @@ function hasElapsed(value, now) {
   return Number.isFinite(timestamp) && timestamp <= now
 }
 
-export function ExamDateTimePicker({ label, value, onChange, min = '', disabled = false }) {
+export function ExamDateTimePicker({ label, value, onChange, min = '', minExclusive = false, disabled = false }) {
   const dialogRef = useRef(null)
   const headingId = useId()
   const helpId = useId()
@@ -33,12 +34,16 @@ export function ExamDateTimePicker({ label, value, onChange, min = '', disabled 
   const entryDeadline = label === 'Latest normal start'
   const displayLabel = entryDeadline ? 'Normal entry deadline' : label
   const currentMinimum = nextLocalMinute()
-  const effectiveMin = min && min > currentMinimum ? min : currentMinimum
+  const earliestFromSchedule = min && minExclusive
+    ? localMinute(new Date(new Date(min).getTime() + 60_000))
+    : min
+  const effectiveMin = earliestFromSchedule && earliestFromSchedule > currentMinimum ? earliestFromSchedule : currentMinimum
   const selectedDate = draft.slice(0, 10)
   const hours = draft.slice(11, 13) || '09'
   const minutes = draft.slice(14, 16) || '00'
   const tooEarly = Boolean(effectiveMin && draft && draft < effectiveMin)
   const valueElapsed = hasElapsed(value, now)
+  const invalidEntryWindow = Boolean(minExclusive && min && value && new Date(value).getTime() <= new Date(min).getTime())
   const firstDay = new Date(month.getFullYear(), month.getMonth(), 1).getDay()
   const dayCount = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
   const today = dateKey(new Date())
@@ -82,6 +87,7 @@ export function ExamDateTimePicker({ label, value, onChange, min = '', disabled 
           This time has elapsed. Choose a new future time before saving or moving this examination forward.
         </p>
       )}
+      {invalidEntryWindow && <p className="exam-datetime__elapsed" role="alert">Normal entry deadline must be after the scheduled start. Equal times leave no time for candidates to enter.</p>}
       <dialog ref={dialogRef} className="exam-datetime-dialog" aria-labelledby={headingId} onClose={() => setOpened(false)} onClick={(event) => {
         if (event.target !== event.currentTarget) return
         const rect = event.currentTarget.getBoundingClientRect()
@@ -89,7 +95,7 @@ export function ExamDateTimePicker({ label, value, onChange, min = '', disabled 
       }}>
         {opened && <>
           <header className="exam-datetime-dialog__heading">
-            <div><h2 id={headingId}>{displayLabel}</h2><p>{entryDeadline ? 'Choose when normal candidate entry should close.' : 'Choose a date and local time.'}</p></div>
+            <div><h2 id={headingId}>{displayLabel}</h2><p>{entryDeadline ? 'Choose a deadline after the scheduled start so candidates have time to enter.' : 'Choose a date and local time.'}</p></div>
             <button type="button" className="exam-datetime__icon-button" aria-label="Close date picker" onClick={close}><RiCloseLine size={20} /></button>
           </header>
           <div className="exam-calendar__navigation">

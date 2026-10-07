@@ -252,6 +252,7 @@ export function Notice({ tone = 'neutral', children }) {
   const type = tone === 'danger' ? 'error' : tone === 'neutral' ? 'info' : tone
   useEffect(() => {
     toastBus.show(message, type, { id })
+    if (type === 'error') return undefined
     return () => toastBus.remove(id)
   }, [id, message, type])
   return null

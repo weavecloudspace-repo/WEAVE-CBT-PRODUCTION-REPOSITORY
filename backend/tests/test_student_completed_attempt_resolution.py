@@ -12,6 +12,7 @@ os.environ.setdefault(
 )
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 
+from app.domains.academics.repository import AcademicRepository
 from app.domains.attempts.guarded_service import AttemptService
 from app.domains.attempts.models import AttemptEndReason, AttemptStatus
 from app.domains.attempts.repository import AttemptRepository
@@ -307,8 +308,11 @@ class StudentCompletedResultTests(unittest.IsolatedAsyncioTestCase):
             ended_at=ended_at,
         )
         candidate = SimpleNamespace(id=candidate_id)
-        exam = SimpleNamespace(id=exam_id)
+        curriculum_subject_id = uuid4()
+        subject_id = uuid4()
+        exam = SimpleNamespace(id=exam_id, curriculum_subject_id=curriculum_subject_id)
         result = SimpleNamespace(
+            voided_at=None,
             id=result_id,
             raw_score=8,
             raw_max_score=10,
@@ -336,11 +340,24 @@ class StudentCompletedResultTests(unittest.IsolatedAsyncioTestCase):
                 "get_result_by_attempt_id",
                 new=AsyncMock(return_value=result),
             ) as get_result,
+            patch.object(
+                AcademicRepository,
+                "get_curriculum_subject_by_id",
+                new=AsyncMock(return_value=SimpleNamespace(subject_id=subject_id)),
+            ) as get_curriculum_subject,
+            patch.object(
+                AcademicRepository,
+                "get_subject_by_id",
+                new=AsyncMock(return_value=SimpleNamespace(name="Literature")),
+            ) as get_subject,
         ):
             response = await AttemptService.get_current_result(db, context=context)
 
         self.assertEqual(response.attempt_id, attempt_id)
         self.assertEqual(response.result_id, result_id)
+        self.assertEqual(response.subject_name, "Literature")
+        get_curriculum_subject.assert_awaited_once_with(db, curriculum_subject_id)
+        get_subject.assert_awaited_once_with(db, subject_id)
         self.assertEqual(response.status, AttemptStatus.SUBMITTED.value)
         self.assertEqual(response.raw_score, 8)
         self.assertEqual(response.raw_max_score, 10)

@@ -39,6 +39,10 @@ describe('Bulk exam operations', () => {
     expect(props.gateway.exams.batchExamOperation).toHaveBeenCalledWith('activate', ['one', 'two'], undefined)
     expect(props.onRefresh).toHaveBeenCalledWith({ silent: false })
     expect(screen.getByText('2 succeeded · 0 need review')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(screen.getByRole('button', { name: 'Bulk operations' })).toBeVisible()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Continue/ })).not.toBeInTheDocument()
   })
 
   it('requires a reason once and passes it to suspension of all selected active exams', async () => {
@@ -54,7 +58,7 @@ describe('Bulk exam operations', () => {
     await waitFor(() => expect(props.gateway.exams.batchExamOperation).toHaveBeenCalledWith('suspend', ['one', 'two'], 'Power outage'))
   })
 
-  it('retains only failed exams and offers direct review after partial success', async () => {
+  it('resets selection after partial success while preserving direct review of failed exams', async () => {
     const { props } = setup([exam('one'), exam('two')])
     props.gateway.exams.batchExamOperation.mockResolvedValue({ results: [
       { exam_id: 'one', succeeded: true, status: 'active' },
@@ -66,8 +70,8 @@ describe('Bulk exam operations', () => {
     await screen.findByText('Timetable clash')
     fireEvent.click(screen.getByRole('button', { name: 'Review sitting' }))
     expect(props.onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'two' }))
-    expect(screen.getByLabelText('Select Exam one')).not.toBeChecked()
-    expect(screen.getByLabelText('Select Exam two')).toBeChecked()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Bulk operations' })).toBeVisible()
   })
 
   it('clears selections when filters change, including when returning to the original view', () => {

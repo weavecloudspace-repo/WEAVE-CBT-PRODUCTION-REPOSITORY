@@ -14,10 +14,14 @@ from app.core.exceptions import AcademicAuthorizationError
 from app.domains.academics.authorization import AcademicAuthorizationService
 from app.domains.attempts.models import AttemptStatus, ExamAttempt
 from app.domains.attempts.repository import AttemptRepository
+from app.domains.audit.models import AuditActorType, AuditEvent
+from app.domains.audit.repository import AuditRepository
 from app.domains.auth.models import LocalActor
 from app.domains.candidates.models import ExamCandidate
-from app.domains.exams.exceptions import ExamNotFound
-from app.domains.exams.models import Exam
+from app.domains.exams.exceptions import ExamNotFound, ExamStateError
+from app.domains.exams.execution_models import ExamResultDisposition
+from app.domains.exams.execution_repository import ExamExecutionRepository
+from app.domains.exams.models import Exam, ExamStatus
 from app.domains.exams.repository import ExamRepository
 from app.domains.results.models import ExamResult, ResultSyncStatus
 from app.domains.results.query_repository import ResultQueryRepository
@@ -159,6 +163,80 @@ class ResultService:
             raise AcademicAuthorizationError("Active local actor is required")
         if actor.role != "admin":
             raise AcademicAuthorizationError("Administrator access is required")
+
+    @classmethod
+    async def void_result(
+        cls, db: AsyncSession, *, actor: LocalActor, result_id: UUID, reason: str
+    ) -> ExamResult:
+        return await cls._set_result_void(db, actor=actor, result_id=result_id, reason=reason, voided=True)
+
+    @classmethod
+    async def restore_result(
+        cls, db: AsyncSession, *, actor: LocalActor, result_id: UUID, reason: str
+    ) -> ExamResult:
+        return await cls._set_result_void(db, actor=actor, result_id=result_id, reason=reason, voided=False)
+
+    @classmethod
+    async def _set_result_void(
+        cls, db: AsyncSession, *, actor: LocalActor, result_id: UUID, reason: str, voided: bool
+    ) -> ExamResult:
+        cls._require_admin(actor)
+        reason = reason.strip()
+        if not reason or len(reason) > 1024:
+            raise ValueError("Provide a reason of 1 to 1024 characters")
+        result = await ResultRepository.get_result_by_id(db, result_id)
+        if result is None:
+            raise ValueError("Result does not exist")
+        # Match the worker lock order: exam, control, result. Whichever commits first
+        # determines whether this score is excluded or has entered a durable batch.
+        exam = await ExamRepository.get_exam_by_id(
+            db, exam_id=result.exam_id, lock=True
+        )
+        if exam is None:
+            raise ExamNotFound("Examination does not exist")
+        if exam.status != ExamStatus.CLOSED:
+            raise ExamStateError(
+                "Individual results can only be voided after the examination closes"
+            )
+        control = await ExamExecutionRepository.get_control(db, exam.id, lock=True)
+        if control is not None and (
+            control.operation is not None
+            or control.result_disposition == ExamResultDisposition.VOIDED
+        ):
+            raise ExamStateError(
+                "This result set is voided or is still being finalized"
+            )
+        result = await ResultRepository.get_result_by_id(db, result_id, lock=True)
+        if (result.voided_at is not None) == voided:
+            raise ExamStateError("This result is already voided" if voided else "Only an individually voided result can be restored")
+        if result.sync_batch_id is not None or result.sync_status not in (
+            ResultSyncStatus.PENDING,
+            ResultSyncStatus.FAILED,
+        ):
+            raise ExamStateError(
+                "This result has entered synchronization. Resolve it in Weave before making a correction"
+            )
+        previous_void = {
+            "voided_at": result.voided_at.isoformat() if result.voided_at is not None else None,
+            "voided_by_actor_id": str(result.voided_by_actor_id) if result.voided_by_actor_id else None,
+            "reason": result.void_reason,
+        }
+        result.voided_at = datetime.now(UTC) if voided else None
+        result.voided_by_actor_id = actor.id if voided else None
+        result.void_reason = reason if voided else None
+        await ResultRepository.save_result(db, result)
+        await AuditRepository.add_event(db, AuditEvent(
+            actor_type=AuditActorType.LOCAL_ACTOR,
+            actor_id=actor.id,
+            actor_role=actor.role,
+            action="result.voided" if voided else "result.void_restored",
+            entity_type="exam_result",
+            entity_id=result.id,
+            reason=reason,
+            metadata_json={"exam_id": str(exam.id), "previous_void": previous_void},
+        ))
+        await db.commit()
+        return result
 
     @classmethod
     async def get_result(

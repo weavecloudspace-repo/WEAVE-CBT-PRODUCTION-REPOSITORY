@@ -1,0 +1,42 @@
+.admin-makeups-page { display: grid; gap: 22px; color: rgb(var(--color-text)); }
+.admin-makeups-page > button { justify-self: start; }
+.admin-makeups-heading { display: flex; justify-content: space-between; gap: 20px; align-items: center; }
+.admin-makeups-heading h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -.03em; }
+.admin-makeups-heading p, .admin-makeup-exams p { margin: 0; color: rgb(var(--color-text-muted)); }
+.admin-makeup-readiness, .admin-makeup-exams article, .admin-makeup-table-scroll { border: 1px solid rgb(var(--color-border)); border-radius: 14px; background: rgb(var(--color-surface)); }
+.admin-makeup-readiness { padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.admin-makeup-info { margin-left: auto; }
+.admin-makeup-info summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; color: rgb(var(--color-text-muted)); list-style: none; }
+.admin-makeup-info summary::-webkit-details-marker { display: none; }
+.admin-makeup-info summary:hover { background: rgb(var(--color-border) / .3); color: rgb(var(--color-text)); }
+.admin-makeup-info summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.admin-makeup-info-icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1.5px solid currentColor; border-radius: 50%; font-family: serif; font-weight: 700; }
+.admin-makeup-info[open] { flex-basis: 100%; margin-left: 0; }
+.admin-makeup-info[open] summary { width: fit-content; }
+.admin-makeup-info-content { border-top: 1px solid rgb(var(--color-border)); margin-top: 10px; padding: 0 4px 4px; font-size: 13px; }
+.admin-makeup-pagination button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 8px 14px; }
+.admin-makeup-pagination button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.admin-makeup-readiness p { margin: 12px 0; line-height: 1.6; }
+.admin-makeup-readiness small { color: rgb(var(--color-text-muted)); }
+.admin-makeups-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, .4fr); gap: 16px; align-items: end; }
+.admin-makeups-filters label, .admin-makeup-dialog label { display: grid; gap: 8px; font-size: 13px; font-weight: 600; }
+.admin-makeups-filters input, .admin-makeup-dialog textarea { width: 100%; border: 1px solid rgb(var(--color-border)); border-radius: 10px; padding: 12px; background: rgb(var(--color-surface)); color: rgb(var(--color-text)); font: inherit; }
+.admin-makeup-exams { display: grid; gap: 12px; }
+.admin-makeup-exams article { display: flex; flex-wrap: wrap; gap: 20px; padding: 22px; align-items: center; justify-content: space-between; }
+.admin-makeup-exams h2 { margin: 0 0 8px; font-size: 16px; }
+.admin-makeup-exams small { display: block; margin-top: 8px; color: rgb(var(--color-text-muted)); }
+.admin-makeup-counts { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; }
+.admin-makeup-bulk, .admin-makeup-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.admin-makeup-bulk span, .admin-makeup-pagination span { margin-right: auto; font-size: 13px; }
+.admin-makeup-table-scroll { overflow-x: auto; }
+.admin-makeup-table-scroll table { width: 100%; border-collapse: collapse; min-width: 720px; text-align: left; }
+.admin-makeup-table-scroll th, .admin-makeup-table-scroll td { padding: 16px; border-bottom: 1px solid rgb(var(--color-border)); font-size: 13px; }
+.admin-makeup-table-scroll th { color: rgb(var(--color-text-muted)); font-weight: 600; }
+.admin-makeup-table-scroll small { display: block; margin-top: 6px; color: rgb(var(--color-text-muted)); }
+.admin-makeup-dialog { width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 26px; border: 1px solid rgb(var(--color-border)); border-radius: 18px; background: rgb(var(--color-surface)); color: rgb(var(--color-text)); }
+.admin-makeup-dialog::backdrop { background: rgb(15 23 42 / .45); }
+.admin-makeup-dialog h2 { margin-top: 0; font-size: 20px; }
+.admin-makeup-dialog p { font-size: 13px; line-height: 1.6; }
+.admin-makeup-dialog textarea { min-height: 100px; resize: vertical; }
+.admin-makeup-dialog footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 22px; }
+@media (max-width: 640px) { .admin-makeups-filters { grid-template-columns: 1fr; } .admin-makeups-heading { align-items: flex-start; } .admin-makeups-heading h1 { font-size: 24px; } }

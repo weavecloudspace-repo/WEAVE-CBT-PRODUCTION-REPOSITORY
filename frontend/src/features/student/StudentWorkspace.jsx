@@ -3,6 +3,7 @@ import { DashboardSchoolIdentity, Notice, StatusBadge } from '../../shared/ui'
 import { FormattedText } from '../../shared/ui/FormattedText'
 import './student.css'
 import { StudentLogoutConfirmation } from './StudentLogoutConfirmation'
+import { StudentMakeupContinuation } from './StudentMakeupContinuation'
 import { ProductLoadingScreen } from '../../app/ProductLoadingScreen'
 import { getLocalBrandLogoSrc } from '../../api/branding'
 import { RiCheckboxCircleFill, RiFlagFill, RiLogoutBoxRLine, RiDatabase2Line, RiArrowLeftLine, RiArrowRightLine } from '@remixicon/react'
@@ -211,7 +212,7 @@ function StudentWorkspaceContent({ exam, resolution, gateway, dispatch, returnTo
   if (isSuspended) return <main className="premium-exam-shell"><section className="premium-lobby-card"><h1>Exam currently suspended</h1><p>Returning you to the waiting room. Your session and saved answers are protected.</p></section></main>
 
   if (exam.stage === 'submitted' || submitted) {
-    return <main className="premium-exam-shell premium-exam-shell--submitted"><StudentExamSubmittedCard result={submitted} onLogout={requestLogout} /></main>
+    return <main className="premium-exam-shell premium-exam-shell--submitted"><StudentExamSubmittedCard result={submitted} onLogout={requestLogout} />{resolution?.isMakeup && <StudentMakeupContinuation gateway={gateway} dispatch={dispatch} onContinue={() => setSubmitted(null)} />}</main>
   }
 
   if (timeoutSubmitting) {
@@ -323,7 +324,8 @@ function StudentWorkspaceContent({ exam, resolution, gateway, dispatch, returnTo
         {unavailable && <Notice>Weave is checking the local CBT server automatically. You do not need to sign in again.</Notice>}
         {ready && <Notice>Your examination has been resolved from the local CBT server and is ready to open.</Notice>}
         {attemptError && <Notice tone="danger">{attemptError}</Notice>}
-        <button className="premium-btn-primary" style={{ width: '100%', marginTop: '24px' }} disabled={unavailable || starting} onClick={() => startAttempt({ gateway, setAttempt, dispatch, setAttemptError, setStarting, onExamSuspended, startPending, expectedExamId: resolution?.exam?.id })}>{starting ? 'Checking exam status...' : noExam ? 'Waiting for an exam...' : waiting ? 'Waiting for activation...' : suspended ? 'Waiting for exam to resume...' : canResume ? 'Resume attempt' : 'Start Exam'}</button>
+        {state === 'makeup' && <div className="student-makeup-details"><strong>{resolution.exam?.subjectName || resolution.exam?.title}</strong>{resolution.exam?.durationMinutes && <span>{resolution.exam.durationMinutes} minutes · Your full writing time starts when you begin.</span>}<p>This is an approved makeup paper. Complete your approved papers one at a time.</p></div>}
+        <button className="premium-btn-primary" style={{ width: '100%', marginTop: '24px' }} disabled={unavailable || starting} onClick={() => startAttempt({ gateway, setAttempt, dispatch, setAttemptError, setStarting, onExamSuspended, startPending, expectedExamId: resolution?.exam?.id })}>{starting ? 'Checking exam status...' : noExam ? 'Waiting for an exam...' : waiting ? 'Waiting for activation...' : suspended ? 'Waiting for exam to resume...' : canResume ? 'Resume attempt' : state === 'makeup' ? 'Start makeup' : 'Start Exam'}</button>
         <button className="premium-btn-secondary" type="button" onClick={() => requestLogout()} style={{ width: '100%', marginTop: '12px' }}>Logout</button>
       </section>
     </main>
@@ -341,7 +343,7 @@ function StudentExamSubmittedCard({ result, onLogout }) {
   return (
     <section className="premium-submission-card" aria-labelledby="submission-title">
       <div className="premium-submission-card__glow" aria-hidden="true" />
-      <div className="premium-submission-card__hero"><span className="premium-submission-card__icon" aria-hidden="true"><RiCheckboxCircleFill size={40} /></span><h1 id="submission-title">Exam submitted</h1><p className="premium-submission-card__lead">Your answers are saved. You may sign out when ready.</p></div>
+      <div className="premium-submission-card__hero"><span className="premium-submission-card__icon" aria-hidden="true"><RiCheckboxCircleFill size={40} /></span><h1 id="submission-title">Exam submitted</h1><p className="premium-submission-card__subject">{result.subject_name}</p><p className="premium-submission-card__lead">Your answers are saved. You may sign out when ready.</p></div>
       {result && <div className="premium-submission-score" aria-label={`Score ${scoreValue}, ${result.percentage} percent`}><div className="premium-submission-score__ring"><svg viewBox="0 0 140 140" aria-hidden="true"><circle className="premium-submission-score__track" cx="70" cy="70" r={SUBMISSION_SCORE_RADIUS} /><circle className="premium-submission-score__progress" cx="70" cy="70" r={SUBMISSION_SCORE_RADIUS} style={{ strokeDasharray: SUBMISSION_SCORE_CIRCUMFERENCE, strokeDashoffset: offset }} /></svg><div className="premium-submission-score__face"><strong>{result.percentage}%</strong><span>{scoreValue}</span></div></div></div>}
       <button className="premium-btn-primary premium-submission-card__logout" type="button" onClick={() => onLogout()}>Logout</button>
     </section>

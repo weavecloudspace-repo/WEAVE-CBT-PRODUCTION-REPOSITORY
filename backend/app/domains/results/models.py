@@ -270,7 +270,24 @@ class ExamResult(Base):
         nullable=True,
     )
 
+    # Preserve calculated scores as evidence; voiding only removes publication eligibility.
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    voided_by_actor_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("local_actors.id", ondelete="RESTRICT")
+    )
+    void_reason: Mapped[str | None] = mapped_column(Text)
+
     __table_args__ = (
+        CheckConstraint(
+            "(voided_at IS NULL AND voided_by_actor_id IS NULL AND void_reason IS NULL) OR "
+            "(voided_at IS NOT NULL AND voided_by_actor_id IS NOT NULL AND "
+            "void_reason IS NOT NULL AND char_length(trim(void_reason)) BETWEEN 1 AND 1024)",
+            name="ck_exam_results_void_audit",
+        ),
+        CheckConstraint(
+            "voided_at IS NULL OR (sync_batch_id IS NULL AND sync_status IN ('pending', 'failed'))",
+            name="ck_exam_results_void_unsent",
+        ),
         UniqueConstraint(
             "candidate_id",
             "exam_id",

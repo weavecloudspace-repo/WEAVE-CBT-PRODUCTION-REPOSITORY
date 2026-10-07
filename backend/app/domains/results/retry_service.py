@@ -68,6 +68,7 @@ class ResultRetryService:
                     .where(
                         ExamResult.exam_id == exam.id,
                         ExamResult.sync_status == ResultSyncStatus.FAILED,
+                        ExamResult.voided_at.is_(None),
                         ExamResult.sync_batch_id.is_(None),
                     )
                     .order_by(ExamResult.calculated_at.asc(), ExamResult.id.asc())

@@ -33,6 +33,24 @@ export function voidExamResults(examId, reason, options = {}) {
   })
 }
 
+export function voidResult(resultId, reason, options = {}) {
+  return weaveRequest(`/results/${resultId}/void`, {
+    ...options,
+    method: 'POST',
+    body: { reason },
+    successMessage: options.successMessage || 'Candidate result voided.',
+  })
+}
+
+export function restoreResult(resultId, reason, options = {}) {
+  return weaveRequest(`/results/${resultId}/restore`, {
+    ...options,
+    method: 'POST',
+    body: { reason },
+    successMessage: options.successMessage || 'Candidate result restored.',
+  })
+}
+
 export function retryExamResultSync(examId, options = {}) {
   return weaveRequest(`/exams/${examId}/results/retry-sync`, {
     ...options,

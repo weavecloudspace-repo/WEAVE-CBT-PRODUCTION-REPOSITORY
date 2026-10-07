@@ -272,6 +272,8 @@ class ResultSyncService:
             raise ResultSyncError(
                 "Every result in an active synchronization batch must be SYNCING."
             )
+        if any(row.voided_at is not None for row in rows):
+            raise ResultSyncError("Voided results cannot be synchronized.")
 
         exam = await ExamRepository.get_exam_by_id(db, exam_id=exam_id)
         if exam is None:
