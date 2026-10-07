@@ -8,6 +8,8 @@ from uuid import UUID
 from app.core.database import async_session_factory
 from app.domains.exams.execution_service import ExamExecutionService
 from app.domains.results.approved_sync_service import approved_result_sync_service
+from app.domains.results.models import ResultSyncStatus
+from app.domains.results.repository import ResultRepository
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,7 @@ async def sync_exam_results(_ctx: dict, exam_id: str) -> None:
 
     logger.info("Starting result synchronization for exam %s", parsed_exam_id)
     batches_processed = 0
+    results_rejected = 0
 
     try:
         async with async_session_factory() as db:
@@ -48,6 +51,16 @@ async def sync_exam_results(_ctx: dict, exam_id: str) -> None:
                 if response is None:
                     break
                 batches_processed += 1
+                results_rejected += response.rejected
+                if response.rejected:
+                    logger.warning(
+                        "Weave rejected %s results for exam %s in batch %s: %s. "
+                        "Correct the reported issues before using retry-sync.",
+                        response.rejected,
+                        parsed_exam_id,
+                        response.batch_id,
+                        "; ".join(f"{error.code}: {error.detail}" for error in response.errors),
+                    )
                 logger.info(
                     "Synchronized result batch %s for exam %s: received=%s applied=%s unchanged=%s rejected=%s",
                     response.batch_id,
@@ -57,6 +70,21 @@ async def sync_exam_results(_ctx: dict, exam_id: str) -> None:
                     response.unchanged,
                     response.rejected,
                 )
+            failed_rows = await ResultRepository.list_results_for_exam(
+                db,
+                parsed_exam_id,
+                sync_statuses=[ResultSyncStatus.FAILED],
+            )
+            active_failures = [row for row in failed_rows if row.voided_at is None]
+            if active_failures:
+                logger.warning(
+                    "Result synchronization remains incomplete for exam %s: "
+                    "%s failed results. Reasons: %s",
+                    parsed_exam_id,
+                    len(active_failures),
+                    "; ".join(sorted({row.sync_error or "No failure reason recorded" for row in active_failures})),
+                )
+            await db.rollback()
     except Exception:
         logger.exception(
             "Result synchronization job failed for exam %s", parsed_exam_id
@@ -64,7 +92,8 @@ async def sync_exam_results(_ctx: dict, exam_id: str) -> None:
         raise
 
     logger.info(
-        "Result synchronization completed for exam %s; batches=%s",
+        "Result synchronization job finished for exam %s; batches=%s rejected=%s",
         parsed_exam_id,
         batches_processed,
+        results_rejected,
     )

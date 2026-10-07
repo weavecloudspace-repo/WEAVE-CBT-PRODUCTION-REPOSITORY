@@ -168,17 +168,27 @@ class ResultService:
     async def void_result(
         cls, db: AsyncSession, *, actor: LocalActor, result_id: UUID, reason: str
     ) -> ExamResult:
-        return await cls._set_result_void(db, actor=actor, result_id=result_id, reason=reason, voided=True)
+        return await cls._set_result_void(
+            db, actor=actor, result_id=result_id, reason=reason, voided=True
+        )
 
     @classmethod
     async def restore_result(
         cls, db: AsyncSession, *, actor: LocalActor, result_id: UUID, reason: str
     ) -> ExamResult:
-        return await cls._set_result_void(db, actor=actor, result_id=result_id, reason=reason, voided=False)
+        return await cls._set_result_void(
+            db, actor=actor, result_id=result_id, reason=reason, voided=False
+        )
 
     @classmethod
     async def _set_result_void(
-        cls, db: AsyncSession, *, actor: LocalActor, result_id: UUID, reason: str, voided: bool
+        cls,
+        db: AsyncSession,
+        *,
+        actor: LocalActor,
+        result_id: UUID,
+        reason: str,
+        voided: bool,
     ) -> ExamResult:
         cls._require_admin(actor)
         reason = reason.strip()
@@ -208,7 +218,11 @@ class ResultService:
             )
         result = await ResultRepository.get_result_by_id(db, result_id, lock=True)
         if (result.voided_at is not None) == voided:
-            raise ExamStateError("This result is already voided" if voided else "Only an individually voided result can be restored")
+            raise ExamStateError(
+                "This result is already voided"
+                if voided
+                else "Only an individually voided result can be restored"
+            )
         if result.sync_batch_id is not None or result.sync_status not in (
             ResultSyncStatus.PENDING,
             ResultSyncStatus.FAILED,
@@ -217,24 +231,31 @@ class ResultService:
                 "This result has entered synchronization. Resolve it in Weave before making a correction"
             )
         previous_void = {
-            "voided_at": result.voided_at.isoformat() if result.voided_at is not None else None,
-            "voided_by_actor_id": str(result.voided_by_actor_id) if result.voided_by_actor_id else None,
+            "voided_at": result.voided_at.isoformat()
+            if result.voided_at is not None
+            else None,
+            "voided_by_actor_id": str(result.voided_by_actor_id)
+            if result.voided_by_actor_id
+            else None,
             "reason": result.void_reason,
         }
         result.voided_at = datetime.now(UTC) if voided else None
         result.voided_by_actor_id = actor.id if voided else None
         result.void_reason = reason if voided else None
         await ResultRepository.save_result(db, result)
-        await AuditRepository.add_event(db, AuditEvent(
-            actor_type=AuditActorType.LOCAL_ACTOR,
-            actor_id=actor.id,
-            actor_role=actor.role,
-            action="result.voided" if voided else "result.void_restored",
-            entity_type="exam_result",
-            entity_id=result.id,
-            reason=reason,
-            metadata_json={"exam_id": str(exam.id), "previous_void": previous_void},
-        ))
+        await AuditRepository.add_event(
+            db,
+            AuditEvent(
+                actor_type=AuditActorType.LOCAL_ACTOR,
+                actor_id=actor.id,
+                actor_role=actor.role,
+                action="result.voided" if voided else "result.void_restored",
+                entity_type="exam_result",
+                entity_id=result.id,
+                reason=reason,
+                metadata_json={"exam_id": str(exam.id), "previous_void": previous_void},
+            ),
+        )
         await db.commit()
         return result
 

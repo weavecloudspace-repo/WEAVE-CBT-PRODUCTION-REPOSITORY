@@ -418,7 +418,7 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
           reason={reason}
           setReason={setReason}
           busy={busy}
-          onCancel={() => { if (!busy) { setDecision(null); setReason(''); setError('') } }}
+          onCancel={() => { if (!busy) { setDecision(null); setIndividualResult(null); setReason(''); setError('') } }}
           onConfirm={runDecision}
         />
       )}
@@ -464,8 +464,8 @@ function ResultDecisionPanel({ disposition, summary, reason, busy, onApprove, on
       <section className="admin-result-decision-panel admin-result-decision-panel--approved">
         <div className="admin-result-decision-panel__icon"><RiCheckLine size={22} /></div>
         <div className="admin-result-decision-panel__copy">
-          <strong>Approved for Weave synchronization</strong>
-          <p>{failed ? `${failed} result${failed === 1 ? '' : 's'} currently have a failed delivery and can be retried.` : 'The result set has passed the local approval boundary. Synchronization status is shown per candidate below.'}</p>
+          <strong>{failed ? 'Weave synchronization needs attention' : 'Approved for Weave synchronization'}</strong>
+          <p>{failed ? `${failed} result${failed === 1 ? ' has' : 's have'} not reached Weave. Read the failure reason in the candidate results below. Correct the issue in Weave before retrying; temporary delivery failures retry automatically.` : 'The result set has passed the local approval boundary. Synchronization status is shown per candidate below.'}</p>
         </div>
         {failed > 0 && <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy} onClick={onRetry}><RiRefreshLine size={17} /> Retry failed sync</button>}
       </section>
@@ -485,11 +485,12 @@ function ResultDecisionPanel({ disposition, summary, reason, busy, onApprove, on
 function ResultDecisionModal({ action, exam, result, count, reason, setReason, busy, onCancel, onConfirm }) {
   const approving = action === 'approve'
   const restoring = action === 'restore-individual'
+  const positive = approving || restoring
   return createPortal(
     <div className="admin-result-modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target && !busy) onCancel() }}>
-      <section className={`admin-result-modal${approving ? '' : ' is-danger'}`} role="alertdialog" aria-modal="true" aria-labelledby="result-decision-title">
+      <section className={`admin-result-modal${positive ? '' : ' is-danger'}`} role="alertdialog" aria-modal="true" aria-labelledby="result-decision-title">
         <div className="admin-result-modal__heading">
-          <span>{approving ? <RiCheckLine size={22} /> : <RiCloseCircleLine size={22} />}</span>
+          <span>{positive ? <RiCheckLine size={22} /> : <RiCloseCircleLine size={22} />}</span>
           <div>
             <h2 id="result-decision-title">{approving ? 'Approve this result set?' : restoring ? 'Undo this candidate’s result void?' : result ? 'Void this candidate result?' : 'Void this result set?'}</h2>
             <p>{approving ? 'Approval authorizes these local CBT scores for synchronization to Weave.' : restoring ? 'This restores the recorded score. Both decisions remain in the audit history.' : result ? 'This score will be excluded from synchronization. The score and reason remain on record.' : 'Voiding prevents this examination sitting from contributing valid academic results.'}</p>
@@ -502,14 +503,14 @@ function ResultDecisionModal({ action, exam, result, count, reason, setReason, b
             <textarea rows="4" maxLength={1024} disabled={busy} value={reason} onChange={(event) => setReason(event.target.value)} placeholder={restoring ? 'Explain why this candidate result should be restored...' : result ? 'Explain why this candidate result must be voided...' : 'Explain why this entire examination result set must be voided...'} />
           </label>
         )}
-        <div className={`admin-result-modal__warning${approving ? '' : ' is-danger'}`}>
+        <div className={`admin-result-modal__warning${positive ? '' : ' is-danger'}`}>
           {approving
             ? 'Once synchronization begins, this result set can no longer be voided through the local review workflow.'
-            : restoring ? 'If this exam’s result set is approved, the restored score becomes eligible for synchronization again.' : result ? 'Only this candidate’s result will be voided. Other candidate results remain eligible for approval and synchronization.' : 'This decision applies to the entire examination result set, not a single candidate.'}
+            : restoring ? 'Pending restored scores synchronize automatically once this exam result set is approved. Previously failed scores still require correcting the reported issue and using Retry failed sync.' : result ? 'Only this candidate’s result will be voided. Other candidate results remain eligible for approval and synchronization.' : 'This decision applies to the entire examination result set, not a single candidate.'}
         </div>
         <div className="admin-result-modal__actions">
           <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy} onClick={onCancel}>Cancel</button>
-          <button type="button" className={`admin-result-button ${approving ? 'admin-result-button--primary' : 'admin-result-button--danger'}`} disabled={busy || (Boolean(result) && !reason.trim())} onClick={onConfirm}>
+          <button type="button" className={`admin-result-button ${positive ? 'admin-result-button--primary' : 'admin-result-button--danger'}`} disabled={busy || (Boolean(result) && !reason.trim())} onClick={onConfirm}>
             {busy ? 'Working…' : approving ? 'Approve results' : restoring ? 'Restore candidate result' : result ? 'Void candidate result' : 'Void result set'}
           </button>
         </div>
@@ -526,7 +527,20 @@ function DecisionBadge({ value }) {
 
 function SyncBadge({ value, error }) {
   const normalized = value || 'pending'
-  return <span className={`admin-result-sync admin-result-sync--${normalized}`} title={error || undefined}>{titleCase(normalized)}</span>
+  return (
+    <div className="admin-result-sync-detail">
+      <span className={`admin-result-sync admin-result-sync--${normalized}`}>{titleCase(normalized)}</span>
+      {normalized === 'failed' && (
+        <div className="admin-result-sync-detail__error">
+          <strong>Why synchronization failed</strong>
+          <p>{error || 'No failure reason was recorded. Ask the administrator to check the worker logs before retrying.'}</p>
+          {error?.startsWith('TEACHER_ASSIGNMENT_NOT_FOUND:') && (
+            <p>In Weave, assign a teacher to this candidate?s class and exam subject, with effective dates covering the exam date. Then retry failed sync.</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function SyncSummary({ review }) {

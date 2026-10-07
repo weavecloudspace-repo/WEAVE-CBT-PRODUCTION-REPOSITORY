@@ -725,3 +725,7 @@
 }
 .admin-result-void-audit { display: grid; gap: 6px; max-width: 220px; }
 .admin-result-void-audit small { color: rgb(var(--color-text-muted)); overflow-wrap: anywhere; }
+
+.admin-result-sync-detail { display: grid; gap: 8px; justify-items: start; }
+.admin-result-sync-detail__error { max-width: 360px; min-width: 180px; white-space: normal; overflow-wrap: anywhere; color: rgb(var(--color-text)); font-size: 0.8rem; line-height: 1.5; }
+.admin-result-sync-detail__error p { margin: 4px 0 0; }

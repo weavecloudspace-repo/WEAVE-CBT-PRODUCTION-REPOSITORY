@@ -117,12 +117,27 @@ function makeGateway({ review = pendingReview(), control = null, results = [make
       approveExamResults: vi.fn().mockResolvedValue({ result_disposition: 'approved' }),
       voidExamResults: vi.fn().mockResolvedValue({ result_disposition: 'voided' }),
       voidResult: vi.fn().mockResolvedValue({}),
+      restoreResult: vi.fn().mockResolvedValue({}),
       retryExamResultSync: vi.fn().mockResolvedValue({ reset_count: 1, queued: true }),
     },
   }
 }
 
 describe('Admin result review workspace', () => {
+  it('shows the Weave rejection reason and recovery instructions without hovering', async () => {
+    const syncError = 'TEACHER_ASSIGNMENT_NOT_FOUND: No teacher assignment covered this class and subject on the exam date.'
+    const gateway = makeGateway({
+      review: pendingReview('exam-1', { result_disposition: 'approved', failed_count: 1 }),
+      results: [makeResult({ sync_status: 'failed', sync_error: syncError })],
+    })
+    render(<AdminResultDetailPage state={{ staff: { selectedExamId: 'exam-1' } }} adminData={makeAdminData([makeExam()])} gateway={gateway} onNavigate={vi.fn()} />)
+    expect(await screen.findByText(syncError)).toBeVisible()
+    expect(screen.getByText(/In Weave, assign a teacher/)).toBeVisible()
+    expect(screen.getByText('Weave synchronization needs attention')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry failed sync' }))
+    await waitFor(() => expect(gateway.results.retryExamResultSync).toHaveBeenCalledWith('exam-1'))
+  })
+
   it('voids only the selected candidate with a reason, then refreshes the audit row', async () => {
     const gateway = makeGateway()
     render(<AdminResultDetailPage state={{ staff: { selectedExamId: 'exam-1' } }} adminData={makeAdminData([makeExam()])} gateway={gateway} onNavigate={vi.fn()} />)
@@ -138,6 +153,15 @@ describe('Admin result review workspace', () => {
     expect(await screen.findByText('Confirmed incident')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Void result' })).not.toBeInTheDocument()
     expect(screen.getByText('13 / 20')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Undo void' }))
+    const restoreDialog = screen.getByRole('alertdialog')
+    expect(restoreDialog).toHaveTextContent('Pending restored scores synchronize automatically')
+    gateway.results.listExamResults.mockResolvedValue({ total: 1, results: [makeResult()] })
+    fireEvent.change(within(restoreDialog).getByRole('textbox'), { target: { value: 'Student cleared' } })
+    fireEvent.click(within(restoreDialog).getByRole('button', { name: 'Restore candidate result' }))
+    await waitFor(() => expect(gateway.results.restoreResult).toHaveBeenCalledWith('result-1', 'Student cleared'))
+    expect(await screen.findByRole('button', { name: 'Void result' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Undo void' })).not.toBeInTheDocument()
   })
 
   it('disables individual void for uncertain or already delivered results', async () => {
@@ -145,6 +169,14 @@ describe('Admin result review workspace', () => {
     render(<AdminResultDetailPage state={{ staff: { selectedExamId: 'exam-1' } }} adminData={makeAdminData([makeExam()])} gateway={gateway} onNavigate={vi.fn()} />)
     const buttons = await screen.findAllByRole('button', { name: 'Void result' })
     buttons.forEach((button) => expect(button).toBeDisabled())
+    expect(screen.queryByRole('button', { name: 'Undo void' })).not.toBeInTheDocument()
+  })
+
+  it('does not expose individual undo when the whole result set is voided', async () => {
+    const gateway = makeGateway({ review: pendingReview('exam-1', { result_disposition: 'voided' }), results: [makeResult({ voided_at: '2026-10-07T10:00:00Z', void_reason: 'Incident' })] })
+    render(<AdminResultDetailPage state={{ staff: { selectedExamId: 'exam-1' } }} adminData={makeAdminData([makeExam()])} gateway={gateway} onNavigate={vi.fn()} />)
+    await screen.findByText('David Obi')
+    expect(screen.queryByRole('button', { name: 'Undo void' })).not.toBeInTheDocument()
   })
   it('defaults to result sets awaiting review and opens the exact examination', async () => {
     const pendingExam = makeExam()

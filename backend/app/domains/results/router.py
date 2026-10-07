@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query, status
 
@@ -46,12 +46,32 @@ async def void_individual_result(
 
 
 @router.post("/results/{result_id}/restore", response_model=ResultResponse)
-async def restore_individual_result(result_id: UUID, payload: ResultVoidPayload, db: DbSession, actor: CurrentLocalActor):
+async def restore_individual_result(
+    result_id: UUID, payload: ResultVoidPayload, db: DbSession, actor: CurrentLocalActor
+):
     try:
-        result = await ResultService.restore_result(db, actor=actor, result_id=result_id, reason=payload.reason)
-    except (AcademicAuthorizationError, ExamNotFound, ExamStateError, ValueError) as exc:
+        result = await ResultService.restore_result(
+            db, actor=actor, result_id=result_id, reason=payload.reason
+        )
+    except (
+        AcademicAuthorizationError,
+        ExamNotFound,
+        ExamStateError,
+        ValueError,
+    ) as exc:
         raise _http_error(exc) from exc
-    return ResultResponse.model_validate(result)
+    response = ResultResponse.model_validate(result)
+    if result.sync_status == ResultSyncStatus.PENDING:
+        # Restoration commits before enqueueing. A new job identity avoids an
+        # earlier completed exam job suppressing this newly eligible score.
+        # The worker still enforces academic approval; maintenance recovers
+        # pending rows if Redis is unavailable during this handoff.
+        await arq_producer.enqueue(
+            "sync_exam_results",
+            str(result.exam_id),
+            _job_id=f"weave-cbt:restore-result:{result.id}:{uuid4()}",
+        )
+    return response
 
 
 def _http_error(exc: Exception) -> HTTPException:
