@@ -58,10 +58,7 @@ class PlatformDockerDaemonTests(unittest.TestCase):
 
             platform.start_docker_engine()
 
-        self.assertEqual(
-            run.call_args.args[0][2],
-            "WeaveCBT",
-        )
+        self.assertEqual(run.call_args.args[0][2], "WeaveCBT")
 
     def test_windows_requires_wsl_distribution_name(self):
         with self.assertRaises(PlatformError):
@@ -90,6 +87,10 @@ class PlatformDockerDaemonTests(unittest.TestCase):
             run.call_args.args[0],
             ["/usr/bin/systemctl", "start", "docker"],
         )
+
+    def test_linux_rejects_named_runtime_target(self):
+        with self.assertRaises(PlatformError):
+            LinuxPlatform().start_docker_engine("WeaveCBT")
 
 
 if __name__ == "__main__":

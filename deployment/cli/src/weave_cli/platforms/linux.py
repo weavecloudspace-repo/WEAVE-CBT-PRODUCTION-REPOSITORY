@@ -59,10 +59,21 @@ class LinuxPlatform(BasePlatform):
 
         return geteuid() == 0
 
-    def start_docker_engine(self) -> None:
+    def start_docker_engine(
+        self,
+        runtime_target: str | None = None,
+    ) -> None:
         """
-        Start Docker Engine using the Linux systemd service manager.
+        Start Docker Engine on the current Linux host.
+
+        Linux uses the current host runtime directly, so named runtime targets
+        are not supported.
         """
+
+        if runtime_target is not None:
+            raise PlatformError(
+                "Named Docker runtime targets are not supported by LinuxPlatform."
+            )
 
         systemctl_executable = shutil.which("systemctl")
 

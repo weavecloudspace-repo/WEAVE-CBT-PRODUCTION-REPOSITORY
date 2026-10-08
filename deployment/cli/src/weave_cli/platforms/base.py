@@ -54,9 +54,15 @@ class BasePlatform(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def start_docker_engine(self) -> None:
+    def start_docker_engine(
+        self,
+        runtime_target: str | None = None,
+    ) -> None:
         """
-        Start the Docker Engine managed by the current platform.
+        Start Docker Engine using the platform-specific runtime provider.
+
+        runtime_target may identify a platform-specific runtime when the
+        provider supports named runtimes.
 
         Raise PlatformError when the engine cannot be started.
         """

@@ -73,17 +73,16 @@ class WindowsPlatform(BasePlatform):
 
     def start_docker_engine(
         self,
-        wsl_distribution: str | None = None,
+        runtime_target: str | None = None,
     ) -> None:
         """
         Start Docker Engine inside a specific WSL distribution.
 
-        The distribution can be supplied for this call or configured when
-        the WindowsPlatform instance is created. Docker Engine must already
-        be installed inside the selected distribution.
+        runtime_target is treated as the WSL distribution name. If omitted,
+        the distribution configured on this provider instance is used.
         """
 
-        distribution = wsl_distribution or self.wsl_distribution
+        distribution = runtime_target or self.wsl_distribution
 
         if not distribution:
             raise PlatformError(
