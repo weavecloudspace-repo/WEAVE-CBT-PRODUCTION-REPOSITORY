@@ -65,21 +65,18 @@ detect_distribution() {
     case "$DISTRO_ID" in
         ubuntu)
             DOCKER_REPOSITORY_DISTRO="ubuntu"
-            DISTRO_CODENAME="$UBUNTU_CODENAME"
+            DISTRO_CODENAME="${UBUNTU_CODENAME:-}"
 
             if [ -z "$DISTRO_CODENAME" ]; then
-                DISTRO_CODENAME="$VERSION_CODENAME"
+                DISTRO_CODENAME="${VERSION_CODENAME:-}"
             fi
             ;;
         debian)
             DOCKER_REPOSITORY_DISTRO="debian"
-            DISTRO_CODENAME="$VERSION_CODENAME"
+            DISTRO_CODENAME="${VERSION_CODENAME:-}"
             ;;
         *)
-            die (
-                "Unsupported Linux distribution '$DISTRO_ID'. " \
-                "WEAVE CBT currently supports Ubuntu and Debian."
-            )
+            die "Unsupported Linux distribution '$DISTRO_ID'. WEAVE CBT currently supports Ubuntu and Debian."
             ;;
     esac
 
