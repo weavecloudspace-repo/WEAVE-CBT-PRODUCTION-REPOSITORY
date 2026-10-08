@@ -275,7 +275,8 @@ fi
 
 if command -v docker >/dev/null 2>&1 \
     && command -v dockerd >/dev/null 2>&1 \
-    && docker compose version >/dev/null 2>&1; then
+    && docker compose version >/dev/null 2>&1 \
+    && systemctl cat docker.service >/dev/null 2>&1; then
     systemctl enable docker.service >/dev/null
     systemctl enable containerd.service >/dev/null 2>&1 || true
     systemctl start docker.service
@@ -305,10 +306,7 @@ chmod a+r /etc/apt/keyrings/docker.asc
 
 . /etc/os-release
 
-codename="$UBUNTU_CODENAME"
-if [ -z "$codename" ]; then
-    codename="$VERSION_CODENAME"
-fi
+codename="${UBUNTU_CODENAME:-$VERSION_CODENAME}"
 
 architecture="$(dpkg --print-architecture)"
 
