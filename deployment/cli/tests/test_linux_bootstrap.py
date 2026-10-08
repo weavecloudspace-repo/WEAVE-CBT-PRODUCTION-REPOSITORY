@@ -85,13 +85,14 @@ class LinuxBootstrapContractTests(unittest.TestCase):
             calls = directory / "calls.log"
 
             mock_apt.write_text(
-                "#!/usr/bin/env bash\\n"
-                "printf '%s\\n' \\"$*\\" >> \\"$WEAVE_TEST_CALLS\\"\\n"
-                "if [[ \\"$*\\" != *--download-only* ]]; then exit 77; fi\\n"
-                "if [ ! -f \\"$WEAVE_TEST_MARKER\\" ]; then\\n"
-                "    touch \\"$WEAVE_TEST_MARKER\\"\\n"
-                "    sleep 30\\n"
-                "fi\\n",
+                r"""#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$WEAVE_TEST_CALLS"
+if [[ "$*" != *--download-only* ]]; then exit 77; fi
+if [ ! -f "$WEAVE_TEST_MARKER" ]; then
+    touch "$WEAVE_TEST_MARKER"
+    sleep 30
+fi
+""",
                 encoding="utf-8",
             )
             mock_apt.chmod(0o755)
@@ -102,7 +103,7 @@ APT_GET=("$WEAVE_TEST_APT")
 WEAVE_DOWNLOAD_STALL_SECONDS=1
 WEAVE_DOWNLOAD_POLL_SECONDS=1
 WEAVE_DOWNLOAD_MAX_ATTEMPTS=2
-apt_cache_bytes() { printf '0\\n'; }
+apt_cache_bytes() { printf '0\n'; }
 download_docker_packages docker-ce
 '''
 
