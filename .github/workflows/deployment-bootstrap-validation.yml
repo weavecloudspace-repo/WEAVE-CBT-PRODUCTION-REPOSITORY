@@ -1,0 +1,49 @@
+name: Deployment bootstrap validation
+
+on:
+  push:
+    branches: [implementing-services]
+    paths:
+      - "deployment/bootstrap/**"
+      - "deployment/cli/tests/test_linux_bootstrap.py"
+      - ".github/workflows/deployment-bootstrap-validation.yml"
+  pull_request:
+    branches: [implementing-services]
+    paths:
+      - "deployment/bootstrap/**"
+      - "deployment/cli/tests/test_linux_bootstrap.py"
+      - ".github/workflows/deployment-bootstrap-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  bash-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Bash syntax
+        run: bash -n deployment/bootstrap/linux/bootstrap.sh
+      - name: Test Linux bootstrap and download retry watchdog
+        run: python3 -m unittest discover -s deployment/cli/tests -p test_linux_bootstrap.py -v
+
+  powershell-validation:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PowerShell bootstrap syntax
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path 'deployment/bootstrap/windows/bootstrap.ps1').Path,
+              [ref]$tokens,
+              [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+              $errors | Format-List | Out-String | Write-Host
+              throw 'Windows bootstrap has PowerShell syntax errors.'
+          }
