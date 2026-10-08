@@ -6,12 +6,18 @@ on:
     paths:
       - "deployment/bootstrap/**"
       - "deployment/cli/tests/test_linux_bootstrap.py"
+      - "deployment/cli/tests/test_windows_bootstrap.py"
+      - "deployment/cli/tests/test_windows_wsl_features.ps1"
+      - "deployment/cli/tests/test_windows_bootstrap_state.ps1"
       - ".github/workflows/deployment-bootstrap-validation.yml"
   pull_request:
     branches: [implementing-services]
     paths:
       - "deployment/bootstrap/**"
       - "deployment/cli/tests/test_linux_bootstrap.py"
+      - "deployment/cli/tests/test_windows_bootstrap.py"
+      - "deployment/cli/tests/test_windows_wsl_features.ps1"
+      - "deployment/cli/tests/test_windows_bootstrap_state.ps1"
       - ".github/workflows/deployment-bootstrap-validation.yml"
 
 permissions:
@@ -52,3 +58,6 @@ jobs:
       - name: Verify WSL feature enable and reboot-resume logic
         shell: powershell
         run: .\deployment\cli\tests\test_windows_wsl_features.ps1
+      - name: Verify real bootstrap state file persistence on Windows
+        shell: powershell
+        run: .\deployment\cli\tests\test_windows_bootstrap_state.ps1
