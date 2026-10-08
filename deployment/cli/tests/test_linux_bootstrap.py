@@ -61,6 +61,16 @@ class LinuxBootstrapContractTests(unittest.TestCase):
         self.assertIn("docker info", self.script)
         self.assertIn("docker compose version", self.script)
 
+    def test_download_watchdog_separates_download_and_install(self):
+        self.assertIn("WEAVE_DOWNLOAD_STALL_SECONDS=120", self.script)
+        self.assertIn("WEAVE_DOWNLOAD_MAX_ATTEMPTS=3", self.script)
+        self.assertIn("apt_cache_bytes()", self.script)
+        self.assertIn("setsid", self.script)
+        self.assertIn("stop_apt_download", self.script)
+        self.assertIn("--download-only install -y", self.script)
+        self.assertIn("--no-download install -y", self.script)
+        self.assertIn("completed cached packages are preserved", self.script)
+
     def test_writes_runtime_marker(self):
         self.assertIn("/etc/weave-cbt-runtime", self.script)
         self.assertIn("runtime_type=linux", self.script)

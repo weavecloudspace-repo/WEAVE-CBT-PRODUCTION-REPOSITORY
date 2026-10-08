@@ -89,7 +89,7 @@ require_commands() {
 
     local command_name
 
-    for command_name in ps systemctl journalctl apt-get apt-cache dpkg dpkg-query install mktemp awk seq tr; do
+    for command_name in ps systemctl journalctl apt-get apt-cache dpkg dpkg-query install mktemp awk seq tr find date setsid; do
         if ! command -v "$command_name" >/dev/null 2>&1; then
             die "Required command '$command_name' is unavailable."
         fi
@@ -272,6 +272,112 @@ EOF
 }
 
 
+# Only package downloads are interruptible. Never interrupt dpkg configuration.
+WEAVE_DOWNLOAD_STALL_SECONDS=120
+WEAVE_DOWNLOAD_POLL_SECONDS=5
+WEAVE_DOWNLOAD_MAX_ATTEMPTS=3
+WEAVE_ACTIVE_DOWNLOAD_PID=""
+
+apt_cache_bytes() {
+    find /var/cache/apt/archives -type f \( -name '*.deb' -o -path '*/partial/*' \) -printf '%s\n' 2>/dev/null \
+        | awk '{ size += $1 } END { printf "%.0f\n", size + 0 }'
+}
+
+stop_apt_download() {
+    local download_pid=$1
+    local process_group
+    process_group="$(ps -o pgid= -p "$download_pid" 2>/dev/null | tr -d '[:space:]' || true)"
+
+    # setsid isolates the download. Never signal the bootstrap's own group.
+    if [ "$process_group" = "$download_pid" ]; then
+        kill -TERM -- "-$download_pid" 2>/dev/null || true
+        sleep 2
+        kill -KILL -- "-$download_pid" 2>/dev/null || true
+    else
+        kill -TERM "$download_pid" 2>/dev/null || true
+    fi
+}
+
+cleanup_active_download() {
+    if [ -n "$WEAVE_ACTIVE_DOWNLOAD_PID" ]; then
+        stop_apt_download "$WEAVE_ACTIVE_DOWNLOAD_PID"
+        wait "$WEAVE_ACTIVE_DOWNLOAD_PID" 2>/dev/null || true
+        WEAVE_ACTIVE_DOWNLOAD_PID=""
+    fi
+}
+
+trap 'cleanup_active_download; exit 130' INT
+trap 'cleanup_active_download; exit 143' TERM
+
+download_docker_packages() {
+    local attempt download_pid before_bytes current_bytes
+    local start_seconds last_progress_seconds last_report_seconds now
+    local stalled exit_code delay_seconds
+
+    for ((attempt = 1; attempt <= WEAVE_DOWNLOAD_MAX_ATTEMPTS; attempt++)); do
+        echo "[WEAVE][ACTION] Downloading Docker packages (attempt $attempt/$WEAVE_DOWNLOAD_MAX_ATTEMPTS)."
+        echo "[WEAVE][CHECK] Watching APT archive growth; restarting after $WEAVE_DOWNLOAD_STALL_SECONDS seconds without progress."
+
+        before_bytes="$(apt_cache_bytes)"
+        start_seconds="$(date +%s)"
+        last_progress_seconds="$start_seconds"
+        last_report_seconds="$start_seconds"
+        stalled=0
+        exit_code=0
+
+        # APT downloads without unpacking or configuring any packages.
+        # A separate session allows safely stopping all apt HTTP workers.
+        setsid ${APT_GET[@]} --download-only install -y "$@" &
+        download_pid=$!
+        WEAVE_ACTIVE_DOWNLOAD_PID="$download_pid"
+
+        while kill -0 "$download_pid" 2>/dev/null; do
+            sleep "$WEAVE_DOWNLOAD_POLL_SECONDS"
+            now="$(date +%s)"
+            current_bytes="$(apt_cache_bytes)"
+
+            if [ "$current_bytes" -gt "$before_bytes" ]; then
+                before_bytes="$current_bytes"
+                last_progress_seconds="$now"
+            fi
+
+            if [ $((now - last_report_seconds)) -ge 30 ]; then
+                echo "[WEAVE][WAIT] Docker download attempt $attempt/$WEAVE_DOWNLOAD_MAX_ATTEMPTS: $(( (now - start_seconds) ))s elapsed; cache $((current_bytes / 1048576)) MiB; last progress $((now - last_progress_seconds))s ago."
+                last_report_seconds="$now"
+            fi
+
+            if [ $((now - last_progress_seconds)) -ge "$WEAVE_DOWNLOAD_STALL_SECONDS" ]; then
+                echo "[WEAVE][WARN] Docker download has not advanced for $WEAVE_DOWNLOAD_STALL_SECONDS seconds; restarting this download attempt." >&2
+                stop_apt_download "$download_pid"
+                stalled=1
+                break
+            fi
+        done
+
+        if wait "$download_pid"; then
+            exit_code=0
+        else
+            exit_code=$?
+        fi
+        WEAVE_ACTIVE_DOWNLOAD_PID=""
+
+        if [ "$stalled" -eq 0 ] && [ "$exit_code" -eq 0 ]; then
+            echo "[WEAVE][OK] Docker package download complete. Installation can proceed offline from the APT cache."
+            return 0
+        fi
+
+        echo "[WEAVE][WARN] Docker download attempt $attempt/$WEAVE_DOWNLOAD_MAX_ATTEMPTS did not complete (exit code $exit_code)." >&2
+        if [ "$attempt" -lt "$WEAVE_DOWNLOAD_MAX_ATTEMPTS" ]; then
+            delay_seconds=$((5 * attempt))
+            echo "[WEAVE][WAIT] Retrying Docker downloads in $delay_seconds seconds; retaining cached packages."
+            sleep "$delay_seconds"
+        fi
+    done
+
+    echo "[WEAVE][ERROR] Docker package downloads failed after $WEAVE_DOWNLOAD_MAX_ATTEMPTS attempts. Check the network and retry bootstrap; completed cached packages are preserved." >&2
+    return 1
+}
+
 install_docker_engine() {
     log_check "Checking Docker Engine package installation."
 
@@ -285,9 +391,16 @@ install_docker_engine() {
     remove_conflicting_packages
     configure_docker_repository
 
-    log_action "Installing Docker Engine, Buildx, and Docker Compose plugin."
+    log_action "Downloading Docker Engine, Buildx, and Docker Compose packages."
+    download_docker_packages \
+        docker-ce \
+        docker-ce-cli \
+        containerd.io \
+        docker-buildx-plugin \
+        docker-compose-plugin
 
-    "${APT_GET[@]}" install -y \
+    log_action "Installing Docker packages from verified local APT cache (no network)."
+    "${APT_GET[@]}" --no-download install -y \
         docker-ce \
         docker-ce-cli \
         containerd.io \
