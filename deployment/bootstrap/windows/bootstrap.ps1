@@ -35,6 +35,19 @@ function Write-WeaveStep {
 
 
 
+
+
+function Get-SystemBootMarker {
+    try {
+        $lastBoot = (Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime
+        return $lastBoot.ToUniversalTime().ToString("o")
+    }
+    catch {
+        return $null
+    }
+}
+
+
 function Write-BootstrapState {
     param(
         [Parameter(Mandatory)]
@@ -57,6 +70,7 @@ function Write-BootstrapState {
         reboot_required = $RebootRequired
         message = $Message
         updated_at_utc = [DateTime]::UtcNow.ToString("o")
+        boot_marker = Get-SystemBootMarker
     }
 
     $temporaryPath = Join-Path $script:WeaveDataDirectory (".bootstrap-state.{0}.tmp" -f [Guid]::NewGuid().ToString("N"))
@@ -215,6 +229,18 @@ function Ensure-WslAvailable {
     }
 
     if ($null -ne $bootstrapState -and $bootstrapState.stage -eq "wsl_reboot_required") {
+        $currentBootMarker = Get-SystemBootMarker
+        $recordedBootMarker = $bootstrapState.boot_marker
+
+        if ($recordedBootMarker -and $currentBootMarker -and $recordedBootMarker -ne $currentBootMarker) {
+            Remove-BootstrapState
+            throw (
+                "Windows restarted, but WSL is still unavailable. " +
+                "This is no longer treated as a pending reboot. Check 'wsl --status', " +
+                "virtualization support, and Windows optional-feature state before retrying."
+            )
+        }
+
         Exit-RebootRequired -Message "Windows still needs to restart before WSL can be used by WEAVE CBT."
     }
 
