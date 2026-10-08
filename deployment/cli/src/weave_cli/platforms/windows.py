@@ -14,7 +14,7 @@ class WindowsPlatform(BasePlatform):
     Windows-specific platform implementation for the WEAVE CBT CLI.
     """
 
-    def __init__(self, wsl_distribution: str = "Ubuntu") -> None:
+    def __init__(self, wsl_distribution: str | None = None) -> None:
         self.wsl_distribution = wsl_distribution
 
     @property
@@ -71,13 +71,24 @@ class WindowsPlatform(BasePlatform):
         except (AttributeError, OSError):
             return False
 
-    def start_docker_engine(self) -> None:
+    def start_docker_engine(
+        self,
+        wsl_distribution: str | None = None,
+    ) -> None:
         """
-        Start Docker Engine inside the WEAVE WSL distribution.
+        Start Docker Engine inside a specific WSL distribution.
 
-        Docker Engine must already be installed in the configured WSL
-        distribution by the WEAVE bootstrap process.
+        The distribution can be supplied for this call or configured when
+        the WindowsPlatform instance is created. Docker Engine must already
+        be installed inside the selected distribution.
         """
+
+        distribution = wsl_distribution or self.wsl_distribution
+
+        if not distribution:
+            raise PlatformError(
+                "A WSL distribution name is required to start Docker Engine."
+            )
 
         wsl_executable = shutil.which("wsl.exe") or shutil.which("wsl")
 
@@ -87,7 +98,7 @@ class WindowsPlatform(BasePlatform):
         command = [
             wsl_executable,
             "--distribution",
-            self.wsl_distribution,
+            distribution,
             "--user",
             "root",
             "--",
@@ -117,6 +128,6 @@ class WindowsPlatform(BasePlatform):
             error = result.stderr.strip() or result.stdout.strip()
             raise PlatformError(
                 "Failed to start Docker Engine inside "
-                f"WSL distribution '{self.wsl_distribution}': "
+                f"WSL distribution '{distribution}': "
                 f"{error or 'unknown error'}"
             )
