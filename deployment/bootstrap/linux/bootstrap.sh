@@ -11,6 +11,31 @@ log() {
 }
 
 
+log_check() {
+    printf '[WEAVE][CHECK] %s\n' "$1"
+}
+
+
+log_action() {
+    printf '[WEAVE][ACTION] %s\n' "$1"
+}
+
+
+log_ok() {
+    printf '[WEAVE][OK] %s\n' "$1"
+}
+
+
+log_skip() {
+    printf '[WEAVE][SKIP] %s\n' "$1"
+}
+
+
+log_wait() {
+    printf '[WEAVE][WAIT] %s\n' "$1"
+}
+
+
 die() {
     printf '[WEAVE] ERROR: %s\n' "$1" >&2
     exit 1
@@ -32,13 +57,19 @@ trap 'on_error "$LINENO"' ERR
 
 
 require_root() {
+    log_check "Checking root privileges."
+
     if [ "$(id -u)" -ne 0 ]; then
         die "WEAVE CBT bootstrap must be run as root."
     fi
+
+    log_ok "Root privileges confirmed."
 }
 
 
 require_systemd() {
+    log_check "Checking systemd availability."
+
     if ! command -v systemctl >/dev/null 2>&1; then
         die "systemctl is required. WEAVE CBT currently supports systemd-based Linux hosts."
     fi
@@ -49,10 +80,14 @@ require_systemd() {
     if [ "$init_system" != "systemd" ]; then
         die "systemd must be PID 1. Detected '$init_system'."
     fi
+
+    log_ok "systemd is running as PID 1."
 }
 
 
 detect_distribution() {
+    log_check "Detecting Linux distribution."
+
     if [ ! -r /etc/os-release ]; then
         die "Unable to detect Linux distribution because /etc/os-release is unavailable."
     fi
@@ -91,6 +126,8 @@ detect_distribution() {
     if ! command -v dpkg >/dev/null 2>&1; then
         die "dpkg is required for supported WEAVE CBT Linux installations."
     fi
+
+    log_ok "Detected supported distribution '$DISTRO_ID' ('$DISTRO_CODENAME')."
 }
 
 
@@ -127,11 +164,13 @@ remove_conflicting_packages() {
 
 
 configure_docker_repository() {
-    log "Configuring Docker's official package repository."
+    log_action "Configuring Docker's official package repository."
 
     export DEBIAN_FRONTEND=noninteractive
 
+    log_action "Refreshing package metadata."
     apt-get update
+    log_action "Installing repository prerequisites."
     apt-get install -y ca-certificates curl
 
     install -m 0755 -d /etc/apt/keyrings
@@ -154,20 +193,25 @@ Architectures: $architecture
 Signed-By: /etc/apt/keyrings/docker.asc
 EOF
 
+    log_action "Refreshing package metadata with Docker repository enabled."
     apt-get update
 }
 
 
 install_docker_engine() {
+    log_check "Checking Docker Engine package installation."
+
     if docker_is_standardized; then
-        log "Docker Engine is already provisioned from Docker's official packages."
+        log_skip "Docker Engine is already provisioned from Docker's official packages."
         return
     fi
+
+    log_action "Docker Engine needs provisioning."
 
     remove_conflicting_packages
     configure_docker_repository
 
-    log "Installing Docker Engine and Docker Compose plugin."
+    log_action "Installing Docker Engine, Buildx, and Docker Compose plugin."
 
     apt-get install -y \
         docker-ce \
@@ -179,18 +223,20 @@ install_docker_engine() {
 
 
 enable_docker_services() {
-    log "Enabling and starting Docker services."
+    log_action "Enabling Docker and containerd services."
 
     systemctl enable containerd.service
     systemctl enable docker.service
 
+    log_action "Starting containerd and Docker services."
     systemctl start containerd.service
     systemctl start docker.service
+    log_ok "Docker services are enabled and running."
 }
 
 
 verify_docker_runtime() {
-    log "Verifying Docker Engine."
+    log_check "Verifying Docker Engine connectivity."
 
     local attempt
 
@@ -203,16 +249,24 @@ verify_docker_runtime() {
             die "Docker Engine did not become reachable."
         fi
 
+        log_wait "Waiting for Docker Engine to become reachable (attempt $attempt/15)."
         sleep 1
     done
+
+    log_ok "Docker Engine is reachable."
+    log_check "Verifying Docker Compose plugin."
 
     if ! docker compose version >/dev/null 2>&1; then
         die "Docker Compose plugin is not available."
     fi
+
+    log_ok "$(docker compose version)"
 }
 
 
 write_runtime_marker() {
+    log_action "Writing WEAVE runtime marker to '$RUNTIME_MARKER'."
+
     local temporary_marker
     temporary_marker="$(mktemp /etc/.weave-cbt-runtime.XXXXXX)"
 
@@ -226,10 +280,12 @@ write_runtime_marker() {
 
     chmod 0644 "$temporary_marker"
     mv -f "$temporary_marker" "$RUNTIME_MARKER"
+    log_ok "WEAVE runtime marker written."
 }
 
 
 main() {
+    log "Starting Linux runtime bootstrap for WEAVE CBT."
     require_root
     require_systemd
     detect_distribution
@@ -241,7 +297,7 @@ main() {
     verify_docker_runtime
     write_runtime_marker
 
-    log "Linux runtime provisioning complete. Docker Engine is ready."
+    log_ok "Linux runtime provisioning complete. Docker Engine is ready."
 }
 
 

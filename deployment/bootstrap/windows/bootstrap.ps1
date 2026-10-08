@@ -33,6 +33,36 @@ function Write-WeaveStep {
 }
 
 
+function Write-WeaveCheck {
+    param([Parameter(Mandatory)][string]$Message)
+    Write-Host "[WEAVE][CHECK] $Message"
+}
+
+
+function Write-WeaveAction {
+    param([Parameter(Mandatory)][string]$Message)
+    Write-Host "[WEAVE][ACTION] $Message"
+}
+
+
+function Write-WeaveSuccess {
+    param([Parameter(Mandatory)][string]$Message)
+    Write-Host "[WEAVE][OK] $Message"
+}
+
+
+function Write-WeaveSkip {
+    param([Parameter(Mandatory)][string]$Message)
+    Write-Host "[WEAVE][SKIP] $Message"
+}
+
+
+function Write-WeaveWait {
+    param([Parameter(Mandatory)][string]$Message)
+    Write-Host "[WEAVE][WAIT] $Message"
+}
+
+
 
 
 
@@ -146,12 +176,16 @@ function Exit-RebootRequired {
 
 
 function Assert-Administrator {
+    Write-WeaveCheck "Checking Administrator privileges."
+
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
 
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
         throw "WEAVE CBT bootstrap must be run from an elevated Administrator session."
     }
+
+    Write-WeaveSuccess "Administrator privileges confirmed."
 }
 
 
@@ -195,6 +229,8 @@ function Get-InstalledWslDistributions {
 
 
 function Assert-WeaveDistroIsUbuntu {
+    Write-WeaveCheck "Checking Linux distribution inside '$script:DistroName'."
+
     $distributionId = & $script:WslExecutable --distribution $script:DistroName --user root -- /bin/sh -lc '. /etc/os-release; printf "%s" "$ID"' 2>$null
 
     if ($LASTEXITCODE -ne 0) {
@@ -209,6 +245,8 @@ function Assert-WeaveDistroIsUbuntu {
             "Detected '$distributionId'."
         )
     }
+
+    Write-WeaveSuccess "'$script:DistroName' is running Ubuntu."
 }
 
 
@@ -220,8 +258,10 @@ function Ensure-WslAvailable {
     & $script:WslExecutable --status *> $null
 
     if ($LASTEXITCODE -eq 0) {
+        Write-WeaveSuccess "WSL is available."
+
         if ($null -ne $bootstrapState -and $bootstrapState.stage -eq "wsl_reboot_required") {
-            Write-WeaveStep "Windows restart completed; resuming WEAVE CBT provisioning."
+            Write-WeaveSuccess "Windows restart completed; resuming WEAVE CBT provisioning."
             Remove-BootstrapState
         }
 
@@ -244,7 +284,7 @@ function Ensure-WslAvailable {
         Exit-RebootRequired -Message "Windows still needs to restart before WSL can be used by WEAVE CBT."
     }
 
-    Write-WeaveStep "WSL is not initialized. Installing WSL prerequisites."
+    Write-WeaveAction "WSL is not initialized. Installing WSL prerequisites."
 
     Write-BootstrapState -Stage "wsl_prerequisites_installing" -RebootRequired $false -Message "Installing Windows Subsystem for Linux prerequisites."
 
@@ -263,7 +303,7 @@ function Ensure-WslAvailable {
 
     if ($LASTEXITCODE -eq 0) {
         Remove-BootstrapState
-        Write-WeaveStep "WSL prerequisites are ready."
+        Write-WeaveSuccess "WSL prerequisites are ready."
         return
     }
 
@@ -274,10 +314,19 @@ function Ensure-WslAvailable {
 }
 
 function Ensure-WeaveDistro {
+    Write-WeaveCheck "Checking for dedicated WSL distribution '$script:DistroName'."
+
     $installedDistros = Get-InstalledWslDistributions
 
+    if ($installedDistros.Count -gt 0) {
+        Write-WeaveStep ("Installed WSL distributions: " + ($installedDistros -join ", "))
+    }
+    else {
+        Write-WeaveStep "No WSL distributions are currently installed."
+    }
+
     if ($installedDistros -contains $script:DistroName) {
-        Write-WeaveStep "Using existing '$script:DistroName' WSL distribution."
+        Write-WeaveSkip "'$script:DistroName' already exists; distro import is not required."
         Assert-WeaveDistroIsUbuntu
         return
     }
@@ -309,7 +358,7 @@ function Ensure-WeaveDistro {
         New-Item -ItemType Directory -Path $script:DistroInstallDirectory -Force | Out-Null
     }
 
-    Write-WeaveStep "Importing dedicated '$script:DistroName' WSL2 distribution."
+    Write-WeaveAction "Importing dedicated '$script:DistroName' WSL2 distribution into '$script:DistroInstallDirectory'."
 
     & $script:WslExecutable --import $script:DistroName $script:DistroInstallDirectory $resolvedRootfs --version 2
 
@@ -317,11 +366,14 @@ function Ensure-WeaveDistro {
         throw "Failed to import the '$script:DistroName' WSL distribution."
     }
 
+    Write-WeaveSuccess "'$script:DistroName' was imported successfully."
     Assert-WeaveDistroIsUbuntu
 }
 
 
 function Ensure-WeaveDistroUsesWsl2 {
+    Write-WeaveCheck "Checking WSL version for '$script:DistroName'."
+
     $verboseOutput = @(
         & $script:WslExecutable --list --verbose 2>$null |
             ForEach-Object {
@@ -345,21 +397,24 @@ function Ensure-WeaveDistroUsesWsl2 {
     }
 
     if ($distroLine -match "\s+2\s*$") {
+        Write-WeaveSkip "'$script:DistroName' is already WSL2."
         return
     }
 
-    Write-WeaveStep "Converting '$script:DistroName' to WSL2."
+    Write-WeaveAction "Converting '$script:DistroName' to WSL2."
 
     & $script:WslExecutable --set-version $script:DistroName 2
 
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to convert '$script:DistroName' to WSL2."
     }
+
+    Write-WeaveSuccess "'$script:DistroName' is now using WSL2."
 }
 
 
 function Configure-Systemd {
-    Write-WeaveStep "Configuring systemd inside '$script:DistroName'."
+    Write-WeaveAction "Configuring systemd inside '$script:DistroName'."
 
     $systemdConfiguration = @'
 set -eu
@@ -375,6 +430,7 @@ EOF
 
     Invoke-WeaveWslScript -Script $systemdConfiguration -FailureMessage "Failed to configure systemd inside '$script:DistroName'."
 
+    Write-WeaveAction "Restarting '$script:DistroName' so the systemd configuration takes effect."
     & $script:WslExecutable --terminate $script:DistroName
 
     if ($LASTEXITCODE -ne 0) {
@@ -395,6 +451,7 @@ EOF
             }
         }
 
+        Write-WeaveWait "Waiting for systemd to become PID 1 (attempt $attempt/10)."
         Start-Sleep -Seconds 1
     }
 
@@ -405,15 +462,18 @@ EOF
             "and retry WEAVE CBT installation."
         )
     }
+
+    Write-WeaveSuccess "systemd is running inside '$script:DistroName'."
 }
 
 
 function Install-DockerEngine {
-    Write-WeaveStep "Provisioning Docker Engine inside '$script:DistroName'."
+    Write-WeaveAction "Checking and provisioning Docker Engine inside '$script:DistroName'."
 
     $dockerProvisioning = @'
 set -eu
 
+echo "[WEAVE][CHECK] Reading Ubuntu runtime metadata."
 . /etc/os-release
 
 if [ "$ID" != "ubuntu" ]; then
@@ -421,21 +481,28 @@ if [ "$ID" != "ubuntu" ]; then
     exit 20
 fi
 
+echo "[WEAVE][CHECK] Checking Docker CLI, daemon, Compose plugin, and systemd service."
 if command -v docker >/dev/null 2>&1 \
     && command -v dockerd >/dev/null 2>&1 \
     && docker compose version >/dev/null 2>&1 \
     && systemctl cat docker.service >/dev/null 2>&1; then
+    echo "[WEAVE][SKIP] Docker components are already installed; package installation is not required."
+    echo "[WEAVE][ACTION] Enabling and starting Docker services."
     systemctl enable docker.service >/dev/null
     systemctl enable containerd.service >/dev/null 2>&1 || true
     systemctl start docker.service
+    echo "[WEAVE][OK] Existing Docker installation is ready."
     exit 0
 fi
 
 export DEBIAN_FRONTEND=noninteractive
 
+echo "[WEAVE][ACTION] Refreshing Ubuntu package metadata."
 apt-get update
+echo "[WEAVE][ACTION] Installing repository prerequisites."
 apt-get install -y ca-certificates curl
 
+echo "[WEAVE][CHECK] Removing packages that can conflict with Docker CE."
 for package in \
     docker.io \
     docker-compose \
@@ -448,6 +515,7 @@ do
     apt-get remove -y "$package" >/dev/null 2>&1 || true
 done
 
+echo "[WEAVE][ACTION] Configuring Docker's official Ubuntu repository."
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc
@@ -467,7 +535,9 @@ Architectures: $architecture
 Signed-By: /etc/apt/keyrings/docker.asc
 EOF
 
+echo "[WEAVE][ACTION] Refreshing package metadata with Docker repository enabled."
 apt-get update
+echo "[WEAVE][ACTION] Installing Docker Engine, Buildx, and Compose plugin."
 apt-get install -y \
     docker-ce \
     docker-ce-cli \
@@ -475,9 +545,12 @@ apt-get install -y \
     docker-buildx-plugin \
     docker-compose-plugin
 
+echo "[WEAVE][ACTION] Enabling Docker and containerd services."
 systemctl enable docker.service
 systemctl enable containerd.service
+echo "[WEAVE][ACTION] Starting Docker service."
 systemctl start docker.service
+echo "[WEAVE][OK] Docker Engine installation completed."
 '@
 
     Invoke-WeaveWslScript -Script $dockerProvisioning -FailureMessage "Failed to provision Docker Engine inside '$script:DistroName'."
@@ -485,7 +558,7 @@ systemctl start docker.service
 
 
 function Assert-DockerRuntimeHealthy {
-    Write-WeaveStep "Verifying Docker Engine and Docker Compose."
+    Write-WeaveCheck "Verifying Docker Engine connectivity."
 
     $dockerReady = $false
 
@@ -497,6 +570,7 @@ function Assert-DockerRuntimeHealthy {
             break
         }
 
+        Write-WeaveWait "Waiting for Docker Engine to become reachable (attempt $attempt/15)."
         Start-Sleep -Seconds 1
     }
 
@@ -504,15 +578,22 @@ function Assert-DockerRuntimeHealthy {
         throw "Docker Engine did not become reachable inside '$script:DistroName'."
     }
 
-    & $script:WslExecutable --distribution $script:DistroName --user root -- docker compose version *> $null
+    Write-WeaveSuccess "Docker Engine is reachable."
+
+    Write-WeaveCheck "Verifying Docker Compose plugin."
+    $composeVersion = & $script:WslExecutable --distribution $script:DistroName --user root -- docker compose version 2>$null
 
     if ($LASTEXITCODE -ne 0) {
         throw "Docker Compose plugin is not available inside '$script:DistroName'."
     }
+
+    Write-WeaveSuccess (($composeVersion -join " ").Trim())
 }
 
 
 function Write-RuntimeMarker {
+    Write-WeaveAction "Writing WEAVE runtime marker inside '$script:DistroName'."
+
     $markerScript = @'
 set -eu
 
@@ -525,11 +606,13 @@ chmod 0644 /etc/weave-cbt-runtime
 '@
 
     Invoke-WeaveWslScript -Script $markerScript -FailureMessage "Failed to write WEAVE CBT runtime marker."
+    Write-WeaveSuccess "WEAVE runtime marker is present."
 }
 
 
 Assert-Administrator
 
+Write-WeaveCheck "Locating wsl.exe."
 $wslCommand = Get-Command "wsl.exe" -ErrorAction SilentlyContinue
 
 if (-not $wslCommand) {
@@ -539,6 +622,8 @@ if (-not $wslCommand) {
     )
 }
 
+Write-WeaveSuccess "Using WSL executable '$($wslCommand.Source)'."
+
 $script:WslExecutable = $wslCommand.Source
 $script:DistroName = $DistroName
 $script:WeaveDataDirectory = $WeaveDataDirectory
@@ -547,6 +632,7 @@ $script:BootstrapStatePath = $BootstrapStatePath
 $script:BootstrapStateSchemaVersion = $BootstrapStateSchemaVersion
 $script:RebootRequiredExitCode = $RebootRequiredExitCode
 
+Write-WeaveStep "Starting Windows runtime bootstrap for WEAVE CBT."
 Ensure-WslAvailable
 Ensure-WeaveDistro
 Ensure-WeaveDistroUsesWsl2
@@ -556,7 +642,7 @@ Assert-DockerRuntimeHealthy
 Write-RuntimeMarker
 Remove-BootstrapState
 
-Write-WeaveStep (
+Write-WeaveSuccess (
     "Windows runtime provisioning complete. " +
     "Docker is running inside WSL distribution '$DistroName'."
 )
