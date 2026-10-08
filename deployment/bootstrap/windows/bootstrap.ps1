@@ -346,9 +346,9 @@ function Invoke-WeaveWslCommand {
             if ($exitCode -eq 0 -and $isRootSessionWarning) {
                 if (-not $script:RootSessionWarningShown) {
                     Write-WeaveWarning (
-                        "WSL could not start root's systemd user session. " +
-                        "The WSL command itself succeeded, so bootstrap will continue. " +
-                        "This does not by itself mean systemd PID 1 or Docker is unavailable."
+                        "WSL reported that root's systemd user session is unhealthy. " +
+                        "The WSL command itself succeeded; bootstrap will repair and verify " +
+                        "the root user manager before Docker provisioning."
                     )
                     $script:RootSessionWarningShown = $true
                 }
@@ -645,9 +645,6 @@ set -eu
 cat > /etc/wsl.conf <<'EOF'
 [boot]
 systemd=true
-
-[user]
-default=root
 EOF
 '@
 
@@ -699,6 +696,99 @@ EOF
     }
 
     Write-WeaveSuccess "systemd is running inside '$script:DistroName'."
+}
+
+
+function Repair-RootSystemdUserSession {
+    Write-WeaveCheck "Checking root systemd user session inside '$script:DistroName'."
+
+    $checkScript = @'
+set -eu
+
+if systemctl is-active --quiet user@0.service; then
+    printf 'active'
+else
+    printf 'inactive'
+fi
+'@
+
+    $checkBytes = [Text.Encoding]::UTF8.GetBytes($checkScript)
+    $checkEncoded = [Convert]::ToBase64String($checkBytes)
+
+    $checkResult = Invoke-WeaveWslCommand -Arguments @(
+        "--distribution",
+        $script:DistroName,
+        "--user",
+        "root",
+        "--",
+        "/bin/sh",
+        "-lc",
+        "printf '%s' '$checkEncoded' | base64 -d | /bin/bash"
+    ) -CaptureOutput
+
+    if ($checkResult.ExitCode -eq 0 -and (($checkResult.Output -join "").Trim()) -eq "active") {
+        Write-WeaveSkip "root systemd user session is already healthy."
+        return
+    }
+
+    Write-WeaveAction "Repairing root systemd user session prerequisites."
+
+    $repairScript = @'
+set -eu
+
+export DEBIAN_FRONTEND=noninteractive
+
+needs_packages=0
+
+for package in dbus-user-session libpam-systemd; do
+    if ! dpkg -s "$package" >/dev/null 2>&1; then
+        needs_packages=1
+        break
+    fi
+done
+
+if [ "$needs_packages" -eq 1 ]; then
+    echo "[WEAVE][ACTION] Installing systemd user-session prerequisites."
+    apt-get update
+    apt-get install -y dbus-user-session libpam-systemd
+else
+    echo "[WEAVE][SKIP] systemd user-session prerequisite packages are already installed."
+fi
+
+echo "[WEAVE][ACTION] Enabling persistent root user manager."
+loginctl enable-linger root
+
+mkdir -p /run/user/0
+chown root:root /run/user/0
+chmod 0700 /run/user/0
+
+systemctl reset-failed user@0.service >/dev/null 2>&1 || true
+
+echo "[WEAVE][ACTION] Starting root systemd user manager."
+systemctl start user@0.service
+
+if ! systemctl is-active --quiet user@0.service; then
+    echo "[WEAVE][ERROR] user@0.service failed to become active." >&2
+    systemctl status user@0.service --no-pager >&2 || true
+    journalctl -b -u user@0.service --no-pager -n 50 >&2 || true
+    exit 31
+fi
+
+echo "[WEAVE][OK] root systemd user session is active."
+'@
+
+    try {
+        Invoke-WeaveWslScript -Script $repairScript -FailureMessage "Failed to repair root systemd user session inside '$script:DistroName'."
+    }
+    catch {
+        throw (
+            "WEAVE CBT repaired the standard Ubuntu systemd user-session prerequisites, " +
+            "but WSL still could not start root's user manager. " +
+            $_.Exception.Message
+        )
+    }
+
+    Write-WeaveSuccess "root systemd user session is healthy."
 }
 
 
@@ -890,6 +980,7 @@ Ensure-WslAvailable
 Ensure-WeaveDistro
 Ensure-WeaveDistroUsesWsl2
 Configure-Systemd
+Repair-RootSystemdUserSession
 Install-DockerEngine
 Assert-DockerRuntimeHealthy
 Write-RuntimeMarker
