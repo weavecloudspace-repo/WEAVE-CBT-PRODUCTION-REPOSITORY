@@ -195,6 +195,58 @@ function Assert-Administrator {
 }
 
 
+function ConvertTo-NativeArgument {
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string]$Value
+    )
+
+    if ($Value.Length -eq 0) {
+        return '""'
+    }
+
+    if ($Value -notmatch '[\s"]') {
+        return $Value
+    }
+
+    $builder = New-Object Text.StringBuilder
+    [void]$builder.Append('"')
+    $backslashes = 0
+
+    foreach ($character in $Value.ToCharArray()) {
+        if ($character -eq '\') {
+            $backslashes++
+            continue
+        }
+
+        if ($character -eq '"') {
+            if ($backslashes -gt 0) {
+                [void]$builder.Append(('\' * ($backslashes * 2)))
+                $backslashes = 0
+            }
+
+            [void]$builder.Append('\"')
+            continue
+        }
+
+        if ($backslashes -gt 0) {
+            [void]$builder.Append(('\' * $backslashes))
+            $backslashes = 0
+        }
+
+        [void]$builder.Append($character)
+    }
+
+    if ($backslashes -gt 0) {
+        [void]$builder.Append(('\' * ($backslashes * 2)))
+    }
+
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+
+
 function Invoke-WeaveWslCommand {
     param(
         [Parameter(Mandatory)]
@@ -205,54 +257,86 @@ function Invoke-WeaveWslCommand {
         [switch]$Quiet
     )
 
-    $stderrPath = [IO.Path]::GetTempFileName()
-    $stdout = @()
-    $previousErrorActionPreference = $ErrorActionPreference
+    $startInfo = New-Object Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $script:WslExecutable
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+
+    # Windows PowerShell 5.1 does not expose ProcessStartInfo.ArgumentList,
+    # so build a correctly quoted native command line explicitly.
+    $quotedArguments = @(
+        $Arguments |
+            ForEach-Object {
+                ConvertTo-NativeArgument -Value $_
+            }
+    )
+    $startInfo.Arguments = $quotedArguments -join ' '
+
+    $startInfo.RedirectStandardError = $true
+
+    if ($CaptureOutput -or $Quiet) {
+        $startInfo.RedirectStandardOutput = $true
+    }
+    else {
+        # Leave stdout attached to the current console so long-running
+        # provisioning commands stream progress live.
+        $startInfo.RedirectStandardOutput = $false
+    }
+
+    $process = New-Object Diagnostics.Process
+    $process.StartInfo = $startInfo
 
     try {
-        # Windows PowerShell 5.1 can promote native stderr into NativeCommandError
-        # records when ErrorActionPreference is Stop. WSL may write warnings to
-        # stderr even when the requested command succeeds, so native process
-        # success must be determined by its exit code instead.
-        $ErrorActionPreference = "Continue"
-
-        if ($CaptureOutput) {
-            $stdout = @(& $script:WslExecutable @Arguments 2> $stderrPath)
-        }
-        elseif ($Quiet) {
-            & $script:WslExecutable @Arguments 2> $stderrPath | Out-Null
-        }
-        else {
-            & $script:WslExecutable @Arguments 2> $stderrPath |
-                ForEach-Object {
-                    Write-Host $_
-                }
+        if (-not $process.Start()) {
+            throw "Failed to start wsl.exe."
         }
 
-        $exitCode = $LASTEXITCODE
+        # Consume redirected streams asynchronously to avoid pipe deadlocks.
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+
+        $stdoutTask = $null
+        if ($startInfo.RedirectStandardOutput) {
+            $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        }
+
+        $process.WaitForExit()
+
+        $stderrText = $stderrTask.GetAwaiter().GetResult()
+        $stdoutText = ""
+
+        if ($null -ne $stdoutTask) {
+            $stdoutText = $stdoutTask.GetAwaiter().GetResult()
+        }
+
+        $exitCode = $process.ExitCode
     }
     finally {
-        $ErrorActionPreference = $previousErrorActionPreference
+        $process.Dispose()
+    }
+
+    $stdoutLines = @()
+
+    if ($stdoutText) {
+        $stdoutLines = @(
+            $stdoutText -split "\r?\n" |
+                Where-Object {
+                    $_ -ne ""
+                }
+        )
     }
 
     $stderrLines = @()
 
-    try {
-        if ((Test-Path -LiteralPath $stderrPath) -and
-            (Get-Item -LiteralPath $stderrPath).Length -gt 0) {
-            $stderrLines = @(
-                Get-Content -LiteralPath $stderrPath |
-                    ForEach-Object {
-                        $_.ToString().Trim()
-                    } |
-                    Where-Object {
-                        $_
-                    }
-            )
-        }
-    }
-    finally {
-        Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
+    if ($stderrText) {
+        $stderrLines = @(
+            $stderrText -split "\r?\n" |
+                ForEach-Object {
+                    $_.Trim()
+                } |
+                Where-Object {
+                    $_
+                }
+        )
     }
 
     if ($stderrLines.Count -gt 0) {
@@ -283,11 +367,10 @@ function Invoke-WeaveWslCommand {
 
     return [PSCustomObject]@{
         ExitCode = $exitCode
-        Output = $stdout
+        Output = $stdoutLines
         ErrorOutput = $stderrLines
     }
 }
-
 
 function Invoke-WeaveWslScript {
     param(
