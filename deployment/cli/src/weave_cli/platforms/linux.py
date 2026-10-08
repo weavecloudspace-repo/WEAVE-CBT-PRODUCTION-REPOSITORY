@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 from pathlib import Path
 
-from weave_cli.platforms.base import BasePlatform
+from weave_cli.platforms.base import BasePlatform, PlatformError
 
 
 class LinuxPlatform(BasePlatform):
@@ -56,3 +58,32 @@ class LinuxPlatform(BasePlatform):
             return False
 
         return geteuid() == 0
+
+    def start_docker_engine(self) -> None:
+        """
+        Start Docker Engine using the Linux systemd service manager.
+        """
+
+        systemctl_executable = shutil.which("systemctl")
+
+        if systemctl_executable is None:
+            raise PlatformError("systemctl is not installed or is not available in PATH.")
+
+        try:
+            result = subprocess.run(
+                [systemctl_executable, "start", "docker"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise PlatformError("Timed out while starting Docker Engine.") from exc
+        except OSError as exc:
+            raise PlatformError(f"Failed to start Docker Engine: {exc}") from exc
+
+        if result.returncode != 0:
+            error = result.stderr.strip() or result.stdout.strip()
+            raise PlatformError(
+                f"Failed to start Docker Engine: {error or 'unknown error'}"
+            )
