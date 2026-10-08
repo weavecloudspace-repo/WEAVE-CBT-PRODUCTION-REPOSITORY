@@ -15,7 +15,12 @@ if (-not $programData) {
     $programData = "C:\ProgramData"
 }
 
-$DistroInstallDirectory = Join-Path $programData "WeaveCBT\wsl"
+$WeaveDataDirectory = Join-Path $programData "WeaveCBT"
+$DistroInstallDirectory = Join-Path $WeaveDataDirectory "wsl"
+$BootstrapStatePath = Join-Path $WeaveDataDirectory "bootstrap-state.json"
+
+$BootstrapStateSchemaVersion = 1
+$RebootRequiredExitCode = 3010
 
 
 function Write-WeaveStep {
@@ -25,6 +30,104 @@ function Write-WeaveStep {
     )
 
     Write-Host "[WEAVE] $Message"
+}
+
+
+
+
+function Write-BootstrapState {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Stage,
+
+        [Parameter(Mandatory)]
+        [bool]$RebootRequired,
+
+        [Parameter(Mandatory = $false)]
+        [string]$Message = ""
+    )
+
+    if (-not (Test-Path -LiteralPath $script:WeaveDataDirectory)) {
+        New-Item -ItemType Directory -Path $script:WeaveDataDirectory -Force | Out-Null
+    }
+
+    $state = [ordered]@{
+        schema_version = $script:BootstrapStateSchemaVersion
+        stage = $Stage
+        reboot_required = $RebootRequired
+        message = $Message
+        updated_at_utc = [DateTime]::UtcNow.ToString("o")
+    }
+
+    $temporaryPath = Join-Path $script:WeaveDataDirectory (".bootstrap-state.{0}.tmp" -f [Guid]::NewGuid().ToString("N"))
+
+    try {
+        $json = $state | ConvertTo-Json -Depth 4
+        [IO.File]::WriteAllText($temporaryPath, $json + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+
+        if (Test-Path -LiteralPath $script:BootstrapStatePath) {
+            [IO.File]::Replace($temporaryPath, $script:BootstrapStatePath, $null, $true)
+        }
+        else {
+            [IO.File]::Move($temporaryPath, $script:BootstrapStatePath)
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $temporaryPath) {
+            Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
+function Read-BootstrapState {
+    if (-not (Test-Path -LiteralPath $script:BootstrapStatePath -PathType Leaf)) {
+        return $null
+    }
+
+    try {
+        $state = Get-Content -LiteralPath $script:BootstrapStatePath -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw (
+            "Bootstrap state file '$script:BootstrapStatePath' is invalid. " +
+            "Remove it only after verifying no WEAVE CBT installation is in progress."
+        )
+    }
+
+    if ($null -eq $state.schema_version -or [int]$state.schema_version -ne $script:BootstrapStateSchemaVersion) {
+        throw (
+            "Unsupported WEAVE CBT bootstrap state schema in " +
+            "'$script:BootstrapStatePath'."
+        )
+    }
+
+    if (-not $state.stage) {
+        throw "WEAVE CBT bootstrap state is missing the required stage field."
+    }
+
+    return $state
+}
+
+
+function Remove-BootstrapState {
+    if (Test-Path -LiteralPath $script:BootstrapStatePath -PathType Leaf) {
+        Remove-Item -LiteralPath $script:BootstrapStatePath -Force
+    }
+}
+
+
+function Exit-RebootRequired {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Message
+    )
+
+    Write-BootstrapState -Stage "wsl_reboot_required" -RebootRequired $true -Message $Message
+
+    Write-Warning $Message
+    Write-WeaveStep "After Windows restarts, run the WEAVE CBT installation again to resume."
+    exit $script:RebootRequiredExitCode
 }
 
 
@@ -98,32 +201,51 @@ function Assert-WeaveDistroIsUbuntu {
 function Ensure-WslAvailable {
     Write-WeaveStep "Checking Windows Subsystem for Linux."
 
+    $bootstrapState = Read-BootstrapState
+
     & $script:WslExecutable --status *> $null
 
     if ($LASTEXITCODE -eq 0) {
+        if ($null -ne $bootstrapState -and $bootstrapState.stage -eq "wsl_reboot_required") {
+            Write-WeaveStep "Windows restart completed; resuming WEAVE CBT provisioning."
+            Remove-BootstrapState
+        }
+
         return
+    }
+
+    if ($null -ne $bootstrapState -and $bootstrapState.stage -eq "wsl_reboot_required") {
+        Exit-RebootRequired -Message "Windows still needs to restart before WSL can be used by WEAVE CBT."
     }
 
     Write-WeaveStep "WSL is not initialized. Installing WSL prerequisites."
 
-    & $script:WslExecutable --install --no-distribution
+    Write-BootstrapState -Stage "wsl_prerequisites_installing" -RebootRequired $false -Message "Installing Windows Subsystem for Linux prerequisites."
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to install Windows Subsystem for Linux."
+    & $script:WslExecutable --install --no-distribution
+    $installExitCode = $LASTEXITCODE
+
+    if ($installExitCode -ne 0 -and $installExitCode -ne $script:RebootRequiredExitCode) {
+        Remove-BootstrapState
+        throw (
+            "Failed to install Windows Subsystem for Linux. " +
+            "wsl.exe exited with code $installExitCode."
+        )
     }
 
     & $script:WslExecutable --status *> $null
 
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error (
-            "WSL prerequisites were installed, but Windows must be restarted " +
-            "before WEAVE CBT provisioning can continue."
-        )
-
-        exit 3010
+    if ($LASTEXITCODE -eq 0) {
+        Remove-BootstrapState
+        Write-WeaveStep "WSL prerequisites are ready."
+        return
     }
-}
 
+    Exit-RebootRequired -Message (
+        "WSL prerequisites were installed successfully, but Windows must " +
+        "restart before WEAVE CBT provisioning can continue."
+    )
+}
 
 function Ensure-WeaveDistro {
     $installedDistros = Get-InstalledWslDistributions
@@ -393,7 +515,11 @@ if (-not $wslCommand) {
 
 $script:WslExecutable = $wslCommand.Source
 $script:DistroName = $DistroName
+$script:WeaveDataDirectory = $WeaveDataDirectory
 $script:DistroInstallDirectory = $DistroInstallDirectory
+$script:BootstrapStatePath = $BootstrapStatePath
+$script:BootstrapStateSchemaVersion = $BootstrapStateSchemaVersion
+$script:RebootRequiredExitCode = $RebootRequiredExitCode
 
 Ensure-WslAvailable
 Ensure-WeaveDistro
@@ -402,6 +528,7 @@ Configure-Systemd
 Install-DockerEngine
 Assert-DockerRuntimeHealthy
 Write-RuntimeMarker
+Remove-BootstrapState
 
 Write-WeaveStep (
     "Windows runtime provisioning complete. " +
