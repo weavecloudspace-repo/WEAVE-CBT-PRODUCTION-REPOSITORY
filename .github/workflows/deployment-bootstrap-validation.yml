@@ -49,3 +49,6 @@ jobs:
               $errors | Format-List | Out-String | Write-Host
               throw 'Windows bootstrap has PowerShell syntax errors.'
           }
+      - name: Verify WSL feature enable and reboot-resume logic
+        shell: powershell
+        run: .\deployment\cli\tests\test_windows_wsl_features.ps1
