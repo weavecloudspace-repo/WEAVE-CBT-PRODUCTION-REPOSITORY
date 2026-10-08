@@ -130,3 +130,16 @@ class WindowsPlatform(BasePlatform):
                 f"WSL distribution '{distribution}': "
                 f"{error or 'unknown error'}"
             )
+
+
+
+
+
+if __name__ == "__main__":
+    print("running wsl distro")
+    try:
+        WindowsPlatform(wsl_distribution="WeaveCBT").start_docker_engine()
+        
+        print("engine is up and running .....")
+    except Exception as e:
+        print(f"Error occurred: {e}")
