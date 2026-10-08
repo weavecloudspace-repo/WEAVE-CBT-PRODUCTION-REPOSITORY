@@ -25,8 +25,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check Bash syntax
         run: bash -n deployment/bootstrap/linux/bootstrap.sh
-      - name: Test Linux bootstrap and download retry watchdog
-        run: python3 -m unittest discover -s deployment/cli/tests -p test_linux_bootstrap.py -v
+      - name: Test Linux and Windows WSL Bash bootstrap download watchdogs
+        run: |
+          python3 -m unittest discover -s deployment/cli/tests -p test_linux_bootstrap.py -v
+          python3 -m unittest discover -s deployment/cli/tests -p test_windows_bootstrap.py -v
 
   powershell-validation:
     runs-on: windows-latest
