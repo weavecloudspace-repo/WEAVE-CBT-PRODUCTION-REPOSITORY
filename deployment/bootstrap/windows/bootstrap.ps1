@@ -390,6 +390,12 @@ function Invoke-WeaveWslScript {
         [string]$FailureMessage
     )
 
+    # PowerShell strings on Windows commonly use CRLF. Bash inside WSL
+    # expects Unix LF line endings; CR characters can corrupt shell syntax,
+    # here-doc terminators, and paths such as /etc/os-release.
+    $normalizedScript = $Script -replace "`r`n", "`n"
+    $normalizedScript = $normalizedScript -replace "`r", "`n"
+
     $result = Invoke-WeaveWslCommand -Arguments @(
         "--distribution",
         $script:DistroName,
@@ -398,7 +404,7 @@ function Invoke-WeaveWslScript {
         "--",
         "/bin/bash",
         "-s"
-    ) -InputText $Script
+    ) -InputText $normalizedScript
 
     if ($result.ExitCode -ne 0) {
         throw "$FailureMessage WSL exited with code $($result.ExitCode)."
