@@ -275,17 +275,11 @@ function Invoke-WeaveWslCommand {
     )
     $startInfo.Arguments = $quotedArguments -join ' '
 
+    # Explicitly redirect both streams. With CreateNoWindow, leaving stdout
+    # inherited can hide every Linux installation message from PowerShell.
     $startInfo.RedirectStandardError = $true
+    $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardInput = ($null -ne $InputText)
-
-    if ($CaptureOutput -or $Quiet) {
-        $startInfo.RedirectStandardOutput = $true
-    }
-    else {
-        # Leave stdout attached to the current console so long-running
-        # provisioning commands stream progress live.
-        $startInfo.RedirectStandardOutput = $false
-    }
 
     $process = New-Object Diagnostics.Process
     $process.StartInfo = $startInfo
@@ -300,23 +294,52 @@ function Invoke-WeaveWslCommand {
             $process.StandardInput.Close()
         }
 
-        # Consume redirected streams asynchronously to avoid pipe deadlocks.
+        # Read stderr concurrently so diagnostic output cannot fill its pipe
+        # while we display Docker/apt stdout as it arrives.
         $stderrTask = $process.StandardError.ReadToEndAsync()
-
-        $stdoutTask = $null
-        if ($startInfo.RedirectStandardOutput) {
-            $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        }
-
-        $process.WaitForExit()
-
-        $stderrText = $stderrTask.GetAwaiter().GetResult()
         $stdoutText = ""
 
-        if ($null -ne $stdoutTask) {
+        if ($CaptureOutput -or $Quiet) {
+            $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+            $process.WaitForExit()
             $stdoutText = $stdoutTask.GetAwaiter().GetResult()
         }
+        else {
+            # Stream each line from WSL in this PowerShell thread. Using
+            # ReadLineAsync permits a visible heartbeat even if apt is silent.
+            $outputLineTask = $process.StandardOutput.ReadLineAsync()
+            $idleWatch = [Diagnostics.Stopwatch]::StartNew()
+            $elapsedWatch = [Diagnostics.Stopwatch]::StartNew()
 
+            while ($true) {
+                if ($outputLineTask.Wait(1000)) {
+                    $line = $outputLineTask.GetAwaiter().GetResult()
+
+                    if ($null -eq $line) {
+                        break
+                    }
+
+                    Write-Host $line
+                    $idleWatch.Restart()
+                    $outputLineTask = $process.StandardOutput.ReadLineAsync()
+                }
+                elseif ($idleWatch.Elapsed.TotalSeconds -ge 30) {
+                    $seconds = [int]$elapsedWatch.Elapsed.TotalSeconds
+                    Write-WeaveWait "Linux provisioning command is still running ($seconds seconds elapsed)."
+                    $idleWatch.Restart()
+                }
+            }
+
+            while (-not $process.WaitForExit(1000)) {
+                if ($idleWatch.Elapsed.TotalSeconds -ge 30) {
+                    $seconds = [int]$elapsedWatch.Elapsed.TotalSeconds
+                    Write-WeaveWait "Waiting for WSL command to finish ($seconds seconds elapsed)."
+                    $idleWatch.Restart()
+                }
+            }
+        }
+
+        $stderrText = $stderrTask.GetAwaiter().GetResult()
         $exitCode = $process.ExitCode
     }
     finally {
@@ -832,10 +855,15 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 
-echo "[WEAVE][ACTION] Refreshing Ubuntu package metadata."
-apt-get update
+# Avoid waiting indefinitely on apt locks or unresponsive download servers.
+apt_weave() {
+    apt-get -o DPkg::Lock::Timeout=120         -o Acquire::Retries=3         -o Acquire::http::Timeout=30         -o Acquire::https::Timeout=30 "$@"
+}
+
+echo "[WEAVE][ACTION] Refreshing Ubuntu package metadata (network retries enabled)."
+apt_weave update
 echo "[WEAVE][ACTION] Installing repository prerequisites."
-apt-get install -y ca-certificates curl
+apt_weave install -y ca-certificates curl
 
 echo "[WEAVE][CHECK] Removing packages that can conflict with Docker CE."
 for package in \
@@ -847,12 +875,15 @@ for package in \
     containerd \
     runc
 do
-    apt-get remove -y "$package" >/dev/null 2>&1 || true
+    if dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -qx "install ok installed"; then
+        echo "[WEAVE][ACTION] Removing conflicting package '$package'."
+        apt_weave remove -y "$package"
+    fi
 done
 
 echo "[WEAVE][ACTION] Configuring Docker's official Ubuntu repository."
 install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+curl --fail --silent --show-error --location --retry 5 --retry-delay 2     --retry-connrefused --connect-timeout 20 --max-time 120     https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc
 
 . /etc/os-release
@@ -871,9 +902,9 @@ Signed-By: /etc/apt/keyrings/docker.asc
 EOF
 
 echo "[WEAVE][ACTION] Refreshing package metadata with Docker repository enabled."
-apt-get update
+apt_weave update
 echo "[WEAVE][ACTION] Installing Docker Engine, Buildx, and Compose plugin."
-apt-get install -y \
+apt_weave install -y \
     docker-ce \
     docker-ce-cli \
     containerd.io \
