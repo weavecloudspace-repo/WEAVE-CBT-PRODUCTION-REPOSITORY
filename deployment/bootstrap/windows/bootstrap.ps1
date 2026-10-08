@@ -964,7 +964,7 @@ download_docker_packages() {
 
         # APT downloads without unpacking or configuring any packages.
         # A separate session allows safely stopping all apt HTTP workers.
-        setsid ${APT_GET[@]} --download-only install -y "$@" &
+        setsid "${APT_GET[@]}" --download-only install -y "$@" &
         download_pid=$!
         WEAVE_ACTIVE_DOWNLOAD_PID="$download_pid"
 
