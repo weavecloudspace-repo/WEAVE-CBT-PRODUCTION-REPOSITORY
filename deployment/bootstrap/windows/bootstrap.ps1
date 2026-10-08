@@ -855,12 +855,18 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 
-# Avoid waiting indefinitely on apt locks or unresponsive download servers.
+# Keep APT arguments in one array shared by normal provisioning and
+# the isolated download watchdog. Functions cannot be passed to setsid.
+APT_GET=(
+    apt-get
+    -o DPkg::Lock::Timeout=120
+    -o Acquire::Retries=3
+    -o Acquire::http::Timeout=30
+    -o Acquire::https::Timeout=30
+)
+
 apt_weave() {
-    apt-get -o DPkg::Lock::Timeout=120 \
-        -o Acquire::Retries=3 \
-        -o Acquire::http::Timeout=30 \
-        -o Acquire::https::Timeout=30 "$@"
+    "${APT_GET[@]}" "$@"
 }
 
 echo "[WEAVE][ACTION] Refreshing Ubuntu package metadata (network retries enabled)."
@@ -947,6 +953,11 @@ trap 'cleanup_active_download; exit 130' INT
 trap 'cleanup_active_download; exit 143' TERM
 
 download_docker_packages() {
+    if [ "${#APT_GET[@]}" -eq 0 ]; then
+        echo "[WEAVE][ERROR] Internal bootstrap error: APT_GET command is not configured." >&2
+        return 1
+    fi
+
     local attempt download_pid before_bytes current_bytes
     local start_seconds last_progress_seconds last_report_seconds now
     local stalled exit_code delay_seconds
