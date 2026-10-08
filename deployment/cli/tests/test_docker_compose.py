@@ -104,6 +104,34 @@ class DockerComposeTests(unittest.TestCase):
         self.assertTrue(run.call_args.kwargs["stream"])
         self.assertIsNone(run.call_args.kwargs["timeout"])
 
+    def test_compose_uses_paths_translated_by_runtime(self):
+        with (
+            patch.object(
+                self.runtime,
+                "translate_path",
+                side_effect=[
+                    "/mnt/c/Program Files/WeaveCBT/compose.yaml",
+                    "/mnt/c/ProgramData/WeaveCBT/runtime.env",
+                ],
+            ),
+            patch.object(
+                self.runtime,
+                "run_docker_command",
+                return_value=CommandResult(0, "", ""),
+            ) as run,
+        ):
+            self.compose.status()
+
+        arguments = run.call_args.kwargs["arguments"]
+        self.assertEqual(
+            arguments[arguments.index("-f") + 1],
+            "/mnt/c/Program Files/WeaveCBT/compose.yaml",
+        )
+        self.assertEqual(
+            arguments[arguments.index("--env-file") + 1],
+            "/mnt/c/ProgramData/WeaveCBT/runtime.env",
+        )
+
     def test_missing_compose_file_is_rejected(self):
         self.compose_file.unlink()
 
