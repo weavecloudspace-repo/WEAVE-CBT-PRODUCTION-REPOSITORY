@@ -116,7 +116,9 @@ function Write-BootstrapState {
         [IO.File]::WriteAllText($temporaryPath, $json + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 
         if (Test-Path -LiteralPath $script:BootstrapStatePath) {
-            [IO.File]::Replace($temporaryPath, $script:BootstrapStatePath, $null, $true)
+            $backupPath = Join-Path $script:WeaveDataDirectory (".bootstrap-state.{0}.bak" -f [Guid]::NewGuid().ToString("N"))
+            [IO.File]::Replace($temporaryPath, $script:BootstrapStatePath, $backupPath, $true)
+            Remove-Item -LiteralPath $backupPath -Force -ErrorAction SilentlyContinue
         }
         else {
             [IO.File]::Move($temporaryPath, $script:BootstrapStatePath)
