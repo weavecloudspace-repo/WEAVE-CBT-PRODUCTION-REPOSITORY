@@ -970,6 +970,13 @@ download_docker_packages() {
 
         while kill -0 "$download_pid" 2>/dev/null; do
             sleep "$WEAVE_DOWNLOAD_POLL_SECONDS"
+
+            # APT may finish while this watchdog is asleep. Never classify
+            # a completed download as stalled merely because the poll timer fired.
+            if ! kill -0 "$download_pid" 2>/dev/null; then
+                break
+            fi
+
             now="$(date +%s)"
             current_bytes="$(apt_cache_bytes)"
 
@@ -998,7 +1005,8 @@ download_docker_packages() {
         fi
         WEAVE_ACTIVE_DOWNLOAD_PID=""
 
-        if [ "$stalled" -eq 0 ] && [ "$exit_code" -eq 0 ]; then
+        # A zero exit code wins even if the completion raced the idle check.
+        if [ "$exit_code" -eq 0 ]; then
             echo "[WEAVE][OK] Docker package download complete. Installation can proceed offline from the APT cache."
             return 0
         fi
