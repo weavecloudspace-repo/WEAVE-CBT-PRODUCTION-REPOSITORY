@@ -23,6 +23,10 @@ $script:FeatureStates = @{
 }
 $script:EnabledFeatures = New-Object 'System.Collections.Generic.List[string]'
 $script:RebootRequests = 0
+$script:PendingWindowsServicingReboot = $false
+function Test-WindowsServicingRebootPending {
+    return $script:PendingWindowsServicingReboot
+}
 
 function Get-WindowsOptionalFeature {
     param([switch]$Online, [string]$FeatureName, $ErrorAction)
@@ -60,6 +64,23 @@ if ($script:RebootRequests -ne 1) {
 
 $script:FeatureStates['Microsoft-Windows-Subsystem-Linux'] = 'Enabled'
 $script:FeatureStates['VirtualMachinePlatform'] = 'Enabled'
+
+# Feature state may report Enabled even though servicing needs a reboot.
+$script:PendingWindowsServicingReboot = $true
+try {
+    Ensure-WslWindowsFeatures
+    throw "Expected pending servicing reboot to block WSL initialization."
+}
+catch {
+    if ($_.Exception.Message -ne "WEAVE_TEST_REBOOT_REQUIRED") {
+        throw
+    }
+}
+if ($script:RebootRequests -ne 2) {
+    throw "Expected a second reboot request for pending Windows servicing."
+}
+
+$script:PendingWindowsServicingReboot = $false
 Ensure-WslWindowsFeatures
 
 $script:SavedState = [PSCustomObject]@{

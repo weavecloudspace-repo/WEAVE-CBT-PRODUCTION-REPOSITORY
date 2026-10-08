@@ -503,6 +503,24 @@ function Assert-WeaveDistroIsUbuntu {
     Write-WeaveSuccess "'$script:DistroName' is running Ubuntu."
 }
 
+function Test-WindowsServicingRebootPending {
+    # Optional Windows features can display Enabled while Windows still
+    # requires a restart to activate them. Check servicing state explicitly.
+    $rebootKeys = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired"
+    )
+
+    foreach ($key in $rebootKeys) {
+        if (Test-Path -LiteralPath $key) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+
 function Ensure-WslWindowsFeatures {
     Write-WeaveCheck "Checking Windows features required by WSL2."
 
@@ -566,9 +584,9 @@ function Ensure-WslWindowsFeatures {
         }
     }
 
-    if ($restartNeeded) {
+    if ($restartNeeded -or (Test-WindowsServicingRebootPending)) {
         Exit-RebootRequired -Message (
-            "Windows Subsystem for Linux prerequisites were enabled. " +
+            "Windows feature activation or servicing requires a restart. " +
             "Restart this Windows server, reconnect, and rerun the bootstrap."
         )
     }
