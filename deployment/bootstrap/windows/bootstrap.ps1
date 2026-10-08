@@ -501,44 +501,122 @@ function Assert-WeaveDistroIsUbuntu {
     Write-WeaveSuccess "'$script:DistroName' is running Ubuntu."
 }
 
+function Ensure-WslWindowsFeatures {
+    Write-WeaveCheck "Checking Windows features required by WSL2."
+
+    $features = @(
+        "Microsoft-Windows-Subsystem-Linux",
+        "VirtualMachinePlatform"
+    )
+
+    $restartNeeded = $false
+
+    foreach ($featureName in $features) {
+        try {
+            $feature = Get-WindowsOptionalFeature -Online -FeatureName $featureName -ErrorAction Stop
+        }
+        catch {
+            throw (
+                "Cannot inspect Windows feature '$featureName'. " +
+                "Verify that this Windows Server edition supports WSL2. " +
+                "Details: $($_.Exception.Message)"
+            )
+        }
+
+        $featureState = [string]$feature.State
+
+        switch ($featureState) {
+            "Enabled" {
+                Write-WeaveSkip "Windows feature '$featureName' is already enabled."
+            }
+
+            "EnablePending" {
+                Write-WeaveWait "Windows feature '$featureName' is pending a restart."
+                $restartNeeded = $true
+            }
+
+            "Disabled" {
+                Write-WeaveAction "Enabling Windows feature '$featureName'."
+
+                try {
+                    # Installing these features can require a Windows reboot.
+                    # Do not reboot automatically; the operator must reconnect
+                    # and rerun this resumable bootstrap afterward.
+                    Enable-WindowsOptionalFeature -Online -FeatureName $featureName -All -NoRestart -ErrorAction Stop | Out-Null
+                }
+                catch {
+                    throw (
+                        "Failed to enable Windows feature '$featureName'. " +
+                        "Details: $($_.Exception.Message)"
+                    )
+                }
+
+                $restartNeeded = $true
+                Write-WeaveSuccess "Windows feature '$featureName' was enabled or scheduled for enablement."
+            }
+
+            default {
+                throw (
+                    "Windows feature '$featureName' is in state '$featureState'. " +
+                    "Resolve any pending Windows servicing operations before retrying."
+                )
+            }
+        }
+    }
+
+    if ($restartNeeded) {
+        Exit-RebootRequired -Message (
+            "Windows Subsystem for Linux prerequisites were enabled. " +
+            "Restart this Windows server, reconnect, and rerun the bootstrap."
+        )
+    }
+
+    Write-WeaveSuccess "WSL2 Windows features are enabled."
+}
+
+
 function Ensure-WslAvailable {
     Write-WeaveStep "Checking Windows Subsystem for Linux."
 
     $bootstrapState = Read-BootstrapState
 
-    $statusResult = Invoke-WeaveWslCommand -Arguments @("--status") -Quiet
-
-    if ($statusResult.ExitCode -eq 0) {
-        Write-WeaveSuccess "WSL is available."
-
-        if ($null -ne $bootstrapState -and $bootstrapState.stage -eq "wsl_reboot_required") {
-            Write-WeaveSuccess "Windows restart completed; resuming WEAVE CBT provisioning."
-            Remove-BootstrapState
-        }
-
-        return
-    }
-
     if ($null -ne $bootstrapState -and $bootstrapState.stage -eq "wsl_reboot_required") {
         $currentBootMarker = Get-SystemBootMarker
         $recordedBootMarker = $bootstrapState.boot_marker
 
-        if ($recordedBootMarker -and $currentBootMarker -and $recordedBootMarker -ne $currentBootMarker) {
-            Remove-BootstrapState
-            throw (
-                "Windows restarted, but WSL is still unavailable. " +
-                "This is no longer treated as a pending reboot. Check 'wsl --status', " +
-                "virtualization support, and Windows optional-feature state before retrying."
-            )
+        if ($recordedBootMarker -and $currentBootMarker -and $recordedBootMarker -eq $currentBootMarker) {
+            Exit-RebootRequired -Message "Windows must restart before WEAVE CBT can continue WSL provisioning."
         }
 
-        Exit-RebootRequired -Message "Windows still needs to restart before WSL can be used by WEAVE CBT."
+        # After reboot, the Windows features may be ready while WSL itself
+        # still needs initialization. Resume instead of treating that as an
+        # irrecoverable error.
+        Write-WeaveStep "Windows restart detected; continuing WSL prerequisite checks."
+        Remove-BootstrapState
     }
 
-    Write-WeaveAction "WSL is not initialized. Installing WSL prerequisites."
+    $statusResult = Invoke-WeaveWslCommand -Arguments @("--status") -Quiet
 
-    Write-BootstrapState -Stage "wsl_prerequisites_installing" -RebootRequired $false -Message "Installing Windows Subsystem for Linux prerequisites."
+    if ($statusResult.ExitCode -eq 0) {
+        Write-WeaveSuccess "WSL is available."
+        return
+    }
 
+    Write-WeaveAction "WSL is not initialized. Checking Windows prerequisites first."
+    Write-BootstrapState -Stage "wsl_prerequisites_installing" -RebootRequired $false -Message "Checking and enabling Windows Subsystem for Linux prerequisites."
+
+    try {
+        Ensure-WslWindowsFeatures
+    }
+    catch {
+        Remove-BootstrapState
+        throw
+    }
+
+    # Only initialize wsl.exe after both optional Windows features are active.
+    # Fresh Windows Server machines may reject --install until these features
+    # have been enabled and the host restarted.
+    Write-WeaveAction "Installing the WSL runtime without a default Linux distribution."
     $installResult = Invoke-WeaveWslCommand -Arguments @(
         "--install",
         "--no-distribution"
@@ -548,8 +626,10 @@ function Ensure-WslAvailable {
     if ($installExitCode -ne 0 -and $installExitCode -ne $script:RebootRequiredExitCode) {
         Remove-BootstrapState
         throw (
-            "Failed to install Windows Subsystem for Linux. " +
-            "wsl.exe exited with code $installExitCode."
+            "WSL runtime initialization failed (wsl.exe exit code $installExitCode) " +
+            "although the Windows features are enabled. Verify the Windows Server " +
+            "version, network access for the WSL package, and EC2 nested virtualization " +
+            "support before retrying."
         )
     }
 
@@ -562,8 +642,8 @@ function Ensure-WslAvailable {
     }
 
     Exit-RebootRequired -Message (
-        "WSL prerequisites were installed successfully, but Windows must " +
-        "restart before WEAVE CBT provisioning can continue."
+        "WSL runtime installation completed, but Windows must restart " +
+        "before WEAVE CBT provisioning can continue."
     )
 }
 
