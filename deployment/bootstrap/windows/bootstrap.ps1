@@ -63,6 +63,12 @@ function Write-WeaveWait {
 }
 
 
+function Write-WeaveWarning {
+    param([Parameter(Mandatory)][string]$Message)
+    Write-Host "[WEAVE][WARN] $Message"
+}
+
+
 
 
 
@@ -189,6 +195,100 @@ function Assert-Administrator {
 }
 
 
+function Invoke-WeaveWslCommand {
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$Arguments,
+
+        [switch]$CaptureOutput,
+
+        [switch]$Quiet
+    )
+
+    $stderrPath = [IO.Path]::GetTempFileName()
+    $stdout = @()
+    $previousErrorActionPreference = $ErrorActionPreference
+
+    try {
+        # Windows PowerShell 5.1 can promote native stderr into NativeCommandError
+        # records when ErrorActionPreference is Stop. WSL may write warnings to
+        # stderr even when the requested command succeeds, so native process
+        # success must be determined by its exit code instead.
+        $ErrorActionPreference = "Continue"
+
+        if ($CaptureOutput) {
+            $stdout = @(& $script:WslExecutable @Arguments 2> $stderrPath)
+        }
+        elseif ($Quiet) {
+            & $script:WslExecutable @Arguments 2> $stderrPath | Out-Null
+        }
+        else {
+            & $script:WslExecutable @Arguments 2> $stderrPath |
+                ForEach-Object {
+                    Write-Host $_
+                }
+        }
+
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    $stderrLines = @()
+
+    try {
+        if ((Test-Path -LiteralPath $stderrPath) -and
+            (Get-Item -LiteralPath $stderrPath).Length -gt 0) {
+            $stderrLines = @(
+                Get-Content -LiteralPath $stderrPath |
+                    ForEach-Object {
+                        $_.ToString().Trim()
+                    } |
+                    Where-Object {
+                        $_
+                    }
+            )
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
+    }
+
+    if ($stderrLines.Count -gt 0) {
+        foreach ($line in $stderrLines) {
+            $isRootSessionWarning = $line -like "*Failed to start the systemd user session for 'root'*"
+
+            if ($exitCode -eq 0 -and $isRootSessionWarning) {
+                if (-not $script:RootSessionWarningShown) {
+                    Write-WeaveWarning (
+                        "WSL could not start root's systemd user session. " +
+                        "The WSL command itself succeeded, so bootstrap will continue. " +
+                        "This does not by itself mean systemd PID 1 or Docker is unavailable."
+                    )
+                    $script:RootSessionWarningShown = $true
+                }
+
+                continue
+            }
+
+            if ($exitCode -eq 0) {
+                Write-WeaveWarning "WSL reported: $line"
+            }
+            else {
+                Write-WeaveWarning "WSL error output: $line"
+            }
+        }
+    }
+
+    return [PSCustomObject]@{
+        ExitCode = $exitCode
+        Output = $stdout
+        ErrorOutput = $stderrLines
+    }
+}
+
+
 function Invoke-WeaveWslScript {
     param(
         [Parameter(Mandatory)]
@@ -201,17 +301,34 @@ function Invoke-WeaveWslScript {
     $scriptBytes = [Text.Encoding]::UTF8.GetBytes($Script)
     $encodedScript = [Convert]::ToBase64String($scriptBytes)
 
-    & $script:WslExecutable --distribution $script:DistroName --user root -- /bin/sh -lc "printf '%s' '$encodedScript' | base64 -d | /bin/bash"
+    $result = Invoke-WeaveWslCommand -Arguments @(
+        "--distribution",
+        $script:DistroName,
+        "--user",
+        "root",
+        "--",
+        "/bin/sh",
+        "-lc",
+        "printf '%s' '$encodedScript' | base64 -d | /bin/bash"
+    )
 
-    if ($LASTEXITCODE -ne 0) {
-        throw $FailureMessage
+    if ($result.ExitCode -ne 0) {
+        throw "$FailureMessage WSL exited with code $($result.ExitCode)."
     }
 }
 
-
 function Get-InstalledWslDistributions {
+    $result = Invoke-WeaveWslCommand -Arguments @(
+        "--list",
+        "--quiet"
+    ) -CaptureOutput
+
+    if ($result.ExitCode -ne 0) {
+        throw "Failed to list installed WSL distributions."
+    }
+
     $names = @(
-        & $script:WslExecutable --list --quiet 2>$null |
+        $result.Output |
             ForEach-Object {
                 ($_ -replace [char]0, "").Trim()
             } |
@@ -220,24 +337,28 @@ function Get-InstalledWslDistributions {
             }
     )
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to list installed WSL distributions."
-    }
-
     return $names
 }
-
 
 function Assert-WeaveDistroIsUbuntu {
     Write-WeaveCheck "Checking Linux distribution inside '$script:DistroName'."
 
-    $distributionId = & $script:WslExecutable --distribution $script:DistroName --user root -- /bin/sh -lc '. /etc/os-release; printf "%s" "$ID"' 2>$null
+    $result = Invoke-WeaveWslCommand -Arguments @(
+        "--distribution",
+        $script:DistroName,
+        "--user",
+        "root",
+        "--",
+        "/bin/sh",
+        "-lc",
+        '. /etc/os-release; printf "%s" "$ID"'
+    ) -CaptureOutput
 
-    if ($LASTEXITCODE -ne 0) {
+    if ($result.ExitCode -ne 0) {
         throw "Failed to inspect the '$script:DistroName' WSL distribution."
     }
 
-    $distributionId = (($distributionId -join "").Trim()).ToLowerInvariant()
+    $distributionId = (($result.Output -join "").Trim()).ToLowerInvariant()
 
     if ($distributionId -ne "ubuntu") {
         throw (
@@ -255,9 +376,9 @@ function Ensure-WslAvailable {
 
     $bootstrapState = Read-BootstrapState
 
-    & $script:WslExecutable --status *> $null
+    $statusResult = Invoke-WeaveWslCommand -Arguments @("--status") -Quiet
 
-    if ($LASTEXITCODE -eq 0) {
+    if ($statusResult.ExitCode -eq 0) {
         Write-WeaveSuccess "WSL is available."
 
         if ($null -ne $bootstrapState -and $bootstrapState.stage -eq "wsl_reboot_required") {
@@ -288,8 +409,11 @@ function Ensure-WslAvailable {
 
     Write-BootstrapState -Stage "wsl_prerequisites_installing" -RebootRequired $false -Message "Installing Windows Subsystem for Linux prerequisites."
 
-    & $script:WslExecutable --install --no-distribution
-    $installExitCode = $LASTEXITCODE
+    $installResult = Invoke-WeaveWslCommand -Arguments @(
+        "--install",
+        "--no-distribution"
+    )
+    $installExitCode = $installResult.ExitCode
 
     if ($installExitCode -ne 0 -and $installExitCode -ne $script:RebootRequiredExitCode) {
         Remove-BootstrapState
@@ -299,9 +423,9 @@ function Ensure-WslAvailable {
         )
     }
 
-    & $script:WslExecutable --status *> $null
+    $statusResult = Invoke-WeaveWslCommand -Arguments @("--status") -Quiet
 
-    if ($LASTEXITCODE -eq 0) {
+    if ($statusResult.ExitCode -eq 0) {
         Remove-BootstrapState
         Write-WeaveSuccess "WSL prerequisites are ready."
         return
@@ -360,9 +484,16 @@ function Ensure-WeaveDistro {
 
     Write-WeaveAction "Importing dedicated '$script:DistroName' WSL2 distribution into '$script:DistroInstallDirectory'."
 
-    & $script:WslExecutable --import $script:DistroName $script:DistroInstallDirectory $resolvedRootfs --version 2
+    $importResult = Invoke-WeaveWslCommand -Arguments @(
+        "--import",
+        $script:DistroName,
+        $script:DistroInstallDirectory,
+        $resolvedRootfs,
+        "--version",
+        "2"
+    )
 
-    if ($LASTEXITCODE -ne 0) {
+    if ($importResult.ExitCode -ne 0) {
         throw "Failed to import the '$script:DistroName' WSL distribution."
     }
 
@@ -374,14 +505,19 @@ function Ensure-WeaveDistro {
 function Ensure-WeaveDistroUsesWsl2 {
     Write-WeaveCheck "Checking WSL version for '$script:DistroName'."
 
+    $listResult = Invoke-WeaveWslCommand -Arguments @(
+        "--list",
+        "--verbose"
+    ) -CaptureOutput
+
     $verboseOutput = @(
-        & $script:WslExecutable --list --verbose 2>$null |
+        $listResult.Output |
             ForEach-Object {
                 $_ -replace [char]0, ""
             }
     )
 
-    if ($LASTEXITCODE -ne 0) {
+    if ($listResult.ExitCode -ne 0) {
         throw "Failed to inspect the '$script:DistroName' WSL version."
     }
 
@@ -403,9 +539,13 @@ function Ensure-WeaveDistroUsesWsl2 {
 
     Write-WeaveAction "Converting '$script:DistroName' to WSL2."
 
-    & $script:WslExecutable --set-version $script:DistroName 2
+    $setVersionResult = Invoke-WeaveWslCommand -Arguments @(
+        "--set-version",
+        $script:DistroName,
+        "2"
+    )
 
-    if ($LASTEXITCODE -ne 0) {
+    if ($setVersionResult.ExitCode -ne 0) {
         throw "Failed to convert '$script:DistroName' to WSL2."
     }
 
@@ -431,19 +571,31 @@ EOF
     Invoke-WeaveWslScript -Script $systemdConfiguration -FailureMessage "Failed to configure systemd inside '$script:DistroName'."
 
     Write-WeaveAction "Restarting '$script:DistroName' so the systemd configuration takes effect."
-    & $script:WslExecutable --terminate $script:DistroName
+    $terminateResult = Invoke-WeaveWslCommand -Arguments @(
+        "--terminate",
+        $script:DistroName
+    ) -Quiet
 
-    if ($LASTEXITCODE -ne 0) {
+    if ($terminateResult.ExitCode -ne 0) {
         throw "Failed to restart the '$script:DistroName' WSL distribution."
     }
 
     $systemdReady = $false
 
     for ($attempt = 1; $attempt -le 10; $attempt++) {
-        $pidOne = & $script:WslExecutable --distribution $script:DistroName --user root -- /bin/sh -lc 'ps -p 1 -o comm=' 2>$null
+        $pidResult = Invoke-WeaveWslCommand -Arguments @(
+            "--distribution",
+            $script:DistroName,
+            "--user",
+            "root",
+            "--",
+            "/bin/sh",
+            "-lc",
+            "ps -p 1 -o comm="
+        ) -CaptureOutput
 
-        if ($LASTEXITCODE -eq 0) {
-            $pidOne = (($pidOne -join "").Trim())
+        if ($pidResult.ExitCode -eq 0) {
+            $pidOne = (($pidResult.Output -join "").Trim())
 
             if ($pidOne -eq "systemd") {
                 $systemdReady = $true
@@ -563,9 +715,17 @@ function Assert-DockerRuntimeHealthy {
     $dockerReady = $false
 
     for ($attempt = 1; $attempt -le 15; $attempt++) {
-        & $script:WslExecutable --distribution $script:DistroName --user root -- docker info *> $null
+        $dockerResult = Invoke-WeaveWslCommand -Arguments @(
+            "--distribution",
+            $script:DistroName,
+            "--user",
+            "root",
+            "--",
+            "docker",
+            "info"
+        ) -Quiet
 
-        if ($LASTEXITCODE -eq 0) {
+        if ($dockerResult.ExitCode -eq 0) {
             $dockerReady = $true
             break
         }
@@ -581,13 +741,22 @@ function Assert-DockerRuntimeHealthy {
     Write-WeaveSuccess "Docker Engine is reachable."
 
     Write-WeaveCheck "Verifying Docker Compose plugin."
-    $composeVersion = & $script:WslExecutable --distribution $script:DistroName --user root -- docker compose version 2>$null
+    $composeResult = Invoke-WeaveWslCommand -Arguments @(
+        "--distribution",
+        $script:DistroName,
+        "--user",
+        "root",
+        "--",
+        "docker",
+        "compose",
+        "version"
+    ) -CaptureOutput
 
-    if ($LASTEXITCODE -ne 0) {
+    if ($composeResult.ExitCode -ne 0) {
         throw "Docker Compose plugin is not available inside '$script:DistroName'."
     }
 
-    Write-WeaveSuccess (($composeVersion -join " ").Trim())
+    Write-WeaveSuccess (($composeResult.Output -join " ").Trim())
 }
 
 
@@ -631,6 +800,7 @@ $script:DistroInstallDirectory = $DistroInstallDirectory
 $script:BootstrapStatePath = $BootstrapStatePath
 $script:BootstrapStateSchemaVersion = $BootstrapStateSchemaVersion
 $script:RebootRequiredExitCode = $RebootRequiredExitCode
+$script:RootSessionWarningShown = $false
 
 Write-WeaveStep "Starting Windows runtime bootstrap for WEAVE CBT."
 Ensure-WslAvailable
