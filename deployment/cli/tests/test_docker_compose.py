@@ -1,10 +1,20 @@
 import tempfile
 import unittest
+from collections.abc import Sequence
 from pathlib import Path
 from unittest.mock import patch
 
 from weave_cli.docker.compose import DockerCompose, DockerComposeError
+from weave_cli.docker.provider import DockerCommandProvider
 from weave_cli.docker.runtime import CommandResult, DockerRuntime
+
+
+class PassthroughProvider(DockerCommandProvider):
+    def build_command(self, arguments: Sequence[str]) -> list[str]:
+        return ["docker", *arguments]
+
+    def translate_path(self, path: Path) -> str:
+        return str(path)
 
 
 class DockerComposeTests(unittest.TestCase):
@@ -15,9 +25,11 @@ class DockerComposeTests(unittest.TestCase):
         self.env_file = directory / "runtime.env"
         self.compose_file.touch()
         self.env_file.touch()
+        self.runtime = DockerRuntime(PassthroughProvider())
         self.compose = DockerCompose(
             compose_file=self.compose_file,
             env_file=self.env_file,
+            runtime=self.runtime,
         )
 
     def tearDown(self):
@@ -31,7 +43,7 @@ class DockerComposeTests(unittest.TestCase):
         expected_timeout: int | None = 30,
     ) -> None:
         with patch.object(
-            DockerRuntime,
+            self.runtime,
             "run_docker_command",
             return_value=CommandResult(0, "", ""),
         ) as run:
@@ -76,6 +88,21 @@ class DockerComposeTests(unittest.TestCase):
             ["down", "--volumes", "--remove-orphans"],
             expected_timeout=None,
         )
+
+    def test_follow_streams_without_a_command_timeout(self):
+        with patch.object(
+            self.runtime,
+            "run_docker_command",
+            return_value=CommandResult(0, "", ""),
+        ) as run:
+            self.compose.logs(service="api", follow=True)
+
+        self.assertEqual(
+            run.call_args.kwargs["arguments"][-3:],
+            ["logs", "-f", "api"],
+        )
+        self.assertTrue(run.call_args.kwargs["stream"])
+        self.assertIsNone(run.call_args.kwargs["timeout"])
 
     def test_missing_compose_file_is_rejected(self):
         self.compose_file.unlink()

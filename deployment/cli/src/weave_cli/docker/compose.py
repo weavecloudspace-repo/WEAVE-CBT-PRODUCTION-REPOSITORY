@@ -23,10 +23,12 @@ class DockerCompose:
         *,
         compose_file: Path,
         env_file: Path,
+        runtime: DockerRuntime,
         project_name: str = "weave-cbt",
     ) -> None:
         self.compose_file = compose_file
         self.env_file = env_file
+        self.runtime = runtime
         self.project_name = project_name
 
     def _run_compose_command(
@@ -51,13 +53,16 @@ class DockerCompose:
                 f"Environment file '{self.env_file}' does not exist."
             )
 
-        result = DockerRuntime.run_docker_command(
+        compose_path = self.runtime.translate_path(self.compose_file)
+        env_path = self.runtime.translate_path(self.env_file)
+
+        result = self.runtime.run_docker_command(
             arguments=[
                 "compose",
                 "-f",
-                str(self.compose_file),
+                compose_path,
                 "--env-file",
-                str(self.env_file),
+                env_path,
                 "-p",
                 self.project_name,
             ]
