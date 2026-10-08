@@ -857,7 +857,10 @@ export DEBIAN_FRONTEND=noninteractive
 
 # Avoid waiting indefinitely on apt locks or unresponsive download servers.
 apt_weave() {
-    apt-get -o DPkg::Lock::Timeout=120         -o Acquire::Retries=3         -o Acquire::http::Timeout=30         -o Acquire::https::Timeout=30 "$@"
+    apt-get -o DPkg::Lock::Timeout=120 \
+        -o Acquire::Retries=3 \
+        -o Acquire::http::Timeout=30 \
+        -o Acquire::https::Timeout=30 "$@"
 }
 
 echo "[WEAVE][ACTION] Refreshing Ubuntu package metadata (network retries enabled)."
@@ -883,7 +886,9 @@ done
 
 echo "[WEAVE][ACTION] Configuring Docker's official Ubuntu repository."
 install -m 0755 -d /etc/apt/keyrings
-curl --fail --silent --show-error --location --retry 5 --retry-delay 2     --retry-connrefused --connect-timeout 20 --max-time 120     https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+curl --fail --silent --show-error --location --retry 5 --retry-delay 2 \
+    --retry-connrefused --connect-timeout 20 --max-time 120 \
+    https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc
 
 . /etc/os-release
