@@ -254,7 +254,10 @@ function Invoke-WeaveWslCommand {
 
         [switch]$CaptureOutput,
 
-        [switch]$Quiet
+        [switch]$Quiet,
+
+        [AllowNull()]
+        [string]$InputText = $null
     )
 
     $startInfo = New-Object Diagnostics.ProcessStartInfo
@@ -273,6 +276,7 @@ function Invoke-WeaveWslCommand {
     $startInfo.Arguments = $quotedArguments -join ' '
 
     $startInfo.RedirectStandardError = $true
+    $startInfo.RedirectStandardInput = ($null -ne $InputText)
 
     if ($CaptureOutput -or $Quiet) {
         $startInfo.RedirectStandardOutput = $true
@@ -289,6 +293,11 @@ function Invoke-WeaveWslCommand {
     try {
         if (-not $process.Start()) {
             throw "Failed to start wsl.exe."
+        }
+
+        if ($startInfo.RedirectStandardInput) {
+            $process.StandardInput.Write($InputText)
+            $process.StandardInput.Close()
         }
 
         # Consume redirected streams asynchronously to avoid pipe deadlocks.
@@ -381,19 +390,15 @@ function Invoke-WeaveWslScript {
         [string]$FailureMessage
     )
 
-    $scriptBytes = [Text.Encoding]::UTF8.GetBytes($Script)
-    $encodedScript = [Convert]::ToBase64String($scriptBytes)
-
     $result = Invoke-WeaveWslCommand -Arguments @(
         "--distribution",
         $script:DistroName,
         "--user",
         "root",
         "--",
-        "/bin/sh",
-        "-lc",
-        "printf '%s' '$encodedScript' | base64 -d | /bin/bash"
-    )
+        "/bin/bash",
+        "-s"
+    ) -InputText $Script
 
     if ($result.ExitCode -ne 0) {
         throw "$FailureMessage WSL exited with code $($result.ExitCode)."
@@ -432,16 +437,30 @@ function Assert-WeaveDistroIsUbuntu {
         "--user",
         "root",
         "--",
-        "/bin/sh",
-        "-lc",
-        '. /etc/os-release; printf "%s" "$ID"'
+        "cat",
+        "/etc/os-release"
     ) -CaptureOutput
 
     if ($result.ExitCode -ne 0) {
-        throw "Failed to inspect the '$script:DistroName' WSL distribution."
+        throw "Failed to read /etc/os-release inside '$script:DistroName'."
     }
 
-    $distributionId = (($result.Output -join "").Trim()).ToLowerInvariant()
+    $idLine = $result.Output |
+        Where-Object {
+            $_ -match '^ID='
+        } |
+        Select-Object -First 1
+
+    if (-not $idLine) {
+        throw (
+            "The '$script:DistroName' WSL distribution does not expose an ID " +
+            "in /etc/os-release."
+        )
+    }
+
+    $distributionId = (
+        ($idLine -replace '^ID=', '').Trim().Trim('"').Trim("'")
+    ).ToLowerInvariant()
 
     if ($distributionId -ne "ubuntu") {
         throw (
@@ -452,7 +471,6 @@ function Assert-WeaveDistroIsUbuntu {
 
     Write-WeaveSuccess "'$script:DistroName' is running Ubuntu."
 }
-
 
 function Ensure-WslAvailable {
     Write-WeaveStep "Checking Windows Subsystem for Linux."
@@ -669,9 +687,8 @@ EOF
             "--user",
             "root",
             "--",
-            "/bin/sh",
-            "-lc",
-            "ps -p 1 -o comm="
+            "cat",
+            "/proc/1/comm"
         ) -CaptureOutput
 
         if ($pidResult.ExitCode -eq 0) {
@@ -702,28 +719,15 @@ EOF
 function Repair-RootSystemdUserSession {
     Write-WeaveCheck "Checking root systemd user session inside '$script:DistroName'."
 
-    $checkScript = @'
-set -eu
-
-if systemctl is-active --quiet user@0.service; then
-    printf 'active'
-else
-    printf 'inactive'
-fi
-'@
-
-    $checkBytes = [Text.Encoding]::UTF8.GetBytes($checkScript)
-    $checkEncoded = [Convert]::ToBase64String($checkBytes)
-
     $checkResult = Invoke-WeaveWslCommand -Arguments @(
         "--distribution",
         $script:DistroName,
         "--user",
         "root",
         "--",
-        "/bin/sh",
-        "-lc",
-        "printf '%s' '$checkEncoded' | base64 -d | /bin/bash"
+        "systemctl",
+        "is-active",
+        "user@0.service"
     ) -CaptureOutput
 
     if ($checkResult.ExitCode -eq 0 -and (($checkResult.Output -join "").Trim()) -eq "active") {
