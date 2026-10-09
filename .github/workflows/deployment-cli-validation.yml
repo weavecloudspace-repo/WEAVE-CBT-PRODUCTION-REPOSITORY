@@ -9,6 +9,9 @@ on:
       - "deployment/cli/tests/test_wsl_session.py"
       - "deployment/cli/tests/test_commands.py"
       - "deployment/cli/tests/test_entrypoint.py"
+      - "deployment/cli/tests/test_database_rollback.py"
+      - "deployment/cli/tests/test_docker_compose.py"
+      - "deployment/cli/src/weave_cli/docker/**"
       - "deployment/cli/src/weave_cli/main.py"
       - "deployment/pyproject.toml"
       - "deployment/uv.lock"
@@ -20,6 +23,9 @@ on:
       - "deployment/cli/tests/test_wsl_session.py"
       - "deployment/cli/tests/test_commands.py"
       - "deployment/cli/tests/test_entrypoint.py"
+      - "deployment/cli/tests/test_database_rollback.py"
+      - "deployment/cli/tests/test_docker_compose.py"
+      - "deployment/cli/src/weave_cli/docker/**"
       - "deployment/cli/src/weave_cli/main.py"
       - "deployment/pyproject.toml"
       - "deployment/uv.lock"
@@ -47,5 +53,8 @@ jobs:
           uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_entrypoint.py -v
           uv run --project deployment weave --help
           uv run --project deployment weave install --help
+          uv run --project deployment weave rollback --help
+          uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_database_rollback.py -v
+          uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_docker_compose.py -v
       - name: Verify Windows runtime session task safety
         run: uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_wsl_session.py -v
