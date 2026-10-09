@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 BLUE=$(printf '\033[1;34m'); GREEN=$(printf '\033[1;32m'); RED=$(printf '\033[1;31m'); RESET=$(printf '\033[0m')
-if [ ! -t 1 ] || [ -n "$NO_COLOR" ]; then BLUE=''; GREEN=''; RED=''; RESET=''; fi
+if [ ! -t 1 ] || [ -n "$(printenv NO_COLOR 2>/dev/null || true)" ]; then BLUE=''; GREEN=''; RED=''; RESET=''; fi
 echo "$BLUE WEAVE CBT CLI MANAGER SETUP $RESET"
 if [ "$(id -u)" -ne 0 ]; then
     echo "$RED [ERROR] Run: sudo ./install.sh $RESET" >&2

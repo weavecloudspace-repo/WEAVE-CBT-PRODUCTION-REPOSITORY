@@ -59,24 +59,24 @@ class DockerComposeTests(unittest.TestCase):
         self._assert_command(
             "pull_weave_image",
             ["pull", "bootstrap", "api", "worker"],
-            expected_timeout=None,
+            expected_timeout=1200,
         )
 
     def test_pull_infrastructure_images_are_scoped(self):
         self._assert_command(
             "pull_postgres_image",
             ["pull", "postgres"],
-            expected_timeout=None,
+            expected_timeout=1200,
         )
         self._assert_command(
             "pull_redis_image",
             ["pull", "redis"],
-            expected_timeout=None,
+            expected_timeout=1200,
         )
         self._assert_command(
             "pull_nginx_image",
             ["pull", "nginx"],
-            expected_timeout=None,
+            expected_timeout=1200,
         )
 
     def test_config_validates_quietly(self):

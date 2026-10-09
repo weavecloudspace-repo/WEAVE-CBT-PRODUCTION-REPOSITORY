@@ -83,7 +83,7 @@ class DockerCompose:
             ]
             + command,
             stream=stream,
-            timeout=timeout,
+            timeout=None if stream and timeout == DEFAULT_TIMEOUT else timeout,
         )
 
         if not result.successful:
