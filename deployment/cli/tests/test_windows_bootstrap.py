@@ -38,6 +38,24 @@ class WindowsWslEmbeddedBashTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_windows_prerequisite_package_network_steps_are_bounded(self):
+        self.assertIn(
+            'timeout --signal=TERM --kill-after=10s 600s "${APT_PREREQ[@]}" update',
+            self.ps1,
+        )
+        self.assertIn(
+            'timeout --signal=TERM --kill-after=10s 600s "${APT_PREREQ[@]}" --download-only install -y dbus-user-session libpam-systemd',
+            self.ps1,
+        )
+        self.assertIn('"${APT_PREREQ[@]}" --no-download install -y', self.ps1)
+        self.assertIn(
+            'timeout --signal=TERM --kill-after=10s 600s "${APT_GET[@]}" --download-only install -y ca-certificates curl',
+            self.ps1,
+        )
+        self.assertIn(
+            "timeout --signal=TERM --kill-after=10s 180s systemctl start user@0.service",
+            self.ps1,
+        )
     def test_windows_bootstrap_bounds_docker_download_metadata_and_daemon_start(self):
         self.assertIn(
             'timeout --signal=TERM --kill-after=10s 600s "${APT_GET[@]}" update',

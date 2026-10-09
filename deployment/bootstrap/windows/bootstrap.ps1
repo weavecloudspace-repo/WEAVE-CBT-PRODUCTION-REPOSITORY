@@ -1029,8 +1029,11 @@ done
 
 if [ "$needs_packages" -eq 1 ]; then
     echo "[WEAVE][ACTION] Installing systemd user-session prerequisites."
-    apt-get update
-    apt-get install -y dbus-user-session libpam-systemd
+    # Apply a bounded deadline only to network metadata/downloads, never dpkg.
+    APT_PREREQ=(apt-get -o DPkg::Lock::Timeout=120 -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+    timeout --signal=TERM --kill-after=10s 600s "${APT_PREREQ[@]}" update
+    timeout --signal=TERM --kill-after=10s 600s "${APT_PREREQ[@]}" --download-only install -y dbus-user-session libpam-systemd
+    "${APT_PREREQ[@]}" --no-download install -y dbus-user-session libpam-systemd
 else
     echo "[WEAVE][SKIP] systemd user-session prerequisite packages are already installed."
 fi
@@ -1045,7 +1048,7 @@ chmod 0700 /run/user/0
 systemctl reset-failed user@0.service >/dev/null 2>&1 || true
 
 echo "[WEAVE][ACTION] Starting root systemd user manager."
-systemctl start user@0.service
+timeout --signal=TERM --kill-after=10s 180s systemctl start user@0.service
 
 if ! systemctl is-active --quiet user@0.service; then
     echo "[WEAVE][ERROR] user@0.service failed to become active." >&2
@@ -1118,8 +1121,10 @@ apt_weave() {
 
 echo "[WEAVE][ACTION] Refreshing Ubuntu package metadata (network retries enabled)."
 timeout --signal=TERM --kill-after=10s 600s "${APT_GET[@]}" update
-echo "[WEAVE][ACTION] Installing repository prerequisites."
-apt_weave install -y ca-certificates curl
+echo "[WEAVE][ACTION] Downloading repository prerequisites with a bounded network phase."
+timeout --signal=TERM --kill-after=10s 600s "${APT_GET[@]}" --download-only install -y ca-certificates curl
+echo "[WEAVE][ACTION] Installing repository prerequisites from local cache."
+apt_weave --no-download install -y ca-certificates curl
 
 echo "[WEAVE][CHECK] Removing packages that can conflict with Docker CE."
 for package in \
