@@ -107,10 +107,19 @@ def perform_install(*, verify_only: bool = False) -> None:
             winreg.SetValueEx(key, "Path", 0, kind if kind in (winreg.REG_SZ, winreg.REG_EXPAND_SZ) else winreg.REG_EXPAND_SZ, result)
 
     try:
-        result = ctypes.c_ulong()
-        ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x001A, 0, "Environment", 0x0002, 5000, ctypes.byref(result))
-    except (AttributeError, OSError):
-        pass
+        user32 = ctypes.windll.user32
+        notify = user32.SendMessageTimeoutW
+        notify.argtypes = (
+            ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t, ctypes.c_wchar_p,
+            ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_size_t),
+        )
+        notify.restype = ctypes.c_size_t
+        response = ctypes.c_size_t()
+        status = notify(0xFFFF, 0x001A, 0, "Environment", 0x0002, 5000, ctypes.byref(response))
+        if not status:
+            output("STEP", "PATH was saved; open a NEW PowerShell session to load it.")
+    except (AttributeError, OSError, TypeError):
+        output("STEP", "PATH was saved; open a NEW PowerShell session to load it.")
     output("OK", "Machine PATH configured.")
 
     check = subprocess.run([str(directory / "weave.exe"), "--help"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=45, check=False)
