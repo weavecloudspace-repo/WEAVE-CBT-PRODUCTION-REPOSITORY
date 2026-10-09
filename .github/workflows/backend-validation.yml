@@ -16,9 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    # Pull Docker Official Images from their verified Amazon ECR Public mirror.
+    # Docker Hub auth timeouts previously prevented tests from even starting.
     services:
       postgres:
-        image: postgres:16-alpine
+        image: public.ecr.aws/docker/library/postgres:16-alpine
         env:
           POSTGRES_USER: weave
           POSTGRES_PASSWORD: weave
@@ -31,7 +33,7 @@ jobs:
           --health-timeout=5s
           --health-retries=5
       redis:
-        image: redis:7-alpine
+        image: public.ecr.aws/docker/library/redis:7-alpine
         ports:
           - 6379:6379
         options: >-
