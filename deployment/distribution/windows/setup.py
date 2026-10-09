@@ -12,6 +12,7 @@ import atexit
 import zipfile
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 from colorama import Fore, Style, just_fix_windows_console
 
 just_fix_windows_console()
@@ -68,9 +69,29 @@ def perform_install(*, verify_only: bool = False) -> None:
             raise RuntimeError(f"Bundled release manifest is unreadable: {exc}") from exc
         if not isinstance(metadata, dict) or metadata.get("channel") not in ("production", "staging"):
             raise RuntimeError("Bundled release manifest has an invalid channel.")
+        if not isinstance(metadata.get("manager_version"), str) or not metadata["manager_version"].strip():
+            raise RuntimeError("Bundled release manifest does not specify the manager version.")
+        api_url = metadata.get("weave_api_base_url")
+        if not isinstance(api_url, str) or urlsplit(api_url).scheme != "https" or not urlsplit(api_url).hostname:
+            raise RuntimeError("Bundled WEAVE API URL must use HTTPS.")
         image = metadata.get("cbt_image", "")
-        if not isinstance(image, str) or "@sha256:" not in image or len(image.rsplit("@sha256:", 1)[-1]) != 64:
+        digest = image.rsplit("@sha256:", 1)[-1] if isinstance(image, str) else ""
+        if (not isinstance(image, str) or not image.startswith("ghcr.io/")
+                or "@sha256:" not in image or len(digest) != 64
+                or any(char not in "0123456789abcdef" for char in digest.lower())):
             raise RuntimeError("Bundled Docker image must have an immutable SHA-256 digest.")
+        ubuntu = metadata.get("ubuntu")
+        if not isinstance(ubuntu, dict):
+            raise RuntimeError("Bundled release manifest must pin the Ubuntu WSL archive.")
+        ubuntu_url = ubuntu.get("download_url", "")
+        ubuntu_digest = ubuntu.get("sha256", "")
+        if (not isinstance(ubuntu_url, str) or urlsplit(ubuntu_url).scheme != "https"
+                or urlsplit(ubuntu_url).hostname != "cloud-images.ubuntu.com"
+                or not urlsplit(ubuntu_url).path.endswith(".tar.gz")):
+            raise RuntimeError("Bundled Ubuntu WSL archive must use Canonical HTTPS.")
+        if (not isinstance(ubuntu_digest, str) or len(ubuntu_digest) != 64
+                or any(char not in "0123456789abcdef" for char in ubuntu_digest.lower())):
+            raise RuntimeError("Bundled Ubuntu archive must have a valid SHA-256 checksum.")
         check = subprocess.run([str(source), "--help"], stdout=subprocess.DEVNULL,
                                stderr=subprocess.PIPE, text=True, timeout=60, check=False)
         if check.returncode != 0:

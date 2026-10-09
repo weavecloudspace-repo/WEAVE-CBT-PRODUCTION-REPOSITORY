@@ -52,6 +52,12 @@ class WindowsInstallerContractTests(unittest.TestCase):
             manifest = json.dumps({
                 "channel": "staging",
                 "cbt_image": "ghcr.io/example/cbt@sha256:" + "a" * 64,
+                "manager_version": "1.0.1",
+                "weave_api_base_url": "https://weave-staging-api-staging.up.railway.app",
+                "ubuntu": {
+                    "download_url": "https://cloud-images.ubuntu.com/wsl/releases/noble/20240423/ubuntu-noble-wsl-amd64-24.04lts.rootfs.tar.gz",
+                    "sha256": "2a790896740b14d637dbdc583cce1ba081ac53b9e9cdb46dc09a2f73abbd9934",
+                },
             })
             with zipfile.ZipFile(archive, 'w') as bundle:
                 bundle.writestr('weave.exe', b'fake executable for mocked test')
