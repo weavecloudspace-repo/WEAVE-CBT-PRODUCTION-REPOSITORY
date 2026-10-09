@@ -262,7 +262,9 @@ EOF
     "${APT_GET[@]}" update
 
     local candidate
-    candidate="$(apt-cache policy docker-ce | awk '/Candidate:/ { print $2; exit }')"
+    # Do not exit awk early: apt-cache may get SIGPIPE (141) under pipefail.
+    # Consume all versions even after reading the first Candidate line.
+    candidate="$(apt-cache policy docker-ce | awk '/Candidate:/ && !found { print $2; found=1 }')"
 
     if [ -z "$candidate" ] || [ "$candidate" = "(none)" ]; then
         die "Docker repository has no docker-ce package for $DISTRO_ID '$DISTRO_CODENAME' on '$ARCHITECTURE'."
