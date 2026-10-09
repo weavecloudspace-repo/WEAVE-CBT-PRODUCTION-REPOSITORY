@@ -260,6 +260,9 @@ function Invoke-WeaveWslCommand {
 
         [switch]$Quiet,
 
+        [ValidateRange(0, 3600)]
+        [int]$TimeoutSeconds = 0,
+
         [AllowNull()]
         [string]$InputText = $null
     )
@@ -305,7 +308,16 @@ function Invoke-WeaveWslCommand {
 
         if ($CaptureOutput -or $Quiet) {
             $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-            $process.WaitForExit()
+            if ($TimeoutSeconds -gt 0) {
+                if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+                    $process.Kill()
+                    $process.WaitForExit()
+                    throw "WSL operation timed out after $TimeoutSeconds seconds."
+                }
+            }
+            else {
+                $process.WaitForExit()
+            }
             $stdoutText = $stdoutTask.GetAwaiter().GetResult()
         }
         else {
@@ -316,6 +328,11 @@ function Invoke-WeaveWslCommand {
             $elapsedWatch = [Diagnostics.Stopwatch]::StartNew()
 
             while ($true) {
+                if ($TimeoutSeconds -gt 0 -and $elapsedWatch.Elapsed.TotalSeconds -ge $TimeoutSeconds) {
+                    $process.Kill()
+                    $process.WaitForExit()
+                    throw "WSL operation timed out after $TimeoutSeconds seconds."
+                }
                 if ($outputLineTask.Wait(1000)) {
                     $line = $outputLineTask.GetAwaiter().GetResult()
 
@@ -335,6 +352,11 @@ function Invoke-WeaveWslCommand {
             }
 
             while (-not $process.WaitForExit(1000)) {
+                if ($TimeoutSeconds -gt 0 -and $elapsedWatch.Elapsed.TotalSeconds -ge $TimeoutSeconds) {
+                    $process.Kill()
+                    $process.WaitForExit()
+                    throw "WSL operation timed out after $TimeoutSeconds seconds."
+                }
                 if ($idleWatch.Elapsed.TotalSeconds -ge 30) {
                     $seconds = [int]$elapsedWatch.Elapsed.TotalSeconds
                     Write-WeaveWait "Waiting for WSL command to finish ($seconds seconds elapsed)."
@@ -523,6 +545,33 @@ function Test-WindowsServicingRebootPending {
 }
 
 
+function Assert-WindowsWsl2Compatibility {
+    Write-WeaveCheck "Checking Windows WSL2 compatibility."
+    $operatingSystem = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+    $build = [int]$operatingSystem.BuildNumber
+    if ($build -lt 19041) {
+        throw (
+            "Windows build $build does not meet the WEAVE CBT WSL2 baseline. " +
+            "Use Windows 10 version 2004 or later, Windows 11, or Windows Server 2022/2025. " +
+            "Windows Server 2019 does not support this WSL2 Docker architecture."
+        )
+    }
+    if ($env:PROCESSOR_ARCHITECTURE -ne "AMD64") {
+        throw "This installer requires AMD64 Windows and supported virtualization."
+    }
+    try {
+        $processor = Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop | Select-Object -First 1
+        if ($null -ne $processor -and $processor.VirtualizationFirmwareEnabled -eq $false) {
+            Write-WeaveWarning "Virtualization may be disabled or hidden by a VM. Check firmware settings or nested virtualization."
+        }
+    }
+    catch {
+        Write-WeaveWarning "Cannot inspect virtualization firmware. WSL2 import will verify this requirement."
+    }
+    Write-WeaveSuccess "Windows host build and architecture are compatible."
+}
+
+
 function Ensure-WslWindowsFeatures {
     Write-WeaveCheck "Checking Windows features required by WSL2."
 
@@ -619,7 +668,7 @@ function Ensure-WslAvailable {
 
     # A successful wsl --status alone does not prove servicing has completed.
     Ensure-WslWindowsFeatures
-    $statusResult = Invoke-WeaveWslCommand -Arguments @("--status") -Quiet
+    $statusResult = Invoke-WeaveWslCommand -Arguments @("--status") -Quiet -TimeoutSeconds 90
     if ($statusResult.ExitCode -eq 0) {
         Remove-BootstrapState
         Write-WeaveSuccess "WSL runtime is available."
@@ -631,10 +680,10 @@ function Ensure-WslAvailable {
     # Fresh Windows Server machines may reject --install until these features
     # have been enabled and the host restarted.
     Write-WeaveAction "Installing Microsoft WSL without a default Linux distribution."
-    $installResult = Invoke-WeaveWslCommand -Arguments @("--install", "--no-distribution")
+    $installResult = Invoke-WeaveWslCommand -Arguments @("--install", "--no-distribution") -TimeoutSeconds 600
     if ($installResult.ExitCode -ne 0 -and $installResult.ExitCode -ne $script:RebootRequiredExitCode) {
         Write-WeaveWarning "Default WSL installation failed; retrying official web-download method."
-        $installResult = Invoke-WeaveWslCommand -Arguments @("--install", "--no-distribution", "--web-download")
+        $installResult = Invoke-WeaveWslCommand -Arguments @("--install", "--no-distribution", "--web-download") -TimeoutSeconds 600
     }
     if ($installResult.ExitCode -eq $script:RebootRequiredExitCode) {
         Exit-RebootRequired -Message "Windows needs a restart to finish Microsoft WSL installation."
@@ -646,7 +695,7 @@ function Ensure-WslAvailable {
             "If this Windows host is a virtual machine, verify nested virtualization is enabled."
         )
     }
-    $statusResult = Invoke-WeaveWslCommand -Arguments @("--status") -Quiet
+    $statusResult = Invoke-WeaveWslCommand -Arguments @("--status") -Quiet -TimeoutSeconds 90
     if ($statusResult.ExitCode -ne 0) {
         Exit-RebootRequired -Message "Microsoft WSL installation finished but is not ready; restart Windows and rerun weave install."
     }
@@ -754,7 +803,7 @@ function Ensure-WeaveDistro {
         $resolvedRootfs,
         "--version",
         "2"
-    )
+    ) -TimeoutSeconds 1800
 
     if ($importResult.ExitCode -ne 0) {
         throw "Failed to import the '$script:DistroName' WSL distribution."
@@ -1289,6 +1338,7 @@ $script:RebootRequiredExitCode = $RebootRequiredExitCode
 $script:RootSessionWarningShown = $false
 
 Write-WeaveStep "Starting Windows runtime bootstrap for WEAVE CBT."
+Assert-WindowsWsl2Compatibility
 Ensure-WslAvailable
 Ensure-WeaveDistro
 Ensure-WeaveDistroUsesWsl2
