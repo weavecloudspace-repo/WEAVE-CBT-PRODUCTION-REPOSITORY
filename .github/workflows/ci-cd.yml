@@ -182,6 +182,8 @@ jobs:
           python deployment\distribution\make_manifest.py --channel $env:CHANNEL --image $env:CBT_IMAGE --version "1.0.$env:GITHUB_RUN_NUMBER" --destination build\payload\assets\release-manifest.json
           if ($LASTEXITCODE -ne 0) { throw "Manifest generation failed." }
           $name = if ($env:CHANNEL -eq 'staging') { 'WEAVE-CBT-Staging-Setup.exe' } else { 'WEAVE-CBT-Setup.exe' }
+          & (Resolve-Path "build\payload\weave.exe").Path release
+          if ($LASTEXITCODE -ne 0) { throw "Bundled CLI cannot resolve Windows release assets." }
           Compress-Archive -Path build\payload\* -DestinationPath build\payload.zip -Force
           python -m nuitka --mode=onefile --assume-yes-for-downloads --include-data-files=build/payload.zip=payload.zip --output-dir=dist --output-filename=$name deployment\distribution\windows\setup.py
           if ($LASTEXITCODE -ne 0) { throw "Windows setup build failed." }
@@ -202,11 +204,13 @@ jobs:
           cp deployment/compose.yaml build/package/weave-cbt/assets/
           cp -R deployment/nginx deployment/bootstrap build/package/weave-cbt/assets/
           python deployment/distribution/make_manifest.py --channel "$CHANNEL" --image "$CBT_IMAGE" --version "1.0.$GITHUB_RUN_NUMBER" --destination build/package/weave-cbt/assets/release-manifest.json
+          build/package/weave-cbt/weave release
           tar -C build/package -czf "dist/weave-cbt-$CHANNEL-linux-amd64.tar.gz" weave-cbt
           test -s "dist/weave-cbt-$CHANNEL-linux-amd64.tar.gz"
           mkdir -p build/smoke
           tar -C build/smoke -xzf "dist/weave-cbt-$CHANNEL-linux-amd64.tar.gz"
           build/smoke/weave-cbt/weave --help
+          build/smoke/weave-cbt/weave release
           test -f build/smoke/weave-cbt/assets/release-manifest.json
       - uses: actions/upload-artifact@v4
         with:

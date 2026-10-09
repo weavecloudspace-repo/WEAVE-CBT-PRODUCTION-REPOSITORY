@@ -92,7 +92,7 @@ def perform_install(*, verify_only: bool = False) -> None:
         if (not isinstance(ubuntu_digest, str) or len(ubuntu_digest) != 64
                 or any(char not in "0123456789abcdef" for char in ubuntu_digest.lower())):
             raise RuntimeError("Bundled Ubuntu archive must have a valid SHA-256 checksum.")
-        check = subprocess.run([str(source), "--help"], stdout=subprocess.DEVNULL,
+        check = subprocess.run([str(source), "release"], stdout=subprocess.DEVNULL,
                                stderr=subprocess.PIPE, text=True, timeout=60, check=False)
         if check.returncode != 0:
             raise RuntimeError("Embedded weave.exe failed to run: " + (check.stderr or "")[-400:])
@@ -143,7 +143,7 @@ def perform_install(*, verify_only: bool = False) -> None:
         output("STEP", "PATH was saved; open a NEW PowerShell session to load it.")
     output("OK", "Machine PATH configured.")
 
-    check = subprocess.run([str(directory / "weave.exe"), "--help"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=45, check=False)
+    check = subprocess.run([str(directory / "weave.exe"), "release"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=45, check=False)
     if check.returncode != 0:
         raise RuntimeError("Installed CLI did not start: " + (check.stderr or "")[-400:])
     output("OK", "CLI validation completed.")
