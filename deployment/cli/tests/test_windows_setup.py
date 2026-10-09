@@ -36,6 +36,18 @@ class WindowsInstallerContractTests(unittest.TestCase):
         self.assertIn("exit $child.ExitCode", script)
         self.assertNotIn("ShellExecuteW", script)
 
+    def test_declined_uac_keeps_file_explorer_console_visible(self):
+        with (
+            patch.object(setup.sys, "platform", "win32"),
+            patch.object(setup.sys, "argv", ["WEAVE-CBT-Setup.exe"]),
+            patch.object(setup, "admin", return_value=False),
+            patch.object(setup, "request_elevation_and_wait", return_value=1),
+            patch.object(setup, "independent_console", return_value=True),
+            patch("builtins.input", return_value="") as wait,
+        ):
+            self.assertEqual(setup.main(), 1)
+            wait.assert_called_once()
+
     def test_payload_verification_skips_administrator_elevation(self):
         with (
             patch.object(setup.sys, "platform", "win32"),

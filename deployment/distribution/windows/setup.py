@@ -197,9 +197,14 @@ def main() -> int:
             code = request_elevation_and_wait()
         except OSError as exc:
             output("ERROR", f"Unable to launch elevated setup: {exc}")
-            return 1
+            code = 1
         if code != 0:
             output("ERROR", "Elevated setup failed or Windows UAC approval was unavailable.")
+            if independent_console() and "--no-pause" not in sys.argv:
+                try:
+                    input("Press Enter to close...")
+                except EOFError:
+                    pass
         return code
     try:
         perform_install()
