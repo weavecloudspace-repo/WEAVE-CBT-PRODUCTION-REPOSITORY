@@ -122,7 +122,7 @@ def perform_install(*, verify_only: bool = False) -> None:
             current, kind = winreg.QueryValueEx(key, "Path")
         except FileNotFoundError:
             current, kind = "", winreg.REG_EXPAND_SZ
-        entries = {os.path.normcase(os.path.normpath(item.strip().strip('"'))) for item in current.split(";") if item.strip()}
+        entries = {os.path.normcase(os.path.normpath(os.path.expandvars(item.strip().strip('"')))) for item in current.split(";") if item.strip()}
         if os.path.normcase(os.path.normpath(str(directory))) not in entries:
             result = (current.rstrip(";") + ";" if current else "") + str(directory)
             winreg.SetValueEx(key, "Path", 0, kind if kind in (winreg.REG_SZ, winreg.REG_EXPAND_SZ) else winreg.REG_EXPAND_SZ, result)
