@@ -38,6 +38,18 @@ class WindowsWslEmbeddedBashTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_windows_bootstrap_bounds_docker_download_metadata_and_daemon_start(self):
+        self.assertIn(
+            'timeout --signal=TERM --kill-after=10s 600s "${APT_GET[@]}" update',
+            self.ps1,
+        )
+        self.assertEqual(
+            self.ps1.count(
+                "timeout --signal=TERM --kill-after=10s 180s systemctl start docker.service"
+            ),
+            2,
+        )
+        self.assertIn('apt_weave --no-download install -y', self.ps1)
     def test_apt_command_is_initialized_before_watchdog(self):
         self.assertIn("APT_GET=(\n    apt-get", self.script)
         self.assertIn('"${APT_GET[@]}" "$@"', self.script)

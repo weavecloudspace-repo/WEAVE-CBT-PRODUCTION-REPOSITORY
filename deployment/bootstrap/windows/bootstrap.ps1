@@ -1095,7 +1095,7 @@ if command -v docker >/dev/null 2>&1 \
     echo "[WEAVE][ACTION] Enabling and starting Docker services."
     systemctl enable docker.service >/dev/null
     systemctl enable containerd.service >/dev/null 2>&1 || true
-    timeout --signal=TERM 180s systemctl start docker.service
+    timeout --signal=TERM --kill-after=10s 180s systemctl start docker.service
     echo "[WEAVE][OK] Existing Docker installation is ready."
     exit 0
 fi
@@ -1160,7 +1160,7 @@ Signed-By: /etc/apt/keyrings/docker.asc
 EOF
 
 echo "[WEAVE][ACTION] Refreshing package metadata with Docker repository enabled."
-apt_weave update
+timeout --signal=TERM --kill-after=10s 600s "${APT_GET[@]}" update
 
 # Only package downloads are interruptible. Never interrupt dpkg configuration.
 WEAVE_DOWNLOAD_STALL_SECONDS=120
@@ -1301,7 +1301,7 @@ echo "[WEAVE][ACTION] Enabling Docker and containerd services."
 systemctl enable docker.service
 systemctl enable containerd.service
 echo "[WEAVE][ACTION] Starting Docker service."
-systemctl start docker.service
+timeout --signal=TERM --kill-after=10s 180s systemctl start docker.service
 echo "[WEAVE][OK] Docker Engine installation completed."
 '@
 
