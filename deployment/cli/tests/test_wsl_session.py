@@ -76,8 +76,11 @@ class WslSessionTests(unittest.TestCase):
 
     def test_keeper_refreshes_existing_lan_mapping(self):
         generated = task_script("WeaveCBT")
-        self.assertIn("lan --refresh", generated)
-        self.assertIn("exec sleep infinity", generated)
+        match = re.search(r"-EncodedCommand ([A-Za-z0-9+/=]+)", generated)
+        self.assertIsNotNone(match)
+        keeper = base64.b64decode(match.group(1)).decode("utf-16le")
+        self.assertIn("lan --refresh", keeper)
+        self.assertIn("exec sleep infinity", keeper)
         self.assertIn("-AtLogOn", generated)
 
     def test_timeout_is_reported(self):
