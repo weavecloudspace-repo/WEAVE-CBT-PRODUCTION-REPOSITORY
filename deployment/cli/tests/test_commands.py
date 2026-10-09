@@ -129,10 +129,25 @@ class CommandTests(unittest.TestCase):
 
     def test_doctor_is_read_only(self):
         stack = stack_fixture()
-        with patch.object(doctor, "get_stack", return_value=stack):
+        with (
+            patch.object(doctor, "get_stack", return_value=stack),
+            patch.object(doctor, "_probe_local_http") as http,
+        ):
             result = self.invoke(doctor)
         self.assertEqual(result.exit_code, 0, result.output)
+        http.assert_called_once()
         stack.compose.config.assert_called_once()
+        stack.compose.start.assert_not_called()
+
+    def test_doctor_detects_failed_local_browser_route(self):
+        stack = stack_fixture()
+        with (
+            patch.object(doctor, "get_stack", return_value=stack),
+            patch.object(doctor, "_probe_local_http", side_effect=RuntimeError("HTTP failed")),
+        ):
+            result = self.invoke(doctor)
+        self.assertEqual(result.exit_code, 1, result.output)
+        self.assertIn("HTTP failed", result.output)
         stack.compose.start.assert_not_called()
 
     def test_uninstall_without_purge_preserves_volumes(self):
