@@ -20,4 +20,9 @@ $arguments = @('-NoProfile', '-NonInteractive', '-Command', '$input | ForEach-Ob
 $result = Invoke-WeaveWslCommand -Arguments $arguments -InputText $payload -CaptureOutput -TimeoutSeconds 30
 if ($result.ExitCode -ne 0) { throw "Native process failed: $($result.ErrorOutput -join ' ')" }
 if (@($result.Output).Count -lt 600) { throw "Expected 600 echoed lines; got $(@($result.Output).Count)." }
-Write-Output 'Windows PowerShell 5.1 concurrent stdin/stdout regression test passed.'
+$script:StreamLines = 0
+function Write-Host { param([string]$Object) $script:StreamLines++ }
+$streamResult = Invoke-WeaveWslCommand -Arguments $arguments -InputText $payload -TimeoutSeconds 30
+if ($streamResult.ExitCode -ne 0) { throw "Streaming child failed: $($streamResult.ErrorOutput)" }
+if ($script:StreamLines -lt 600) { throw "Expected 600 live streamed lines; got $script:StreamLines" }
+Write-Output 'Windows PowerShell 5.1 captured and streamed native pipe tests passed.'
