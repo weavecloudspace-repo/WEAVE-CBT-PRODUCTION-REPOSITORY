@@ -1,69 +1,37 @@
-"""
-Logs command
-RESPONSIBILITY : Retrieve logs from the deployed services
-"""
-
-
-import sys
+"""View or follow Docker Compose logs for installed WEAVE CBT services."""
 
 import typer
 
-from weave_cli.docker.compose import DockerCompose , DockerComposeError
-from weave_cli.docker.provider import LinuxDockerProvider, WindowsWslDockerProvider
-from weave_cli.docker.runtime import DockerRuntime , DockerRuntimeError
-from weave_cli.installation import InstallationManager , InstallationState, InstallationStateError
-from weave_cli.platforms.linux import LinuxPlatform
-from weave_cli.platforms.windows import WindowsPlatform
+from weave_cli.commands._shared import (
+    COMMAND_ERRORS, SERVICES, banner, error, fail, get_stack, info,
+)
 
 
 def logs(
-    service : str | None = typer.Argument(
-        None, help = "Service to view logs for (api, worker , postgres, redis, nginx)"
+    service: str | None = typer.Argument(
+        None, help="Optional service: api, worker, postgres, redis, nginx, bootstrap."
     ),
+    follow: bool = typer.Option(False, "--follow", "-f", help="Follow live logs."),
+) -> None:
+    """Read WEAVE CBT service logs."""
+    if service is not None and service not in SERVICES:
+        error(f"Unknown service '{service}'. Choose from: {', '.join(SERVICES)}")
+        raise typer.Exit(code=2)
 
-    follow : bool = typer.Option(
-        False, "--follow", "-f", help = "Follow logs in real-time"
-    )
-):
-    """View WEAVE CBT container logs"""
-
-
-    if sys.platform == "win32":
-        platform = WindowsPlatform(wsl_distribution = "WeaveCBT")
-        provider = WindowsWslDockerProvider()
-    elif sys.platform.startswith("linux"):
-        platform = LinuxPlatform()
-        provider = LinuxDockerProvider()
-    else:
-        typer.echo("[WEAVE][ERROR] Unsupported operating system.", err=True)
-        raise typer.Exit(code=1)
-
-
+    banner(f"Logs · {service or 'all services'}")
     try:
-        installation = InstallationManager(platform).load()
-
-
-        compose = DockerCompose(
-            compose_file = installation.install_directory / "compose.yaml",
-            env_file = installation.install_directory / "runtime.env",
-            runtime = DockerRuntime(provider)
-        )
-
-
-        result = compose.logs(service=service, follow=follow)
-
+        stack = get_stack()
+        info("Press Ctrl+C to stop following." if follow else "Retrieving logs...")
+        result = stack.compose.logs(service=service, follow=follow)
         if not follow:
-            if result.stdout:
-                typer.echo(result.stdout)
+            typer.echo(result.stdout or "No logs available.")
             if result.stderr:
                 typer.echo(result.stderr, err=True)
+    except COMMAND_ERRORS as exc:
+        fail(exc)
+    except KeyboardInterrupt:
+        typer.echo()
 
 
-    except (InstallationStateError , DockerComposeError , DockerRuntimeError) as exc:
-        typer.echo(f"[WEAVE][ERROR] {str(exc)}", err=True)
-        raise typer.Exit(code=1) from exc
-
-def register(app : typer.Typer):
-    """Register the logs command with the root CLI"""
-
-    app.command(name = "logs")(logs)
+def register(app: typer.Typer) -> None:
+    app.command(name="logs")(logs)
