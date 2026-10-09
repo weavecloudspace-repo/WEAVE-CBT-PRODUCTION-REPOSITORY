@@ -56,6 +56,11 @@ class WindowsWslEmbeddedBashTests(unittest.TestCase):
             "timeout --signal=TERM --kill-after=10s 180s systemctl start user@0.service",
             self.ps1,
         )
+    def test_successful_wsl_import_cleans_only_automatic_archive(self):
+        self.assertIn("if (-not $RootfsArchive -and (Test-Path -LiteralPath $resolvedRootfs", self.ps1)
+        self.assertIn("Assert-WeaveDistroIsUbuntu", self.ps1)
+        self.assertIn('Remove-Item -LiteralPath $resolvedRootfs -Force -ErrorAction Stop', self.ps1)
+
     def test_windows_bootstrap_bounds_docker_download_metadata_and_daemon_start(self):
         self.assertIn(
             'timeout --signal=TERM --kill-after=10s 600s "${APT_GET[@]}" update',

@@ -906,6 +906,18 @@ function Ensure-WeaveDistro {
 
     Write-WeaveSuccess "'$script:DistroName' was imported successfully."
     Assert-WeaveDistroIsUbuntu
+
+    # A successful WSL import owns its own VHDX. Only remove the verified
+    # automatically downloaded archive; never delete an operator's override.
+    if (-not $RootfsArchive -and (Test-Path -LiteralPath $resolvedRootfs -PathType Leaf)) {
+        try {
+            Remove-Item -LiteralPath $resolvedRootfs -Force -ErrorAction Stop
+            Write-WeaveSuccess "Removed temporary Canonical Ubuntu archive after WSL import."
+        }
+        catch {
+            Write-WeaveWarning "Ubuntu was imported successfully, but archive cache cleanup failed: $($_.Exception.Message)"
+        }
+    }
 }
 
 
