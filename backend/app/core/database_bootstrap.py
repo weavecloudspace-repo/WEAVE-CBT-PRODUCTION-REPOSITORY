@@ -156,9 +156,13 @@ async def verify_database_schema(database_engine: AsyncEngine = engine) -> None:
         )
         await connection.execute(text("SET LOCAL search_path TO public"))
         tables = set(
-            (await connection.execute(text(
-                "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'"
-            ))).scalars()
+            (
+                await connection.execute(
+                    text(
+                        "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'"
+                    )
+                )
+            ).scalars()
         )
         if "alembic_version" not in tables:
             raise RuntimeError(
