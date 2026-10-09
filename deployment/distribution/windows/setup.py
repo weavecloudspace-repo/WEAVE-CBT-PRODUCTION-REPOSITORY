@@ -1,7 +1,9 @@
 """Console-only self-extracting Windows WEAVE CBT CLI Manager installer."""
 from __future__ import annotations
 
+import base64
 import ctypes
+import json
 import os
 import shutil
 import subprocess
@@ -55,6 +57,16 @@ def perform_install() -> None:
         raise RuntimeError("Installer payload incomplete. Redownload from the official WEAVE release.")
 
     directory = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "WeaveCBT"
+    # A staging setup cannot silently replace an existing production manager.
+    old_release = directory / "assets" / "release-manifest.json"
+    if old_release.is_file():
+        try:
+            existing = json.loads(old_release.read_text(encoding="utf-8"))
+            incoming = json.loads((assets / "release-manifest.json").read_text(encoding="utf-8"))
+        except (ValueError, OSError) as exc:
+            raise RuntimeError(f"Cannot verify existing installation channel: {exc}") from exc
+        if existing.get("channel") != incoming.get("channel"):
+            raise RuntimeError("Existing WEAVE CBT Manager belongs to another channel. Refusing to overwrite staging/production assets.")
     directory.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, directory / "weave.exe")
     shutil.copytree(assets, directory / "assets", dirs_exist_ok=True)
@@ -89,6 +101,31 @@ def perform_install() -> None:
     print("\nWEAVE is available from any directory.")
 
 
+def request_elevation_and_wait() -> int:
+    # Windows PowerShell 5.1 ships with supported Windows desktops/servers.
+    # Start-Process -Verb RunAs is the supported UAC path; -Wait -PassThru
+    # propagates the elevated child's real exit code to the caller.
+    def literal(value: str) -> str:
+        return "'" + value.replace("'", "''") + "'"
+
+    command = (
+        "$ErrorActionPreference = 'Stop'; "
+        "try { $child = Start-Process -FilePath " + literal(sys.executable)
+    )
+    if len(sys.argv) > 1:
+        command += " -ArgumentList " + literal(subprocess.list2cmdline(sys.argv[1:]))
+    command += (
+        " -Verb RunAs -Wait -PassThru; exit $child.ExitCode } "
+        "catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }"
+    )
+    encoded = base64.b64encode(command.encode("utf-16le")).decode("ascii")
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+        check=False,
+    )
+    return result.returncode
+
+
 def main() -> int:
     if sys.platform != "win32":
         output("ERROR", "This setup program is for Windows.")
@@ -96,12 +133,14 @@ def main() -> int:
     print(f"\n{BLUE}WEAVE CBT CLI MANAGER SETUP{RESET}\n")
     if not admin():
         output("STEP", "Requesting Administrator elevation through Windows UAC...")
-        args = subprocess.list2cmdline(sys.argv[1:])
-        elevated = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, args, None, 1)
-        if elevated <= 32:
-            output("ERROR", "Administrator elevation was denied or unavailable.")
+        try:
+            code = request_elevation_and_wait()
+        except OSError as exc:
+            output("ERROR", f"Unable to launch elevated setup: {exc}")
             return 1
-        return 0
+        if code != 0:
+            output("ERROR", "Elevated setup failed or Windows UAC approval was unavailable.")
+        return code
     try:
         perform_install()
         return 0
