@@ -6,6 +6,8 @@ on:
     paths:
       - "deployment/cli/src/weave_cli/commands/**"
       - "deployment/cli/src/weave_cli/platforms/**"
+      - "deployment/cli/tests/**"
+      - "deployment/distribution/**"
       - "deployment/cli/tests/test_wsl_session.py"
       - "deployment/cli/tests/test_commands.py"
       - "deployment/cli/tests/test_entrypoint.py"
@@ -20,6 +22,8 @@ on:
     paths:
       - "deployment/cli/src/weave_cli/commands/**"
       - "deployment/cli/src/weave_cli/platforms/**"
+      - "deployment/cli/tests/**"
+      - "deployment/distribution/**"
       - "deployment/cli/tests/test_wsl_session.py"
       - "deployment/cli/tests/test_commands.py"
       - "deployment/cli/tests/test_entrypoint.py"
@@ -58,3 +62,9 @@ jobs:
           uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_docker_compose.py -v
       - name: Verify Windows runtime session task safety
         run: uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_wsl_session.py -v
+      - name: Run complete manager and distribution test suite
+        run: uv run --project deployment python -m unittest discover -s deployment/cli/tests -v
+      - name: Validate Linux installer shell syntax
+        if: runner.os == 'Linux'
+        run: bash -n deployment/distribution/linux/install.sh
+
