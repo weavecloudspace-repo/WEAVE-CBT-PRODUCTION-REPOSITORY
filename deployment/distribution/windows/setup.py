@@ -103,14 +103,15 @@ def perform_install() -> None:
 
 def request_elevation_and_wait() -> int:
     # Windows PowerShell 5.1 ships with supported Windows desktops/servers.
-    # Start-Process -Verb RunAs is the supported UAC path; -Wait -PassThru
+    # Re-launch the original downloaded EXE, never Nuitka\'s temporary onefile
+    # payload executable. -Wait -PassThru
     # propagates the elevated child's real exit code to the caller.
     def literal(value: str) -> str:
         return "'" + value.replace("'", "''") + "'"
 
     command = (
         "$ErrorActionPreference = 'Stop'; "
-        "try { $child = Start-Process -FilePath " + literal(sys.executable)
+        "try { $child = Start-Process -FilePath " + literal(str(Path(sys.argv[0]).resolve()))
     )
     if len(sys.argv) > 1:
         command += " -ArgumentList " + literal(subprocess.list2cmdline(sys.argv[1:]))

@@ -28,6 +28,7 @@ class WindowsInstallerContractTests(unittest.TestCase):
         self.assertEqual(argv[3], "-EncodedCommand")
         script = base64.b64decode(argv[4]).decode("utf-16le")
         self.assertIn("Start-Process", script)
+        self.assertIn("WEAVE-CBT-Setup.exe", script)
         self.assertIn("-Verb RunAs -Wait -PassThru", script)
         self.assertIn("exit $child.ExitCode", script)
         self.assertNotIn("ShellExecuteW", script)
