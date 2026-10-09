@@ -5,6 +5,9 @@ import ctypes
 import os
 import shutil
 import subprocess
+import tempfile
+import atexit
+import zipfile
 import sys
 from pathlib import Path
 from colorama import Fore, Style, just_fix_windows_console
@@ -34,7 +37,18 @@ def independent_console() -> bool:
 
 
 def perform_install() -> None:
-    payload = Path(__file__).resolve().parent / "payload"
+    bundle = Path(__file__).resolve().parent / "payload.zip"
+    if not bundle.is_file():
+        raise RuntimeError("Embedded WEAVE CBT payload.zip is missing.")
+    staging = tempfile.TemporaryDirectory(prefix="weave-cbt-manager-")
+    atexit.register(staging.cleanup)
+    payload = Path(staging.name)
+    with zipfile.ZipFile(bundle) as archive:
+        for member in archive.namelist():
+            # Never unpack a path that can escape the temporary directory.
+            if member.startswith("/") or ".." in Path(member.replace("\\", "/")).parts:
+                raise RuntimeError("Unsafe path in embedded installer payload.")
+        archive.extractall(payload)
     source = payload / "weave.exe"
     assets = payload / "assets"
     if not source.is_file() or not (assets / "compose.yaml").is_file() or not (assets / "release-manifest.json").is_file():

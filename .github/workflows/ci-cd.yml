@@ -179,7 +179,8 @@ jobs:
           python deployment\distribution\make_manifest.py --channel $env:CHANNEL --image $env:CBT_IMAGE --version "1.0.$env:GITHUB_RUN_NUMBER" --destination build\payload\assets\release-manifest.json
           if ($LASTEXITCODE -ne 0) { throw "Manifest generation failed." }
           $name = if ($env:CHANNEL -eq 'staging') { 'WEAVE-CBT-Staging-Setup.exe' } else { 'WEAVE-CBT-Setup.exe' }
-          python -m nuitka --mode=onefile --assume-yes-for-downloads --include-data-dir=build/payload=payload --output-dir=dist --output-filename=$name deployment\distribution\windows\setup.py
+          Compress-Archive -Path build\payload\* -DestinationPath build\payload.zip -Force
+          python -m nuitka --mode=onefile --assume-yes-for-downloads --include-data-files=build/payload.zip=payload.zip --output-dir=dist --output-filename=$name deployment\distribution\windows\setup.py
           if ($LASTEXITCODE -ne 0) { throw "Windows setup build failed." }
       - name: Linux terminal package
         if: runner.os == 'Linux'
