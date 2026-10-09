@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from weave_cli.docker.runtime import (
@@ -8,6 +9,18 @@ from weave_cli.docker.runtime import (
     DockerRuntime,
 )
 
+
+
+_POSTGRES_ENV_GUARD = """
+# The database name comes from the installed, admin-controlled Postgres config.
+# Reject punctuation before quoting SQL identifiers.
+case "${POSTGRES_DB:-}" in
+  ""|*[!A-Za-z0-9_]*) echo "Unsafe PostgreSQL database name" >&2; exit 64 ;;
+esac
+case "${POSTGRES_USER:-}" in
+  "") echo "Missing PostgreSQL user" >&2; exit 64 ;;
+esac
+"""
 
 class DockerComposeError(RuntimeError):
     """Raised when an error occurs while interacting with Docker Compose."""
@@ -95,6 +108,78 @@ class DockerCompose:
         """
 
         return self._run_compose_command(command=["up", "-d"], timeout=None)
+
+    def stop_application(self) -> CommandResult:
+        """Quiesce all application writers while retaining PostgreSQL and Redis."""
+        return self._run_compose_command(
+            command=["stop", "nginx", "api", "worker", "bootstrap"],
+            timeout=None,
+        )
+
+    @staticmethod
+    def _validate_snapshot_name(name: str) -> str:
+        """Accept only CLI-generated identifiers; never interpolate arbitrary SQL."""
+        if not re.fullmatch(r"weave_cbt_(?:rollback|failed)_[0-9a-f]{32}", name):
+            raise ValueError("Invalid WEAVE CBT rollback database identifier.")
+        return name
+
+    def _postgres_maintenance(self, script: str, *arguments: str) -> CommandResult:
+        """Run PostgreSQL maintenance through the configured Linux/WSL provider."""
+        return self._run_compose_command(
+            command=[
+                "exec", "-T", "postgres", "sh", "-eu", "-c",
+                script, "weave-cbt-db", *arguments,
+            ],
+            timeout=None,
+        )
+
+    def snapshot_database(self, backup_name: str) -> CommandResult:
+        """Snapshot the entire local database before applying the new image."""
+        self._validate_snapshot_name(backup_name)
+        return self._postgres_maintenance(
+            _POSTGRES_ENV_GUARD
+            + """
+test "$POSTGRES_DB" != postgres || {
+  echo "Cannot snapshot the maintenance database." >&2; exit 1;
+}
+psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
+  -c "CREATE DATABASE \\"$1\\" WITH TEMPLATE \\"$POSTGRES_DB\\""
+""",
+            backup_name,
+        )
+
+    def restore_database(self, backup_name: str, failed_name: str) -> CommandResult:
+        """Swap the saved database into place. Preserve the failed version."""
+        self._validate_snapshot_name(backup_name)
+        self._validate_snapshot_name(failed_name)
+        return self._postgres_maintenance(
+            _POSTGRES_ENV_GUARD
+            + """
+test "$POSTGRES_DB" != postgres || exit 1
+psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
+  -c "ALTER DATABASE \\"$POSTGRES_DB\\" RENAME TO \\"$2\\""
+if ! psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
+  -c "ALTER DATABASE \\"$1\\" RENAME TO \\"$POSTGRES_DB\\""; then
+  # Try to restore the original name if the snapshot could not be activated.
+  psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
+    -c "ALTER DATABASE \\"$2\\" RENAME TO \\"$POSTGRES_DB\\"" || true
+  exit 1
+fi
+""",
+            backup_name, failed_name,
+        )
+
+    def drop_snapshot_database(self, database_name: str) -> CommandResult:
+        """Delete a no-longer-needed snapshot, never the configured live DB."""
+        self._validate_snapshot_name(database_name)
+        return self._postgres_maintenance(
+            _POSTGRES_ENV_GUARD
+            + """
+psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
+  -c "DROP DATABASE IF EXISTS \\"$1\\""
+""",
+            database_name,
+        )
 
     def stop(
         self,
