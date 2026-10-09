@@ -47,10 +47,14 @@ from app.integrations.weave.ai_authoring import (
     weave_ai_question_authoring_gateway,
 )
 from app.integrations.weave.ai_authoring_schemas import (
-    AIGenerateQuestionsRequest as WeaveAIGenerateQuestionsRequest,
     AIExistingQuestion,
     AIExistingQuestionOption,
     AIImagePayload,
+)
+from app.integrations.weave.ai_authoring_schemas import (
+    AIGenerateQuestionsRequest as WeaveAIGenerateQuestionsRequest,
+)
+from app.integrations.weave.ai_authoring_schemas import (
     AIRegenerateQuestionRequest as WeaveAIRegenerateQuestionRequest,
 )
 
@@ -90,7 +94,10 @@ class QuestionAIService:
         # Do not carry projection/authorization reads across credential repair or
         # the external generation call.
         await db.rollback()
-        server_credential, actor_token = await CBTAIManagementService._cloud_credentials(
+        (
+            server_credential,
+            actor_token,
+        ) = await CBTAIManagementService._cloud_credentials(
             db,
             session_id=session_id,
         )
@@ -130,7 +137,10 @@ class QuestionAIService:
     ) -> QuestionAIRegenerateResponse:
         context = await self._resolve_bank_context(db, actor=actor, bank_id=bank_id)
         await db.rollback()
-        server_credential, actor_token = await CBTAIManagementService._cloud_credentials(
+        (
+            server_credential,
+            actor_token,
+        ) = await CBTAIManagementService._cloud_credentials(
             db,
             session_id=session_id,
         )
@@ -173,7 +183,9 @@ class QuestionAIService:
         if question is None:
             raise ValueError("Question does not exist")
         if not question.is_active:
-            raise ValueError("Archived questions must be reactivated before regeneration")
+            raise ValueError(
+                "Archived questions must be reactivated before regeneration"
+            )
         _require_can_manage_question(actor=actor, question=question)
 
         context = await self._resolve_bank_context(
@@ -182,10 +194,15 @@ class QuestionAIService:
             bank_id=question.bank_id,
         )
         options = await QuestionRepository.list_options_for_question(db, question.id)
-        existing = await self._build_existing_question(db, question=question, options=options)
+        existing = await self._build_existing_question(
+            db, question=question, options=options
+        )
         await db.rollback()
 
-        server_credential, actor_token = await CBTAIManagementService._cloud_credentials(
+        (
+            server_credential,
+            actor_token,
+        ) = await CBTAIManagementService._cloud_credentials(
             db,
             session_id=session_id,
         )
@@ -427,7 +444,9 @@ class QuestionAIService:
         if bank is None:
             raise ValueError("Question bank does not exist")
         if not bank.is_active:
-            raise ValueError("AI authoring is unavailable for an inactive question bank")
+            raise ValueError(
+                "AI authoring is unavailable for an inactive question bank"
+            )
 
         await AcademicAuthorizationService.require_can_author_curriculum_subject(
             db,
@@ -447,7 +466,9 @@ class QuestionAIService:
         )
         if subject is None or curriculum is None or not subject.is_active:
             raise AcademicScopeError("Question bank academic context is unavailable")
-        level = await AcademicRepository.get_level_by_id(db, curriculum.academic_level_id)
+        level = await AcademicRepository.get_level_by_id(
+            db, curriculum.academic_level_id
+        )
         if level is None:
             raise AcademicScopeError("Question bank academic level is unavailable")
         return _AuthoringContext(

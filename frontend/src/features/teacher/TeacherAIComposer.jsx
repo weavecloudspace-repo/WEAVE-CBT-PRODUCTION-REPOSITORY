@@ -1,3 +1,4 @@
+import { handlePromptKeyDown } from './teacherPromptEvents'
 import './teacher-ai.css'
 import { useEffect, useRef, useState } from 'react'
 import { RiArrowDownSLine, RiCornerDownLeftLine, RiCloseLine, RiWallet3Line, RiFileList3Line } from '@remixicon/react'
@@ -7,11 +8,7 @@ import { TeacherGenerationStatus } from './TeacherGenerationStatus'
 import { TeacherAIQuota } from './TeacherAIQuota'
 import { useTeacherAIController, useTeacherAIQuota } from './teacherAI'
 
-export function handlePromptKeyDown(event, disabled = false) {
-  if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent?.isComposing) return
-  event.preventDefault()
-  if (!disabled) event.currentTarget.form?.requestSubmit()
-}
+
 
 export function TeacherAIComposer({ bank, state, dispatch, gateway, onClose }) {
   const controller = useTeacherAIController(gateway, state.session?.actor?.id)

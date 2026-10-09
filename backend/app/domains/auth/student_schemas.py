@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum as PyEnum
+from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class StudentExamAvailability(str, PyEnum):
+class StudentExamAvailability(StrEnum):
     NO_EXAM = "no_exam"
     WAITING_FOR_ACTIVATION = "waiting_for_activation"
     READY = "ready"

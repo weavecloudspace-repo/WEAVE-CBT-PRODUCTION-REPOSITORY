@@ -208,10 +208,18 @@ class StaffLoginTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.cloud_auth_state, WEAVE_AUTH_STATE_SYNCED)
         self.assertIsNotNone(captured_session)
         self.assertEqual(captured_session.expires_at, hard_expires_at)
-        self.assertEqual(captured_session.weave_access_token_expires_at, access_expires_at)
-        self.assertEqual(captured_session.weave_refresh_token_expires_at, hard_expires_at)
-        self.assertNotIn("weave-access", [captured_session.weave_access_token_encrypted])
-        self.assertNotIn("weave-refresh", [captured_session.weave_refresh_token_encrypted])
+        self.assertEqual(
+            captured_session.weave_access_token_expires_at, access_expires_at
+        )
+        self.assertEqual(
+            captured_session.weave_refresh_token_expires_at, hard_expires_at
+        )
+        self.assertNotIn(
+            "weave-access", [captured_session.weave_access_token_encrypted]
+        )
+        self.assertNotIn(
+            "weave-refresh", [captured_session.weave_refresh_token_encrypted]
+        )
         self.assertEqual(captured_local_refresh.expires_at, hard_expires_at)
         self.assertEqual(issue_access.call_args.kwargs["expires_at"], access_expires_at)
 
@@ -243,9 +251,7 @@ class StaffRefreshOrchestrationTests(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 AuthRepository,
                 "get_refresh_token_by_hash",
-                new=AsyncMock(
-                    return_value=SimpleNamespace(session_id=session_id)
-                ),
+                new=AsyncMock(return_value=SimpleNamespace(session_id=session_id)),
             ),
             patch.object(
                 AuthRepository,
@@ -315,9 +321,7 @@ class StaffRefreshOrchestrationTests(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 AuthRepository,
                 "get_refresh_token_by_hash",
-                new=AsyncMock(
-                    return_value=SimpleNamespace(session_id=session_id)
-                ),
+                new=AsyncMock(return_value=SimpleNamespace(session_id=session_id)),
             ),
             patch.object(
                 AuthRepository,
@@ -381,9 +385,7 @@ class StaffRefreshOrchestrationTests(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 AuthRepository,
                 "get_refresh_token_by_hash",
-                new=AsyncMock(
-                    return_value=SimpleNamespace(session_id=session_id)
-                ),
+                new=AsyncMock(return_value=SimpleNamespace(session_id=session_id)),
             ),
             patch.object(
                 AuthRepository,
@@ -391,13 +393,9 @@ class StaffRefreshOrchestrationTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=SimpleNamespace(id=session_id)),
             ),
             patch(
-                "app.domains.auth.service.hash_refresh_token",
-                return_value="local-hash",
+                "app.domains.auth.service.hash_refresh_token", return_value="local-hash"
             ),
-            patch(
-                "app.domains.auth.service.staff_refresh_lock",
-                side_effect=_unlocked,
-            ),
+            patch("app.domains.auth.service.staff_refresh_lock", side_effect=_unlocked),
             patch.object(
                 LocalAuthService,
                 "_prepare_cloud_refresh",
@@ -417,20 +415,17 @@ class StaffRefreshOrchestrationTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
             patch.object(
-                LocalAuthService,
-                "_revoke_session_for_cloud_rejection",
-                new=AsyncMock(),
+                LocalAuthService, "_revoke_session_for_cloud_rejection", new=AsyncMock()
             ) as revoke,
+            self.assertRaisesRegex(
+                LocalSessionAuthenticationError, INVALID_LOCAL_STAFF_SESSION
+            ),
         ):
-            with self.assertRaisesRegex(
-                LocalSessionAuthenticationError,
-                INVALID_LOCAL_STAFF_SESSION,
-            ):
-                await LocalAuthService.refresh_staff(
-                    db,
-                    refresh_token="local-refresh",
-                    idempotency_key=operation_id,
-                )
+            await LocalAuthService.refresh_staff(
+                db,
+                refresh_token="local-refresh",
+                idempotency_key=operation_id,
+            )
 
         revoke.assert_awaited_once_with(db, token_hash="local-hash")
 
@@ -532,23 +527,25 @@ class LocalRefreshRecoveryTests(unittest.IsolatedAsyncioTestCase):
                 "app.domains.auth.service.node_identity_store.load",
                 return_value=SimpleNamespace(server_id=uuid4()),
             ),
-        ):
-            with self.assertRaisesRegex(
+            self.assertRaisesRegex(
                 LocalSessionAuthenticationError,
                 INVALID_LOCAL_STAFF_SESSION,
-            ):
-                await LocalAuthService._prepare_cloud_refresh(
-                    db,
-                    token_hash="hash-old-token",
-                    local_operation_id=uuid4(),
-                )
+            ),
+        ):
+            await LocalAuthService._prepare_cloud_refresh(
+                db,
+                token_hash="hash-old-token",
+                local_operation_id=uuid4(),
+            )
 
         self.assertIsNotNone(stored_token.reuse_detected_at)
         revoke.assert_awaited_once()
 
 
 class StaffTrustTests(unittest.IsolatedAsyncioTestCase):
-    async def test_missing_teacher_projection_deactivates_actor_and_revokes_session(self):
+    async def test_missing_teacher_projection_deactivates_actor_and_revokes_session(
+        self,
+    ):
         db = _db()
         actor = _teacher_actor()
         now = datetime.now(UTC)
@@ -612,7 +609,9 @@ class StaffTrustTests(unittest.IsolatedAsyncioTestCase):
 
 
 class TimingPolicyTests(unittest.TestCase):
-    def test_degraded_access_reuses_observed_weave_window_and_never_crosses_hard_expiry(self):
+    def test_degraded_access_reuses_observed_weave_window_and_never_crosses_hard_expiry(
+        self,
+    ):
         now = datetime.now(UTC)
         actor = _teacher_actor()
         session = _session(actor, now=now)

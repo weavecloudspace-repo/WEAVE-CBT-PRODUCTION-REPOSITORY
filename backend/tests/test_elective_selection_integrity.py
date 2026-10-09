@@ -417,7 +417,9 @@ async def test_planning_rejects_grouped_electives_when_student_audiences_interse
             "_projected_audience_ids",
             new=AsyncMock(return_value={shared_student_id}),
         ),
-        pytest.raises(ExamStateError, match="overlapping student delivery scope"),
+        pytest.raises(
+            ExamStateError, match="Schedule clash:.*reserves shared students"
+        ),
     ):
         await ExamTimetableService.require_planned_slot_available(
             SimpleNamespace(),

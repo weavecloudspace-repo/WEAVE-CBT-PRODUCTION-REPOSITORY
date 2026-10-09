@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.core.database import DbSession
-from app.domains.auth.dependencies import CurrentLocalContext, LocalActorContext
 from app.domains.ai.schemas import (
     AIActorQuotaBalanceListResponse,
     AICreditAllocationCreate,
@@ -29,6 +29,7 @@ from app.domains.ai.schemas import (
     AITenantQuotaSummaryResponse,
 )
 from app.domains.ai.service import cbt_ai_management_service
+from app.domains.auth.dependencies import CurrentLocalContext, LocalActorContext
 
 router = APIRouter(prefix="/ai", tags=["AI Management"])
 
@@ -80,7 +81,9 @@ async def list_my_credit_requests(
     )
 
 
-@router.post("/quota/requests/{request_id}/cancel", response_model=AIQuotaRequestResponse)
+@router.post(
+    "/quota/requests/{request_id}/cancel", response_model=AIQuotaRequestResponse
+)
 async def cancel_my_credit_request(
     request_id: UUID,
     db: DbSession,
@@ -121,7 +124,9 @@ async def list_actor_quota_balances(
 async def list_credit_requests(
     db: DbSession,
     context: CurrentLocalContext,
-    request_status: AIQuotaRequestStatus | None = Query(default=None, alias="status"),
+    request_status: Annotated[
+        AIQuotaRequestStatus | None, Query(alias="status")
+    ] = None,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
 ) -> AIQuotaRequestListResponse:
@@ -255,7 +260,9 @@ async def verify_credit_purchase(
 async def list_credit_purchases(
     db: DbSession,
     context: CurrentLocalContext,
-    purchase_status: AIQuotaPurchaseStatus | None = Query(default=None, alias="status"),
+    purchase_status: Annotated[
+        AIQuotaPurchaseStatus | None, Query(alias="status")
+    ] = None,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
 ) -> AIQuotaPurchaseListResponse:
@@ -269,7 +276,9 @@ async def list_credit_purchases(
     )
 
 
-@router.get("/admin/quota/purchases/{purchase_id}", response_model=AIQuotaPurchaseResponse)
+@router.get(
+    "/admin/quota/purchases/{purchase_id}", response_model=AIQuotaPurchaseResponse
+)
 async def get_credit_purchase(
     purchase_id: UUID,
     db: DbSession,

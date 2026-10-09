@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from enum import Enum as PyEnum
+from enum import StrEnum
 from uuid import UUID
 
 from sqlalchemy import (
@@ -32,7 +32,7 @@ AUDIT_REQUEST_ID_MAX_LENGTH = 128
 AUDIT_IP_ADDRESS_MAX_LENGTH = 45
 
 
-class AuditActorType(str, PyEnum):
+class AuditActorType(StrEnum):
     """Types of actors capable of producing audit events."""
 
     LOCAL_ACTOR = "local_actor"
@@ -40,7 +40,7 @@ class AuditActorType(str, PyEnum):
     SYSTEM = "system"
 
 
-class AuditOutcome(str, PyEnum):
+class AuditOutcome(StrEnum):
     """Outcome of an audited operation."""
 
     SUCCESS = "success"

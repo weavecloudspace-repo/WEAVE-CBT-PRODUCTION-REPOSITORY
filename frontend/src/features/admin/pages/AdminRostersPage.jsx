@@ -1,10 +1,11 @@
+import { bulkTargetId } from '../components/rosterBulkTargets'
 import { useEffect, useMemo, useState } from 'react'
 import { RiArrowLeftLine, RiArrowRightLine, RiSearchLine, RiTimeLine, RiEditLine, RiPauseCircleLine, RiCheckboxCircleLine } from '@remixicon/react'
 import { buildAcademicLevels, listSubjectsForLevel } from '../../../shared/academics/authoringScope'
 import { Icon } from '../../../shared/icons/Icon'
 import { Notice, SelectControl } from '../../../shared/ui'
 import { RosterCandidateActionButton, RosterRecoveryNotice } from '../components/RosterCandidateActions'
-import { RosterBulkActions, bulkTargetId } from '../components/RosterBulkActions'
+import { RosterBulkActions } from '../components/RosterBulkActions'
 import {
   partitionRosterExams,
   rosterHistoryDescription,
@@ -137,7 +138,11 @@ export function AdminRostersPage({ adminData, onNavigate }) {
   )
 }
 
-export function AdminRosterDetailPage({ state, adminData, gateway, onNavigate }) {
+export function AdminRosterDetailPage(props) {
+  return <AdminRosterDetailContent key={props.state.staff.selectedExamId || 'none'} {...props} />
+}
+
+function AdminRosterDetailContent({ state, adminData, gateway, onNavigate }) {
   const exam = adminData.exams.find((item) => item.id === state.staff.selectedExamId)
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('all')
@@ -157,11 +162,6 @@ export function AdminRosterDetailPage({ state, adminData, gateway, onNavigate })
   const pageCount = Math.max(1, Math.ceil((payload?.total || 0) / ROSTER_PAGE_SIZE))
   const page = Math.min(requestedPage, pageCount)
 
-  useEffect(() => {
-    setBulkAction(null)
-    setSelectedTargets(new Set())
-    setPage(1)
-  }, [exam?.id])
 
   useEffect(() => {
     if (!exam) return undefined
@@ -184,7 +184,7 @@ export function AdminRosterDetailPage({ state, adminData, gateway, onNavigate })
       }
     }, query.trim() ? 220 : 0)
     return () => { cancelled = true; window.clearTimeout(timer) }
-  }, [attemptState, classId, exam?.id, gateway, page, query, refreshToken, status])
+  }, [attemptState, classId, exam, gateway, page, query, refreshToken, status])
 
   const refreshExams = adminData.refreshExams
   useEffect(() => {
@@ -194,7 +194,7 @@ export function AdminRosterDetailPage({ state, adminData, gateway, onNavigate })
       setRefreshToken((value) => value + 1)
     }, 4000)
     return () => window.clearInterval(timer)
-  }, [exam?.id, exam?.rosterStatus, historical, refreshExams])
+  }, [exam, historical, refreshExams])
 
   if (!exam) {
     return <div className="teacher-reference-page admin-roster-detail"><button className="admin-roster-back" type="button" onClick={() => onNavigate('roster')}><RiArrowLeftLine size={17} /> Back to roster</button><Notice tone="warning">The selected examination is no longer available.</Notice></div>

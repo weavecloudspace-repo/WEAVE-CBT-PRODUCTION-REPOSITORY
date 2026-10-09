@@ -21,6 +21,8 @@ frontend/node_modules/
 frontend/dist/
 frontend/coverage/
 frontend/.vite/
+frontend/**/.tmp/
+frontend/dist-*/
 
 # Local deployment/build artifacts
 deployment/docker/app/build/
@@ -28,6 +30,8 @@ deployment/docker/app/build/
 .weave-cbt/
 .uv-cache/
 .kilo/
+.local-backups/
+**/.weave-cbt/
 
 # Secrets and local environment files
 .env

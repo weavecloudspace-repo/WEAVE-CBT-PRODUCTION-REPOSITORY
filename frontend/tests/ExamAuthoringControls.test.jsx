@@ -1,7 +1,7 @@
 ﻿import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ExamDateTimePicker } from '../src/shared/exams/ExamDateTimePicker'
-import { buildDestructiveQuestionConfigurationWarning } from '../src/shared/exams/ExamAuthoringPage'
+import { buildDestructiveQuestionConfigurationWarning } from '../src/shared/exams/examConfigurationWarning'
 import { ManualQuestionPicker } from '../src/shared/exams/ManualQuestionPicker'
 
 beforeAll(() => {

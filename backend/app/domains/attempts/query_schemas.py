@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum as PyEnum
+from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from app.domains.attempts.models import AttemptEndReason, AttemptStatus
 
 
-class AttemptConnectivityStatus(str, PyEnum):
+class AttemptConnectivityStatus(StrEnum):
     ONLINE = "online"
     RECENTLY_DISCONNECTED = "recently_disconnected"
     STALE = "stale"

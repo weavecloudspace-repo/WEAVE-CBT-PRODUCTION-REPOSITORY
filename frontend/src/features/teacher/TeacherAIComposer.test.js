@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { handlePromptKeyDown } from './TeacherAIComposer'
+import { handlePromptKeyDown } from './teacherPromptEvents'
 
 function makeEvent({ key = 'Enter', shiftKey = false, isComposing = false } = {}) {
   const requestSubmit = vi.fn()

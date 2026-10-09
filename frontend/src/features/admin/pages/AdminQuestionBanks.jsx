@@ -17,7 +17,8 @@ import { QuestionRows } from '../../teacher/components'
 
 export function AdminQuestionBanksPage({ adminData, gateway, onNavigate, createRequested = false, onCreateHandled }) {
   const [query, setQuery] = useState('')
-  const [editor, setEditor] = useState(null)
+  const [localEditor, setEditor] = useState(null)
+  const editor = createRequested ? { mode: 'create', bank: null } : localEditor
   const [menuBankId, setMenuBankId] = useState(null)
   const [menuPosition, setMenuPosition] = useState(null)
   const [pendingAction, setPendingAction] = useState(null)
@@ -25,10 +26,6 @@ export function AdminQuestionBanksPage({ adminData, gateway, onNavigate, createR
   const [error, setError] = useState('')
   const menuRef = useRef(null)
 
-  useEffect(() => {
-    if (!createRequested) return
-    setEditor({ mode: 'create', bank: null })
-  }, [createRequested])
 
   const closeEditor = () => {
     setEditor(null)

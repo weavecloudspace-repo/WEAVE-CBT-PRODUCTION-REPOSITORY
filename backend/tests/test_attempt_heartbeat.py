@@ -112,11 +112,14 @@ class AttemptHeartbeatTests(unittest.IsolatedAsyncioTestCase):
                     last_heartbeat_at=datetime.now(UTC),
                 )
                 exam = SimpleNamespace(id=uuid4(), status=status)
-                with patch.object(
-                    AttemptService,
-                    "_get_current_attempt",
-                    new=AsyncMock(return_value=(attempt, SimpleNamespace(), exam)),
-                ), self.assertRaises(AttemptStateError):
+                with (
+                    patch.object(
+                        AttemptService,
+                        "_get_current_attempt",
+                        new=AsyncMock(return_value=(attempt, SimpleNamespace(), exam)),
+                    ),
+                    self.assertRaises(AttemptStateError),
+                ):
                     await AttemptService.heartbeat_current(db, context=context())
                 db.commit.assert_not_awaited()
 

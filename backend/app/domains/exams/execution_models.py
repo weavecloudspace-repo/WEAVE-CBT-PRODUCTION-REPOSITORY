@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum as PyEnum
+from enum import StrEnum
 from uuid import UUID
 
 from sqlalchemy import (
@@ -28,21 +28,21 @@ EXECUTION_ERROR_MAX_LENGTH = 2048
 RESULT_DECISION_REASON_MAX_LENGTH = 1000
 
 
-class ExamExecutionOperation(str, PyEnum):
+class ExamExecutionOperation(StrEnum):
     """Long-running terminal operation currently owned by a worker."""
 
     CLOSING = "closing"
     CANCELLING = "cancelling"
 
 
-class ExamOperationSource(str, PyEnum):
+class ExamOperationSource(StrEnum):
     """Who initiated a terminal exam operation."""
 
     ADMIN = "admin"
     AUTOMATIC = "automatic"
 
 
-class ExamResultDisposition(str, PyEnum):
+class ExamResultDisposition(StrEnum):
     """School decision controlling whether local CBT scores may leave the node."""
 
     PENDING_REVIEW = "pending_review"

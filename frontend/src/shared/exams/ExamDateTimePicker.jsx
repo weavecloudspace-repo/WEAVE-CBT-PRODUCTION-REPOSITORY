@@ -50,7 +50,6 @@ export function ExamDateTimePicker({ label, value, onChange, min = '', minExclus
 
   useEffect(() => {
     if (!value) return undefined
-    setNow(Date.now())
     const timer = window.setInterval(() => setNow(Date.now()), 30_000)
     return () => window.clearInterval(timer)
   }, [value])

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum as PyEnum
+from enum import StrEnum
 from uuid import UUID
 
 from sqlalchemy import (
@@ -40,7 +40,7 @@ ROSTER_ERROR_MAX_LENGTH = 1024
 # ========================== #
 
 
-class ExamStatus(str, PyEnum):
+class ExamStatus(StrEnum):
     """Lifecycle state of a local CBT examination."""
 
     DRAFT = "draft"
@@ -54,7 +54,7 @@ class ExamStatus(str, PyEnum):
     CANCELLED = "cancelled"
 
 
-class ExamRosterStatus(str, PyEnum):
+class ExamRosterStatus(StrEnum):
     """Materialization state of the examination candidate roster."""
 
     NOT_PREPARED = "not_prepared"
@@ -65,14 +65,14 @@ class ExamRosterStatus(str, PyEnum):
     FAILED = "failed"
 
 
-class ExamQuestionSelectionMode(str, PyEnum):
+class ExamQuestionSelectionMode(StrEnum):
     """Defines how questions are chosen for an examination."""
 
     RANDOM = "random"
     MANUAL = "manual"
 
 
-class ExamSuspensionSource(str, PyEnum):
+class ExamSuspensionSource(StrEnum):
     """Origin of an examination-wide suspension."""
 
     ADMIN = "admin"

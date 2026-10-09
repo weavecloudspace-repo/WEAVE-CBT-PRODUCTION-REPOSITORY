@@ -2,13 +2,13 @@
 
 import asyncio
 
-from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import create_async_engine
-
 import app.model_registry  # noqa: F401
 from alembic import context
 from app.core.database import Base
+from app.core.migrations import include_schema_object
 from app.core.settings import settings
+from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import create_async_engine
 
 
 def run_migrations(connection):
@@ -17,6 +17,7 @@ def run_migrations(connection):
         target_metadata=Base.metadata,
         compare_type=True,
         compare_server_default=True,
+        include_object=include_schema_object,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -37,6 +38,7 @@ if context.is_offline_mode():
         target_metadata=Base.metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_schema_object,
     )
     with context.begin_transaction():
         context.run_migrations()

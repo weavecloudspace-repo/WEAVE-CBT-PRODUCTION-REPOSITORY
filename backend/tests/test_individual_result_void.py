@@ -305,7 +305,9 @@ async def test_payload_construction_rejects_voided_score_even_if_batch_is_corrup
         await ResultSyncService()._prepare_batch(AsyncMock(), batch_id=uuid4())
 
 
-@pytest.mark.parametrize("sync_status", [ResultSyncStatus.PENDING, ResultSyncStatus.FAILED])
+@pytest.mark.parametrize(
+    "sync_status", [ResultSyncStatus.PENDING, ResultSyncStatus.FAILED]
+)
 async def test_restore_route_queues_new_pending_work_after_service_commit(sync_status):
     from app.domains.results.router import restore_individual_result
     from app.domains.results.schemas import ResultVoidPayload
@@ -325,7 +327,10 @@ async def test_restore_route_queues_new_pending_work_after_service_commit(sync_s
 
     with (
         patch.object(ResultService, "restore_result", AsyncMock(side_effect=restore)),
-        patch("app.domains.results.router.ResultResponse.model_validate", return_value=response),
+        patch(
+            "app.domains.results.router.ResultResponse.model_validate",
+            return_value=response,
+        ),
         patch.object(arq_producer, "enqueue", AsyncMock(side_effect=enqueue)) as queue,
     ):
         actual = await restore_individual_result(
@@ -338,6 +343,8 @@ async def test_restore_route_queues_new_pending_work_after_service_commit(sync_s
     if sync_status == ResultSyncStatus.PENDING:
         queue.assert_awaited_once()
         assert queue.await_args.args == ("sync_exam_results", str(result.exam_id))
-        assert queue.await_args.kwargs["_job_id"].startswith(f"weave-cbt:restore-result:{result.id}:")
+        assert queue.await_args.kwargs["_job_id"].startswith(
+            f"weave-cbt:restore-result:{result.id}:"
+        )
     else:
         queue.assert_not_awaited()

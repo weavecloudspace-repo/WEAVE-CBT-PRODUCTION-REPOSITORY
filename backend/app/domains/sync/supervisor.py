@@ -8,10 +8,12 @@ path; durable HTTP reconciliation remains authoritative.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
@@ -185,8 +187,11 @@ class SyncSupervisor:
                 {"lock_key": SYNC_LEADER_LOCK_KEY},
             )
             await connection.commit()
-        except Exception:
-            pass
+        except SQLAlchemyError:
+            logger.warning(
+                "Unable to release sync leadership; connection closure will release it.",
+                exc_info=True,
+            )
 
     @staticmethod
     async def _check_leadership_connection(connection: AsyncConnection) -> None:
@@ -206,10 +211,8 @@ class SyncSupervisor:
             return result.cursor
 
     async def _sleep(self, seconds: float) -> None:
-        try:
+        with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(self._stop.wait(), timeout=seconds)
-        except TimeoutError:
-            pass
 
 
 sync_supervisor = SyncSupervisor()

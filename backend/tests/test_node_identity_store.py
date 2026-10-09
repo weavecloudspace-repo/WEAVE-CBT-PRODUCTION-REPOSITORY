@@ -81,15 +81,19 @@ class NodeIdentityStorePlatformTests(unittest.TestCase):
         )
 
     def test_restrict_directory_permissions_is_posix_only(self) -> None:
-        with patch.object(self.store, "_is_posix", return_value=False):
-            with patch("app.domains.node.identity_store.os.chmod") as chmod_mock:
-                self.store._restrict_directory_permissions(self.store.storage_path)
+        with (
+            patch.object(self.store, "_is_posix", return_value=False),
+            patch("app.domains.node.identity_store.os.chmod") as chmod_mock,
+        ):
+            self.store._restrict_directory_permissions(self.store.storage_path)
 
         chmod_mock.assert_not_called()
 
-        with patch.object(self.store, "_is_posix", return_value=True):
-            with patch("app.domains.node.identity_store.os.chmod") as chmod_mock:
-                self.store._restrict_directory_permissions(self.store.storage_path)
+        with (
+            patch.object(self.store, "_is_posix", return_value=True),
+            patch("app.domains.node.identity_store.os.chmod") as chmod_mock,
+        ):
+            self.store._restrict_directory_permissions(self.store.storage_path)
 
         chmod_mock.assert_called_once_with(
             self.store.storage_path,
@@ -97,15 +101,19 @@ class NodeIdentityStorePlatformTests(unittest.TestCase):
         )
 
     def test_restrict_file_permissions_is_posix_only(self) -> None:
-        with patch("app.domains.node.identity_store.os.name", "nt"):
-            with patch("app.domains.node.identity_store.os.chmod") as chmod_mock:
-                self.store._restrict_file_permissions(self.store.identity_path)
+        with (
+            patch("app.domains.node.identity_store.os.name", "nt"),
+            patch("app.domains.node.identity_store.os.chmod") as chmod_mock,
+        ):
+            self.store._restrict_file_permissions(self.store.identity_path)
 
         chmod_mock.assert_not_called()
 
-        with patch("app.domains.node.identity_store.os.name", "posix"):
-            with patch("app.domains.node.identity_store.os.chmod") as chmod_mock:
-                self.store._restrict_file_permissions(self.store.identity_path)
+        with (
+            patch("app.domains.node.identity_store.os.name", "posix"),
+            patch("app.domains.node.identity_store.os.chmod") as chmod_mock,
+        ):
+            self.store._restrict_file_permissions(self.store.identity_path)
 
         chmod_mock.assert_called_once_with(
             self.store.identity_path,
@@ -113,9 +121,11 @@ class NodeIdentityStorePlatformTests(unittest.TestCase):
         )
 
     def test_sync_storage_directory_is_posix_only(self) -> None:
-        with patch.object(self.store, "_is_posix", return_value=False):
-            with patch("app.domains.node.identity_store.os.open") as open_mock:
-                self.store._sync_storage_directory()
+        with (
+            patch.object(self.store, "_is_posix", return_value=False),
+            patch("app.domains.node.identity_store.os.open") as open_mock,
+        ):
+            self.store._sync_storage_directory()
 
         open_mock.assert_not_called()
 
@@ -315,10 +325,13 @@ class NodeIdentityStoreAsyncLockTests(unittest.IsolatedAsyncioTestCase):
             storage_path=Path(tempfile.mkdtemp()),
         )
 
-        with patch(
-            "app.domains.node.identity_store.asyncio.to_thread",
-            new=AsyncMock(side_effect=[73, None]),
-        ) as to_thread_mock, self.assertRaisesRegex(RuntimeError, "boom"):
+        with (
+            patch(
+                "app.domains.node.identity_store.asyncio.to_thread",
+                new=AsyncMock(side_effect=[73, None]),
+            ) as to_thread_mock,
+            self.assertRaisesRegex(RuntimeError, "boom"),
+        ):
             async with store.pairing_lock():
                 raise RuntimeError("boom")
 

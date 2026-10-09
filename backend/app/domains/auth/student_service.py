@@ -250,7 +250,9 @@ class StudentAuthService:
                 exam=None,
                 makeup_authorization_id=None,
                 availability=StudentExamAvailability.NO_EXAM,
-                status_message=queue.blocked_reason if queue.pending_count else NO_EXAM_MESSAGE,
+                status_message=queue.blocked_reason
+                if queue.pending_count
+                else NO_EXAM_MESSAGE,
             )
 
         candidate = await CandidateRepository.get_candidate_by_id(
@@ -333,7 +335,9 @@ class StudentAuthService:
             candidate_id=candidate.id if candidate is not None else None,
             exam_id=exam.id if exam is not None else None,
             exam_title=exam.title if exam is not None else None,
-            duration_minutes=exam.duration_minutes if exam is not None and resolution.makeup_authorization_id is not None else None,
+            duration_minutes=exam.duration_minutes
+            if exam is not None and resolution.makeup_authorization_id is not None
+            else None,
             display_name=(
                 candidate.display_name
                 if candidate is not None
@@ -384,14 +388,13 @@ class StudentAuthService:
         )
 
         resolution = await cls._resolve_candidate(db, enrollment=enrollment)
-        if resolution.candidate is not None and resolution.exam is not None:
-            if (
-                resolution.candidate.student_id != enrollment.student_id
-                or resolution.candidate.exam_id != resolution.exam.id
-            ):
-                raise StudentAuthenticationError(
-                    "Resolved examination candidate is inconsistent with student identity"
-                )
+        if (resolution.candidate is not None and resolution.exam is not None) and (
+            resolution.candidate.student_id != enrollment.student_id
+            or resolution.candidate.exam_id != resolution.exam.id
+        ):
+            raise StudentAuthenticationError(
+                "Resolved examination candidate is inconsistent with student identity"
+            )
 
         now = datetime.now(UTC)
         expires_at = now + timedelta(hours=STUDENT_SESSION_LIFETIME_HOURS)
@@ -502,14 +505,13 @@ class StudentAuthService:
             raise StudentAuthenticationError("Student enrollment is no longer active")
 
         resolution = await cls._resolve_candidate(db, enrollment=enrollment)
-        if resolution.candidate is not None and resolution.exam is not None:
-            if (
-                resolution.candidate.student_id != enrollment.student_id
-                or resolution.candidate.exam_id != resolution.exam.id
-            ):
-                raise StudentAuthenticationError(
-                    "Resolved examination candidate is inconsistent with student identity"
-                )
+        if (resolution.candidate is not None and resolution.exam is not None) and (
+            resolution.candidate.student_id != enrollment.student_id
+            or resolution.candidate.exam_id != resolution.exam.id
+        ):
+            raise StudentAuthenticationError(
+                "Resolved examination candidate is inconsistent with student identity"
+            )
 
         cls._apply_resolution_to_session(session, resolution)
         session.last_seen_at = now
@@ -528,11 +530,20 @@ class StudentAuthService:
 
     @staticmethod
     async def _add_subject_to_response(db, *, response, resolution):
-        if resolution.exam is not None and resolution.makeup_authorization_id is not None:
-            subject = await AcademicRepository.get_curriculum_subject_by_id(db, resolution.exam.curriculum_subject_id)
+        if (
+            resolution.exam is not None
+            and resolution.makeup_authorization_id is not None
+        ):
+            subject = await AcademicRepository.get_curriculum_subject_by_id(
+                db, resolution.exam.curriculum_subject_id
+            )
             if subject is not None:
-                academic_subject = await AcademicRepository.get_subject_by_id(db, subject.subject_id)
-                response.subject_name = academic_subject.name if academic_subject is not None else None
+                academic_subject = await AcademicRepository.get_subject_by_id(
+                    db, subject.subject_id
+                )
+                response.subject_name = (
+                    academic_subject.name if academic_subject is not None else None
+                )
 
     @classmethod
     async def logout(cls, db: AsyncSession, *, raw_token: str) -> None:

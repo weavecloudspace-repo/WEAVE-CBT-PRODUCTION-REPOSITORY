@@ -1,3 +1,4 @@
+import { useImagePreview } from '../../shared/useImagePreview'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { RiCloseLine, RiImageAddLine } from '@remixicon/react'
 import { Icon } from '../../shared/icons/Icon'
@@ -23,7 +24,11 @@ function normalizeQuestion(question, banks) {
   }
 }
 
-export function EditQuestionPage({ state, dispatch, teacherData, gateway }) {
+export function EditQuestionPage(props) {
+  return <EditQuestionContent key={props.state.staff.selectedQuestionId || 'none'} {...props} />
+}
+
+function EditQuestionContent({ state, dispatch, teacherData, gateway }) {
   const questionId = state.staff.selectedQuestionId
   const cachedQuestion = useMemo(() => {
     const stored = state.staff.editingQuestion
@@ -33,13 +38,12 @@ export function EditQuestionPage({ state, dispatch, teacherData, gateway }) {
   }, [questionId, state.staff.editingQuestion, teacherData.banks, teacherData.questions])
 
   const [question, setQuestion] = useState(cachedQuestion)
-  const [loading, setLoading] = useState(!cachedQuestion)
-  const [loadError, setLoadError] = useState('')
+  const [loading, setLoading] = useState(Boolean(questionId && !cachedQuestion))
+  const [loadError, setLoadError] = useState(questionId ? '' : 'No question was selected for editing.')
   const [prompt, setPrompt] = useState(cachedQuestion?.prompt || '')
   const [instruction, setInstruction] = useState(cachedQuestion?.instruction || '')
   const [options, setOptions] = useState(() => toEditableOptions(cachedQuestion?.options || []))
-  const [imageFile, setImageFile] = useState(null)
-  const [imagePreviewUrl, setImagePreviewUrl] = useState('')
+  const [imageFile, imagePreviewUrl, setImageFile] = useImagePreview()
   const [removeExistingImage, setRemoveExistingImage] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -47,15 +51,9 @@ export function EditQuestionPage({ state, dispatch, teacherData, gateway }) {
   const imageInputRef = useRef(null)
 
   useEffect(() => {
-    if (!questionId) {
-      setLoadError('No question was selected for editing.')
-      setLoading(false)
-      return undefined
-    }
+    if (!questionId) return undefined
 
     let cancelled = false
-    setLoading(!cachedQuestion)
-    setLoadError('')
 
     gateway.questions.getQuestion(questionId)
       .then((rawQuestion) => {
@@ -82,15 +80,6 @@ export function EditQuestionPage({ state, dispatch, teacherData, gateway }) {
     }
   }, [cachedQuestion, gateway.questions, questionId, teacherData.banks])
 
-  useEffect(() => {
-    if (!imageFile || typeof URL.createObjectURL !== 'function') {
-      setImagePreviewUrl('')
-      return undefined
-    }
-    const objectUrl = URL.createObjectURL(imageFile)
-    setImagePreviewUrl(objectUrl)
-    return () => URL.revokeObjectURL(objectUrl)
-  }, [imageFile])
 
   const leaveEditor = () => {
     dispatch({

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { RiDeleteBinLine, RiSearchLine } from '@remixicon/react'
 import { Notice } from '../ui'
 import { FormattedText } from '../ui/FormattedText'
@@ -34,6 +34,14 @@ export function ManualQuestionPicker({
     ? `weave-cbt:manual-contribution:${examId}:${actorId}:${bankId}`
     : ''
 
+  const receiveManagedSelections = useEffectEvent((selections) => {
+    const nextManagedIds = managedSelectionReady
+      ? selectedIds
+      : ignorePersistedSelections ? [] : selections.map((row) => row.question_id)
+    setManagedIds(nextManagedIds)
+    onChange?.(nextManagedIds)
+  })
+
   useEffect(() => {
     let cancelled = false
     Promise.all([
@@ -53,13 +61,7 @@ export function ManualQuestionPicker({
       persistStagedAdditions(contributionStorageKey, restored)
 
       if (managedDraftMode) {
-        const nextManagedIds = managedSelectionReady
-          ? selectedIds
-          : ignorePersistedSelections
-            ? []
-            : selections.map((row) => row.question_id)
-        setManagedIds(nextManagedIds)
-        onChange?.(nextManagedIds)
+        receiveManagedSelections(selections)
       }
 
       setResource({ loading: false, questions, selections, version: current?.authoring_version ?? current?.authoringVersion ?? null, error: '' })
@@ -67,8 +69,6 @@ export function ManualQuestionPicker({
       if (!cancelled) setResource((previous) => ({ ...previous, loading: false, error: error.userMessage || 'Could not load the question bank. Please retry.' }))
     })
     return () => { cancelled = true }
-    // selectedIds/managedSelectionReady intentionally seed a mounted picker once;
-    // parent onChange updates them and must not restart the resource load.
   }, [bankId, contributionMode, contributionStorageKey, examId, gateway, ignorePersistedSelections, managedDraftMode, retry])
 
   const persistedIds = examId ? resource.selections.map((row) => row.question_id) : []

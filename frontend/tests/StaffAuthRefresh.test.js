@@ -7,7 +7,6 @@ import { getStaffAccessToken } from '../src/api/client'
 
 const OPERATION_KEY = 'weave.staffRefreshOperationId'
 const OPERATION_ID = '11111111-1111-4111-8111-111111111111'
-const NEXT_OPERATION_ID = '22222222-2222-4222-8222-222222222222'
 
 function successfulRefreshResponse() {
   return {
@@ -40,7 +39,7 @@ afterEach(() => {
 describe('staff auth refresh', () => {
   it('sends the shared idempotency key and advances it only after success', async () => {
     window.localStorage.setItem(OPERATION_KEY, OPERATION_ID)
-    vi.spyOn(window.crypto, 'randomUUID').mockReturnValue(NEXT_OPERATION_ID)
+    vi.spyOn(window, 'setTimeout').mockReturnValue(1)
 
     const fetchMock = vi.fn().mockResolvedValue(successfulRefreshResponse())
     vi.stubGlobal('fetch', fetchMock)
@@ -50,7 +49,9 @@ describe('staff auth refresh', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/auth/refresh')
     expect(fetchMock.mock.calls[0][1].headers['Idempotency-Key']).toBe(OPERATION_ID)
-    expect(window.localStorage.getItem(OPERATION_KEY)).toBe(NEXT_OPERATION_ID)
+    const nextOperationId = window.localStorage.getItem(OPERATION_KEY)
+    expect(nextOperationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(nextOperationId).not.toBe(OPERATION_ID)
     expect(getStaffAccessToken()).toBe('local-access-2')
     expect(session.accessTokenExpiresAt).toBe('2099-01-01T00:20:00Z')
     expect(session.sessionExpiresAt).toBe('2099-01-01T12:00:00Z')

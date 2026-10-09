@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { scrollRegenerationFormIntoView } from './TeacherAIReviewPage'
+import { scrollRegenerationFormIntoView } from './teacherReviewScroll'
 
 describe('question regeneration review scrolling', () => {
   it('scrolls the regeneration form into view smoothly', () => {

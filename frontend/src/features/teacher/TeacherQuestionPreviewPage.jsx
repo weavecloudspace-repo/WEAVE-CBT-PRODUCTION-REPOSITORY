@@ -4,7 +4,11 @@ import { Notice, StatusBadge } from '../../shared/ui'
 import { FormattedText } from '../../shared/ui/FormattedText'
 import './question-builder.css'
 
-export function TeacherQuestionPreviewPage({ state, dispatch, teacherData, gateway }) {
+export function TeacherQuestionPreviewPage(props) {
+  return <TeacherQuestionPreviewContent key={props.state.staff.selectedQuestionId || 'none'} {...props} />
+}
+
+function TeacherQuestionPreviewContent({ state, dispatch, teacherData, gateway }) {
   const questionId = state.staff.selectedQuestionId
   const headingRef = useRef(null)
   useEffect(() => {
@@ -13,18 +17,11 @@ export function TeacherQuestionPreviewPage({ state, dispatch, teacherData, gatew
   }, [questionId])
   const [question, setQuestion] = useState(null)
   const [loading, setLoading] = useState(Boolean(questionId))
-  const [error, setError] = useState('')
+  const [error, setError] = useState(questionId ? '' : 'Choose a question to preview it.')
 
   useEffect(() => {
-    if (!questionId) {
-      setLoading(false)
-      setError('Choose a question to preview it.')
-      return undefined
-    }
+    if (!questionId) return undefined
     let cancelled = false
-    setLoading(true)
-    setQuestion(null)
-    setError('')
     gateway.questions.getQuestion(questionId)
       .then((loadedQuestion) => {
         if (!cancelled) setQuestion(loadedQuestion)

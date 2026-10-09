@@ -209,7 +209,8 @@ class ExamRegressionCoverageTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(
                 ExamRepository, "add_question_selections", new=AsyncMock()
-            ) as add,self.assertRaisesRegex(ValueError, "examination question bank")
+            ) as add,
+            self.assertRaisesRegex(ValueError, "examination question bank"),
         ):
             await ExamService.add_manual_questions(
                 db,
@@ -284,9 +285,10 @@ class ExamRegressionCoverageTests(unittest.IsolatedAsyncioTestCase):
                         ExamRepository,
                         "get_latest_child_revision",
                         new=AsyncMock(return_value=None),
-                    ),self.assertRaisesRegex(
-                    ExamStateError, "latest SEALED or CANCELLED"
-                )
+                    ),
+                    self.assertRaisesRegex(
+                        ExamStateError, "latest SEALED or CANCELLED"
+                    ),
                 ):
                     await ExamService.create_revision(
                         db,
@@ -315,7 +317,8 @@ class ExamRegressionCoverageTests(unittest.IsolatedAsyncioTestCase):
                 ExamExecutionService,
                 "results_are_voided",
                 new=AsyncMock(return_value=False),
-            ),self.assertRaisesRegex(ExamStateError, "results are voided")
+            ),
+            self.assertRaisesRegex(ExamStateError, "results are voided"),
         ):
             await ExamService.create_revision(
                 db,
@@ -354,7 +357,8 @@ class ExamRegressionCoverageTests(unittest.IsolatedAsyncioTestCase):
                         ExamExecutionRepository,
                         "get_control",
                         new=AsyncMock(return_value=control),
-                    ),self.assertRaisesRegex(ExamStateError, "results are voided")
+                    ),
+                    self.assertRaisesRegex(ExamStateError, "results are voided"),
                 ):
                     await ExamService.create_revision(
                         db, actor=actor(role="admin"), exam_id=original.id
@@ -476,13 +480,13 @@ class ExamRegressionCoverageTests(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 ExamRepository, "count_exam_questions", new=AsyncMock()
             ) as count_questions,
+            self.assertRaisesRegex(ExamStateError, "latest examination revision"),
         ):
-            with self.assertRaisesRegex(ExamStateError, "latest examination revision"):
-                await ExamService.activate_exam(
-                    db,
-                    actor=admin,  # type: ignore[arg-type]
-                    exam_id=current_exam.id,
-                )
+            await ExamService.activate_exam(
+                db,
+                actor=admin,  # type: ignore[arg-type]
+                exam_id=current_exam.id,
+            )
 
         count_questions.assert_not_awaited()
 
@@ -501,7 +505,8 @@ class ExamRegressionCoverageTests(unittest.IsolatedAsyncioTestCase):
                     ExamRepository,
                     "get_open_suspension_for_exam",
                     new=AsyncMock(return_value=None),
-                ),self.assertRaisesRegex(ExamStateError, "no open suspension")
+                ),
+                self.assertRaisesRegex(ExamStateError, "no open suspension"),
             ):
                 if operation == "close":
                     await ExamService.close_exam(
@@ -543,13 +548,13 @@ class ExamRegressionCoverageTests(unittest.IsolatedAsyncioTestCase):
                 ExamRepository, "save_suspension", new=AsyncMock(side_effect=error)
             ),
             patch.object(ExamRepository, "save_exam", new=AsyncMock()) as save_exam,
+            self.assertRaisesRegex(ValueError, "could not be closed"),
         ):
-            with self.assertRaisesRegex(ValueError, "could not be closed"):
-                await ExamService.close_exam(
-                    db,
-                    actor=admin,  # type: ignore[arg-type]
-                    exam_id=current_exam.id,
-                )
+            await ExamService.close_exam(
+                db,
+                actor=admin,  # type: ignore[arg-type]
+                exam_id=current_exam.id,
+            )
 
         db.rollback.assert_awaited_once()
         save_exam.assert_not_awaited()

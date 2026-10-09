@@ -63,11 +63,13 @@ class ExpiredAttemptWorkerTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch(
                 "app.workers.exams.async_session_factory",
-                Mock(side_effect=[
-                    _AsyncSessionContext(scan_session, on_close=orm_session.close),
-                    _AsyncSessionContext(finalize_session),
-                    _AsyncSessionContext(finalize_session),
-                ]),
+                Mock(
+                    side_effect=[
+                        _AsyncSessionContext(scan_session, on_close=orm_session.close),
+                        _AsyncSessionContext(finalize_session),
+                        _AsyncSessionContext(finalize_session),
+                    ]
+                ),
             ),
             patch(
                 "app.workers.exams.AttemptRepository.list_attempts",
@@ -82,7 +84,8 @@ class ExpiredAttemptWorkerTests(unittest.IsolatedAsyncioTestCase):
                 AsyncMock(return_value=SimpleNamespace(status=AttemptStatus.SUBMITTED)),
             ),
             patch(
-                "app.workers.exams.evaluate_exam_completion", AsyncMock(),
+                "app.workers.exams.evaluate_exam_completion",
+                AsyncMock(),
             ) as evaluate,
         ):
             result = await finalize_expired_attempts({})
@@ -94,8 +97,11 @@ class ExpiredAttemptWorkerTests(unittest.IsolatedAsyncioTestCase):
             expired_ids,
         )
         self.assertEqual(evaluate.await_args_list, [call({}, str(exam_id))])
-        self.assertEqual(result, {
-            "expired_attempts_scanned": 2,
-            "expired_attempts_finalized": 2,
-            "completion_exams_rechecked": 1,
-        })
+        self.assertEqual(
+            result,
+            {
+                "expired_attempts_scanned": 2,
+                "expired_attempts_finalized": 2,
+                "completion_exams_rechecked": 1,
+            },
+        )

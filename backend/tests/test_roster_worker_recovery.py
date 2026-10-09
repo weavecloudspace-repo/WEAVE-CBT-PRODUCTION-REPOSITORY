@@ -92,7 +92,9 @@ class RosterReconciliationWorkerTests(unittest.IsolatedAsyncioTestCase):
 
         reconcile.assert_not_awaited()
 
-    async def test_queued_reconciliation_for_superseded_revision_is_ignored(self) -> None:
+    async def test_queued_reconciliation_for_superseded_revision_is_ignored(
+        self,
+    ) -> None:
         exam_id = uuid4()
         session = SimpleNamespace()
         exam = SimpleNamespace(
@@ -195,6 +197,7 @@ class RosterMaintenanceRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             redis.enqueue_job.await_args_list,
             [
+                call("finalize_expired_attempts", _job_id="exam-timeout-sweep"),
                 call("prepare_exam_roster", str(pending_exam_id)),
                 call("reconcile_exam_roster", str(stale_exam_id)),
             ],

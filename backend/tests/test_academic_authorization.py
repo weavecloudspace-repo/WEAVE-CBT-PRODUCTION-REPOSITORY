@@ -118,17 +118,16 @@ class AcademicAuthorizationTests(unittest.IsolatedAsyncioTestCase):
                 AcademicRepository,
                 "list_teacher_classes_for_curriculum_subject",
                 new=AsyncMock(return_value=[]),
-            ),self.assertRaisesRegex(
-            AcademicAuthorizationError,
-            "does not have an active assignment",
-        )
+            ),
+            self.assertRaisesRegex(
+                AcademicAuthorizationError,
+                "does not have an active assignment",
+            ),
         ):
-            await (
-                AcademicAuthorizationService.require_can_author_curriculum_subject(
-                    object(),  # type: ignore[arg-type]
-                    actor=actor,  # type: ignore[arg-type]
-                    curriculum_subject_id=subject_id,
-                )
+            await AcademicAuthorizationService.require_can_author_curriculum_subject(
+                object(),  # type: ignore[arg-type]
+                actor=actor,  # type: ignore[arg-type]
+                curriculum_subject_id=subject_id,
             )
 
     async def test_exact_class_scope_requires_exact_teacher_assignment(self) -> None:
@@ -168,10 +167,11 @@ class AcademicAuthorizationTests(unittest.IsolatedAsyncioTestCase):
                 AcademicRepository,
                 "get_active_assignment_for_scope",
                 new=AsyncMock(return_value=None),
-            ),self.assertRaisesRegex(
-            AcademicAuthorizationError,
-            "for this class and curriculum subject",
-        )
+            ),
+            self.assertRaisesRegex(
+                AcademicAuthorizationError,
+                "for this class and curriculum subject",
+            ),
         ):
             await AcademicAuthorizationService.require_teacher_assignment_for_class(
                 object(),  # type: ignore[arg-type]
@@ -205,17 +205,16 @@ class AcademicAuthorizationTests(unittest.IsolatedAsyncioTestCase):
                 "list_eligible_classes",
                 new=AsyncMock(return_value=[]),
             ),
+            self.assertRaisesRegex(
+                AcademicScopeError, "no academically eligible classes"
+            ),
         ):
-            with self.assertRaisesRegex(
-                AcademicScopeError,
-                "no academically eligible classes",
-            ):
-                await AcademicAuthorizationService.require_can_author_curriculum_subject_for_term(
-                    object(),  # type: ignore[arg-type]
-                    actor=actor,  # type: ignore[arg-type]
-                    curriculum_subject_id=subject_id,
-                    academic_term_id=term_id,
-                )
+            await AcademicAuthorizationService.require_can_author_curriculum_subject_for_term(
+                object(),  # type: ignore[arg-type]
+                actor=actor,  # type: ignore[arg-type]
+                curriculum_subject_id=subject_id,
+                academic_term_id=term_id,
+            )
 
     async def test_admin_can_author_level_wide_subject_for_term(self) -> None:
         subject_id = uuid4()
@@ -353,17 +352,16 @@ class AcademicAuthorizationTests(unittest.IsolatedAsyncioTestCase):
                 "list_teacher_classes_for_curriculum_subject",
                 new=AsyncMock(return_value=[arts_class]),
             ),
+            self.assertRaisesRegex(
+                AcademicAuthorizationError, "any academically eligible class"
+            ),
         ):
-            with self.assertRaisesRegex(
-                AcademicAuthorizationError,
-                "any academically eligible class",
-            ):
-                await AcademicAuthorizationService.require_can_author_curriculum_subject_for_term(
-                    object(),  # type: ignore[arg-type]
-                    actor=actor,  # type: ignore[arg-type]
-                    curriculum_subject_id=subject_id,
-                    academic_term_id=term_id,
-                )
+            await AcademicAuthorizationService.require_can_author_curriculum_subject_for_term(
+                object(),  # type: ignore[arg-type]
+                actor=actor,  # type: ignore[arg-type]
+                curriculum_subject_id=subject_id,
+                academic_term_id=term_id,
+            )
 
 
 if __name__ == "__main__":

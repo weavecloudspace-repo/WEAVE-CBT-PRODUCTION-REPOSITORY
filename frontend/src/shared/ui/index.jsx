@@ -246,15 +246,15 @@ export function FormField({ label, value, onChange, type = 'text', icon, placeho
   )
 }
 
-export function Notice({ tone = 'neutral', children }) {
+export function Notice({ tone = 'neutral', children, dismissOnUnmount = false }) {
   const id = useId()
   const message = noticeText(children)
   const type = tone === 'danger' ? 'error' : tone === 'neutral' ? 'info' : tone
   useEffect(() => {
     toastBus.show(message, type, { id })
-    if (type === 'error') return undefined
+    if (type === 'error' && !dismissOnUnmount) return undefined
     return () => toastBus.remove(id)
-  }, [id, message, type])
+  }, [id, message, type, dismissOnUnmount])
   return null
 }
 

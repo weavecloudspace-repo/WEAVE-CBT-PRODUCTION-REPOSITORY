@@ -104,22 +104,26 @@ class BrandingLogoStorage:
         headers = {"Accept": "image/jpeg,image/png,image/webp"}
 
         try:
-            async with httpx.AsyncClient(
-                timeout=timeout,
-                follow_redirects=True,
-                headers=headers,
-            ) as client, client.stream("GET", url) as response:
+            async with (
+                httpx.AsyncClient(
+                    timeout=timeout,
+                    follow_redirects=True,
+                    headers=headers,
+                ) as client,
+                client.stream("GET", url) as response,
+            ):
                 if not response.is_success:
                     raise BrandingLogoStorageError(
                         f"School logo download failed with HTTP {response.status_code}."
                     )
 
                 content_length = response.headers.get("Content-Length")
-                if content_length and content_length.isdigit():
-                    if int(content_length) > settings.BRANDING_LOGO_MAX_SIZE_BYTES:
-                        raise BrandingLogoStorageError(
-                            "School logo exceeds the configured maximum size."
-                        )
+                if (content_length and content_length.isdigit()) and (
+                    int(content_length) > settings.BRANDING_LOGO_MAX_SIZE_BYTES
+                ):
+                    raise BrandingLogoStorageError(
+                        "School logo exceeds the configured maximum size."
+                    )
 
                 buffer = bytearray()
                 async for chunk in response.aiter_bytes():

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -21,10 +22,10 @@ router = APIRouter(prefix="/questions", tags=["Questions"])
 async def list_manageable_questions(
     db: DbSession,
     actor: CurrentLocalActor,
-    bank_id: UUID | None = Query(default=None),
+    bank_id: Annotated[UUID | None, Query()] = None,
     include_archived: bool = Query(default=True),
     offset: int = Query(default=0, ge=0),
-    limit: int | None = Query(default=None, ge=1, le=1000),
+    limit: Annotated[int | None, Query(ge=1, le=1000)] = None,
 ) -> list[QuestionResponse]:
     """Return the question-management scope for the current actor.
 

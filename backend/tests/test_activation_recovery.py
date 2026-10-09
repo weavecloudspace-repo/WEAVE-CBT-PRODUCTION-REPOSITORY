@@ -344,10 +344,11 @@ class ActivationOperationsTests(unittest.IsolatedAsyncioTestCase):
                 ExamTimetableService,
                 "activation_preflight",
                 new=AsyncMock(return_value=current),
-            ),self.assertRaisesRegex(
-            ExamStateError,
-            "current activation impact chain",
-        )
+            ),
+            self.assertRaisesRegex(
+                ExamStateError,
+                "current activation impact chain",
+            ),
         ):
             await ExamOperationsService.reschedule_activation_impact(
                 db,
@@ -398,7 +399,8 @@ class ActivationOperationsTests(unittest.IsolatedAsyncioTestCase):
                 ExamTimetableService,
                 "activation_preflight",
                 new=AsyncMock(side_effect=[current, still_bad]),
-            ),self.assertRaises(ExamScheduleImpactError)
+            ),
+            self.assertRaises(ExamScheduleImpactError),
         ):
             await ExamOperationsService.reschedule_activation_impact(
                 db,
@@ -504,7 +506,8 @@ class ActivationOperationsTests(unittest.IsolatedAsyncioTestCase):
                 ExamTimetableService,
                 "activation_preflight",
                 new=AsyncMock(return_value=current),
-            ),self.assertRaisesRegex(ExamStateError, "cannot resolve candidates")
+            ),
+            self.assertRaisesRegex(ExamStateError, "cannot resolve candidates"),
         ):
             await ExamOperationsService.reschedule_activation_impact(
                 db,
@@ -546,7 +549,8 @@ class ActivationOperationsTests(unittest.IsolatedAsyncioTestCase):
                 ExamTimetableService,
                 "activation_preflight",
                 new=AsyncMock(return_value=current),
-            ),self.assertRaisesRegex(ExamStateError, "Only SEALED")
+            ),
+            self.assertRaisesRegex(ExamStateError, "Only SEALED"),
         ):
             await ExamOperationsService.reschedule_activation_impact(
                 db,
@@ -591,14 +595,15 @@ class ActivationStaticReadinessTests(unittest.IsolatedAsyncioTestCase):
         )
         db = AsyncMock()
 
-        with patch.object(
-            ExamOperationsService,
-            "_require_latest_revision",
-            new=AsyncMock(),
-        ), self.assertRaisesRegex(ExamStateError, "roster must be READY"):
-            await ExamOperationsService._require_activation_static_readiness(
-                db, exam
-            )
+        with (
+            patch.object(
+                ExamOperationsService,
+                "_require_latest_revision",
+                new=AsyncMock(),
+            ),
+            self.assertRaisesRegex(ExamStateError, "roster must be READY"),
+        ):
+            await ExamOperationsService._require_activation_static_readiness(db, exam)
 
     async def test_frozen_question_mismatch_blocks_preflight(self):
         exam = SimpleNamespace(
@@ -622,11 +627,10 @@ class ActivationStaticReadinessTests(unittest.IsolatedAsyncioTestCase):
                 ExamRepository,
                 "count_exam_questions",
                 new=AsyncMock(return_value=49),
-            ),self.assertRaisesRegex(ExamStateError, "Frozen question count")
+            ),
+            self.assertRaisesRegex(ExamStateError, "Frozen question count"),
         ):
-            await ExamOperationsService._require_activation_static_readiness(
-                db, exam
-            )
+            await ExamOperationsService._require_activation_static_readiness(db, exam)
 
 
 def self_or_now():

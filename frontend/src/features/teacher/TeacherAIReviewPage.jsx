@@ -1,3 +1,4 @@
+import { scrollRegenerationFormIntoView } from './teacherReviewScroll'
 import { useEffect, useRef, useState } from 'react'
 import { RiArrowLeftLine, RiArrowRightLine, RiEyeLine, RiCheckLine, RiDeleteBin6Line, RiEdit2Line, RiRefreshLine, RiFileList3Line } from '@remixicon/react'
 import { FormattedText } from '../../shared/ui/FormattedText'
@@ -6,9 +7,7 @@ import { QuestionPreview } from './QuestionBuilder'
 import { useTeacherAIController, useTeacherAIQuota, validateAIQuestion } from './teacherAI'
 import './teacher-ai.css'
 
-export function scrollRegenerationFormIntoView(element) {
-  element?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-}
+
 
 export function TeacherAIReviewPage({ state, dispatch, teacherData, gateway }) {
   const controller = useTeacherAIController(gateway, state.session?.actor?.id)

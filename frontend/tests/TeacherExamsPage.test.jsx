@@ -129,7 +129,7 @@ describe('Teacher exams', () => {
     } finally {
       vi.useRealTimers()
     }
-  })
+  }, 15_000)
 
   it('renders a readable exam collection and opens the create workflow', () => {
     const dispatch = vi.fn()

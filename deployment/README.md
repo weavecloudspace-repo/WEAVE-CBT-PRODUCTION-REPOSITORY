@@ -1,5 +1,36 @@
 # WEAVE deployment tooling
 
+## Image publishing
+
+The `WEAVE CBT image` workflow runs frontend/backend validation, builds the
+current `runtime` Docker target, and verifies Compose bootstrap plus staff,
+student and API routes before publishing. Pull requests build and verify only.
+Pushes to `implementing-services` publish
+`ghcr.io/weavecloudspace-repo/weave-cbt-production-repository:sha-<full-commit>`
+and update its `implementing-services` tag. Use the commit tag or image digest
+for reproducible installations. Windows setup EXE and Manager release publishing
+are no longer part of CI. Existing CLI/bootstrap validation workflows remain.
+
+## Database initialization
+
+The compiled `bootstrap` command and API startup apply `alembic upgrade head`
+on the same transactional SQLAlchemy connection, serialized by a PostgreSQL
+advisory lock. Alembic owns both schema creation and revision tracking.
+Unversioned, unknown-revision and incompatible databases are rejected instead
+of being automatically stamped or repaired.
+
+Revision `20261006_initial_schema` delegates to the frozen SQLAlchemy DDL
+snapshot in `backend/app/core/schema_baseline.py`. It includes the consolidated
+result void auditing and assessment date columns. Do not regenerate this
+snapshot from changing models: add subsequent Alembic revisions instead.
+Model imports are used for schema validation and autogeneration, never to
+independently create or stamp tables at runtime. Initial schema downgrade is
+intentionally refused because it would erase school data.
+
+Databases marked with the removed `20261007_*` revisions require explicit
+schema verification and adoption to the consolidated baseline before running
+this image. Do not blindly stamp a database whose schema is incomplete.
+
 The Python package is `weave_cli`; `cli/src` is its source directory and is
 not part of an import path. Use imports such as:
 

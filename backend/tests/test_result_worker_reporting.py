@@ -18,18 +18,45 @@ class ResultWorkerReportingTests(unittest.IsolatedAsyncioTestCase):
         session = MagicMock()
         session.__aenter__ = AsyncMock(return_value=db)
         session.__aexit__ = AsyncMock(return_value=False)
-        reason = "TEACHER_ASSIGNMENT_NOT_FOUND: No teacher assignment covered the exam date."
+        reason = (
+            "TEACHER_ASSIGNMENT_NOT_FOUND: No teacher assignment covered the exam date."
+        )
         response = SimpleNamespace(
-            batch_id=uuid4(), received=1, applied=0, unchanged=0, rejected=1,
-            errors=[SimpleNamespace(code="TEACHER_ASSIGNMENT_NOT_FOUND", detail="No teacher assignment covered the exam date.")],
+            batch_id=uuid4(),
+            received=1,
+            applied=0,
+            unchanged=0,
+            rejected=1,
+            errors=[
+                SimpleNamespace(
+                    code="TEACHER_ASSIGNMENT_NOT_FOUND",
+                    detail="No teacher assignment covered the exam date.",
+                )
+            ],
         )
         for responses in ([response, None], [None]):
             with (
                 self.subTest(fresh_rejection=len(responses) == 2),
                 patch.object(results, "async_session_factory", return_value=session),
-                patch.object(results.ExamExecutionService, "results_are_approved", new=AsyncMock(return_value=True)),
-                patch.object(results.approved_result_sync_service, "sync_next_batch", new=AsyncMock(side_effect=responses)),
-                patch.object(results.ResultRepository, "list_results_for_exam", new=AsyncMock(return_value=[SimpleNamespace(voided_at=None, sync_error=reason)])),
+                patch.object(
+                    results.ExamExecutionService,
+                    "results_are_approved",
+                    new=AsyncMock(return_value=True),
+                ),
+                patch.object(
+                    results.approved_result_sync_service,
+                    "sync_next_batch",
+                    new=AsyncMock(side_effect=responses),
+                ),
+                patch.object(
+                    results.ResultRepository,
+                    "list_results_for_exam",
+                    new=AsyncMock(
+                        return_value=[
+                            SimpleNamespace(voided_at=None, sync_error=reason)
+                        ]
+                    ),
+                ),
                 self.assertLogs(results.logger, level="WARNING") as logs,
             ):
                 await results.sync_exam_results({}, str(exam_id))

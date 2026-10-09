@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from enum import Enum as PyEnum
+from enum import StrEnum
 from uuid import UUID
 
 from sqlalchemy import (
@@ -41,7 +41,7 @@ RESULT_SYNC_ERROR_MAX_LENGTH = 1024
 # ========================== #
 
 
-class ResultSyncStatus(str, PyEnum):
+class ResultSyncStatus(StrEnum):
     """
     Synchronization state of a locally calculated CBT result.
 

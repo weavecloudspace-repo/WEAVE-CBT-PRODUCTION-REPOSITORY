@@ -246,11 +246,14 @@ class ExamLifecycleServiceTests(unittest.IsolatedAsyncioTestCase):
         db = AsyncMock()
         contributor = actor(actor_id=uuid4())
         current_exam = exam(status=ExamStatus.DRAFT)
-        with patch.object(
-            ExamRepository,
-            "get_exam_by_id",
-            new=AsyncMock(return_value=current_exam),
-        ), self.assertRaises(ExamAuthorizationError):
+        with (
+            patch.object(
+                ExamRepository,
+                "get_exam_by_id",
+                new=AsyncMock(return_value=current_exam),
+            ),
+            self.assertRaises(ExamAuthorizationError),
+        ):
             await ExamService.submit_exam(
                 db,
                 actor=contributor,  # type: ignore[arg-type]
@@ -262,11 +265,14 @@ class ExamLifecycleServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_stale_screen_cannot_submit_shared_paper(self) -> None:
         db = AsyncMock()
         current_exam = exam(status=ExamStatus.DRAFT, authoring_version=5)
-        with patch.object(
-            ExamRepository,
-            "get_exam_by_id",
-            new=AsyncMock(return_value=current_exam),
-        ), self.assertRaisesRegex(ExamStateError, "Refresh"):
+        with (
+            patch.object(
+                ExamRepository,
+                "get_exam_by_id",
+                new=AsyncMock(return_value=current_exam),
+            ),
+            self.assertRaisesRegex(ExamStateError, "Refresh"),
+        ):
             await ExamService.submit_exam(
                 db,
                 actor=actor(),  # type: ignore[arg-type]
@@ -312,11 +318,14 @@ class ExamLifecycleServiceTests(unittest.IsolatedAsyncioTestCase):
         db = AsyncMock()
         contributor = actor(actor_id=uuid4())
         current_exam = exam()
-        with patch.object(
-            ExamRepository,
-            "get_exam_by_id",
-            new=AsyncMock(return_value=current_exam),
-        ), self.assertRaises(ExamAuthorizationError):
+        with (
+            patch.object(
+                ExamRepository,
+                "get_exam_by_id",
+                new=AsyncMock(return_value=current_exam),
+            ),
+            self.assertRaises(ExamAuthorizationError),
+        ):
             await ExamService.delete_draft_exam(
                 db,
                 actor=contributor,  # type: ignore[arg-type]
@@ -603,7 +612,8 @@ class ExamLifecycleServiceTests(unittest.IsolatedAsyncioTestCase):
             patch.object(ExamRepository, "save_exam", new=AsyncMock()) as save_exam,
             patch.object(
                 RuntimeRepository, "add_outbox_event", new=AsyncMock()
-            ) as add_event,self.assertRaisesRegex(ValueError, "could not be sealed")
+            ) as add_event,
+            self.assertRaisesRegex(ValueError, "could not be sealed"),
         ):
             await ExamService.seal_exam(
                 db,
@@ -678,7 +688,8 @@ class ExamLifecycleServiceTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(
                 ExamRepository, "count_exam_questions", new=AsyncMock()
-            ) as count_questions,self.assertRaisesRegex(ExamStateError, "READY")
+            ) as count_questions,
+            self.assertRaisesRegex(ExamStateError, "READY"),
         ):
             await ExamService.activate_exam(
                 db,
@@ -741,11 +752,14 @@ class ExamLifecycleServiceTests(unittest.IsolatedAsyncioTestCase):
         db = AsyncMock()
         teacher = actor()
         current_exam = exam(status=ExamStatus.SUBMITTED)
-        with patch.object(
-            ExamRepository,
-            "get_exam_by_id",
-            new=AsyncMock(return_value=current_exam),
-        ), self.assertRaises(AcademicAuthorizationError):
+        with (
+            patch.object(
+                ExamRepository,
+                "get_exam_by_id",
+                new=AsyncMock(return_value=current_exam),
+            ),
+            self.assertRaises(AcademicAuthorizationError),
+        ):
             await ExamService.return_exam_to_draft(
                 db,
                 actor=teacher,  # type: ignore[arg-type]
@@ -770,7 +784,8 @@ class ExamLifecycleServiceTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(
                 ExamRepository, "add_invigilators", new=AsyncMock()
-            ) as add_invigilators,self.assertRaises(AcademicScopeError)
+            ) as add_invigilators,
+            self.assertRaises(AcademicScopeError),
         ):
             await ExamService.assign_invigilators(
                 db,

@@ -112,10 +112,12 @@ class LocalAuthService:
         )
 
         now = datetime.now(UTC)
-        access_expires_at, hard_expires_at = LocalAuthService._validate_token_pair_times(
-            access_expires_at=weave_actor.access_token_expires_at,
-            refresh_expires_at=weave_actor.refresh_token_expires_at,
-            now=now,
+        access_expires_at, hard_expires_at = (
+            LocalAuthService._validate_token_pair_times(
+                access_expires_at=weave_actor.access_token_expires_at,
+                refresh_expires_at=weave_actor.refresh_token_expires_at,
+                now=now,
+            )
         )
         session_id = uuid4()
 
@@ -276,7 +278,11 @@ class LocalAuthService:
 
             if actor is None or session is None or stored_token is None:
                 failure = INVALID_LOCAL_STAFF_SESSION
-            elif not actor.is_active or session.revoked_at is not None or session.expires_at <= now:
+            elif (
+                not actor.is_active
+                or session.revoked_at is not None
+                or session.expires_at <= now
+            ):
                 if session.revoked_at is None:
                     await LocalAuthService._revoke_session_locked(
                         db,
@@ -378,10 +384,12 @@ class LocalAuthService:
         token_pair: WeaveActorTokenPair,
     ) -> LocalLoginResult:
         now = datetime.now(UTC)
-        access_expires_at, refresh_expires_at = LocalAuthService._validate_token_pair_times(
-            access_expires_at=token_pair.access_token_expires_at,
-            refresh_expires_at=token_pair.refresh_token_expires_at,
-            now=now,
+        access_expires_at, refresh_expires_at = (
+            LocalAuthService._validate_token_pair_times(
+                access_expires_at=token_pair.access_token_expires_at,
+                refresh_expires_at=token_pair.refresh_token_expires_at,
+                now=now,
+            )
         )
         installation = node_identity_store.load()
         failure: str | None = None
@@ -392,25 +400,26 @@ class LocalAuthService:
                 db,
                 token_hash=token_hash,
             )
-            if actor is None or session is None or stored_token is None:
-                failure = INVALID_LOCAL_STAFF_SESSION
-            elif (
-                session.revoked_at is not None
-                or not actor.is_active
-                or session.expires_at <= now
-                or stored_token.consumed_at is not None
-                or stored_token.revoked_at is not None
+            if (
+                actor is None
+                or session is None
+                or stored_token is None
+                or (
+                    session.revoked_at is not None
+                    or not actor.is_active
+                    or session.expires_at <= now
+                    or stored_token.consumed_at is not None
+                    or stored_token.revoked_at is not None
+                )
+                or session.weave_refresh_operation_id != cloud_operation_id
             ):
-                failure = INVALID_LOCAL_STAFF_SESSION
-            elif session.weave_refresh_operation_id != cloud_operation_id:
                 failure = INVALID_LOCAL_STAFF_SESSION
             elif refresh_expires_at > session.expires_at + timedelta(seconds=2):
                 raise WeaveContractError(
                     "Weave attempted to extend the absolute CBT staff authorization lifetime."
                 )
             else:
-                if refresh_expires_at < session.expires_at:
-                    session.expires_at = refresh_expires_at
+                session.expires_at = min(session.expires_at, refresh_expires_at)
 
                 session.weave_access_token_encrypted = encrypt_local_secret(
                     token_pair.access_token.get_secret_value(),
@@ -471,14 +480,17 @@ class LocalAuthService:
                 db,
                 token_hash=token_hash,
             )
-            if actor is None or session is None or stored_token is None:
-                failure = INVALID_LOCAL_STAFF_SESSION
-            elif (
-                not actor.is_active
-                or session.revoked_at is not None
-                or session.expires_at <= now
-                or stored_token.consumed_at is not None
-                or stored_token.revoked_at is not None
+            if (
+                actor is None
+                or session is None
+                or stored_token is None
+                or (
+                    not actor.is_active
+                    or session.revoked_at is not None
+                    or session.expires_at <= now
+                    or stored_token.consumed_at is not None
+                    or stored_token.revoked_at is not None
+                )
             ):
                 failure = INVALID_LOCAL_STAFF_SESSION
             else:
@@ -671,7 +683,9 @@ class LocalAuthService:
             token_hint = await AuthRepository.get_refresh_token_by_hash(db, token_hash)
             if token_hint is None:
                 return
-            session_hint = await AuthRepository.get_session_by_id(db, token_hint.session_id)
+            session_hint = await AuthRepository.get_session_by_id(
+                db, token_hint.session_id
+            )
             if session_hint is None:
                 return
             actor = await AuthRepository.get_actor_by_id(
@@ -966,7 +980,9 @@ class LocalAuthService:
         access_expiry = access_expires_at.astimezone(UTC)
         refresh_expiry = refresh_expires_at.astimezone(UTC)
         if access_expiry <= now or refresh_expiry <= now:
-            raise WeaveContractError("Weave returned already-expired authorization tokens.")
+            raise WeaveContractError(
+                "Weave returned already-expired authorization tokens."
+            )
         if access_expiry > refresh_expiry:
             raise WeaveContractError(
                 "Weave access-token expiry exceeds the authorization hard expiry."

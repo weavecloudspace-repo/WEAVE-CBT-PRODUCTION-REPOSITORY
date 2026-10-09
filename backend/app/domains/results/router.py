@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -123,8 +124,8 @@ async def list_exam_results(
     exam_id: UUID,
     db: DbSession,
     actor: CurrentLocalActor,
-    search: str | None = Query(default=None, max_length=255),
-    sync_status: ResultSyncStatus | None = Query(default=None),
+    search: Annotated[str | None, Query(max_length=255)] = None,
+    sync_status: Annotated[ResultSyncStatus | None, Query()] = None,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=200),
 ) -> ResultListResponse:

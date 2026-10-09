@@ -58,8 +58,13 @@ class AIGenerateQuestionsRequest(WeaveAIQuestionSchema):
     @model_validator(mode="after")
     def validate_counts(self):
         if self.question_type_counts is not None:
-            if any(type(count) is not int or count < 0 for count in self.question_type_counts.values()):
-                raise ValueError("question_type_counts values must be non-negative integers")
+            if any(
+                type(count) is not int or count < 0
+                for count in self.question_type_counts.values()
+            ):
+                raise ValueError(
+                    "question_type_counts values must be non-negative integers"
+                )
             if sum(self.question_type_counts.values()) != self.question_count:
                 raise ValueError("question_type_counts must sum to question_count")
         return self

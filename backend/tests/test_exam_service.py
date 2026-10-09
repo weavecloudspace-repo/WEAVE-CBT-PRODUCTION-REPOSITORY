@@ -86,9 +86,7 @@ def draft_exam(**overrides) -> SimpleNamespace:
 class ExamSchemaValidationTests(unittest.TestCase):
     def test_update_rejects_invalid_window_when_both_fields_are_supplied(self) -> None:
         start_at = datetime.now(UTC) + timedelta(days=1)
-        with self.assertRaisesRegex(
-            ValueError, "Normal entry deadline must be later"
-        ):
+        with self.assertRaisesRegex(ValueError, "Normal entry deadline must be later"):
             ExamUpdate(
                 scheduled_start_at=start_at,
                 latest_normal_start_at=start_at - timedelta(minutes=1),
@@ -195,9 +193,9 @@ class ExamServiceTests(unittest.IsolatedAsyncioTestCase):
                 ExamRepository, "get_exam_revision", new=AsyncMock()
             ) as revision,
             patch.object(ExamRepository, "add_exam", new=AsyncMock()) as add_exam,
+            self.assertRaisesRegex(ValueError, "enough active questions"),
         ):
-            with self.assertRaisesRegex(ValueError, "enough active questions"):
-                await ExamService.create_exam(db, actor=current_actor, payload=payload)  # type: ignore[arg-type]
+            await ExamService.create_exam(db, actor=current_actor, payload=payload)  # type: ignore[arg-type]
 
         authorize.assert_awaited_once_with(
             db,
@@ -279,13 +277,13 @@ class ExamServiceTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
             patch.object(ExamRepository, "save_exam", new=AsyncMock()) as save_exam,
-        ):
-            with self.assertRaisesRegex(
+            self.assertRaisesRegex(
                 ExamStateError, "must be later than the scheduled start"
-            ):
-                await ExamService.update_exam(
-                    db, actor=current_actor, payload=payload, exam_id=current_exam.id
-                )  # type: ignore[arg-type]
+            ),
+        ):
+            await ExamService.update_exam(
+                db, actor=current_actor, payload=payload, exam_id=current_exam.id
+            )  # type: ignore[arg-type]
 
         save_exam.assert_not_awaited()
         db.commit.assert_not_awaited()
@@ -296,9 +294,14 @@ class ExamServiceTests(unittest.IsolatedAsyncioTestCase):
         db = AsyncMock()
         contributor = actor(actor_id=uuid4())
         current_exam = draft_exam()
-        with patch.object(
-            ExamRepository, "get_exam_by_id", new=AsyncMock(return_value=current_exam)
-        ), self.assertRaises(ExamAuthorizationError):
+        with (
+            patch.object(
+                ExamRepository,
+                "get_exam_by_id",
+                new=AsyncMock(return_value=current_exam),
+            ),
+            self.assertRaises(ExamAuthorizationError),
+        ):
             await ExamService.update_exam(
                 db,
                 actor=contributor,
@@ -309,9 +312,14 @@ class ExamServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_stale_authoring_version_rejects_mutation(self) -> None:
         db = AsyncMock()
         current_exam = draft_exam(authoring_version=4)
-        with patch.object(
-            ExamRepository, "get_exam_by_id", new=AsyncMock(return_value=current_exam)
-        ), self.assertRaisesRegex(ExamStateError, "Refresh"):
+        with (
+            patch.object(
+                ExamRepository,
+                "get_exam_by_id",
+                new=AsyncMock(return_value=current_exam),
+            ),
+            self.assertRaisesRegex(ExamStateError, "Refresh"),
+        ):
             await ExamService.update_exam(
                 db,
                 actor=actor(),
@@ -330,9 +338,14 @@ class ExamServiceTests(unittest.IsolatedAsyncioTestCase):
             question_selection_mode=ExamQuestionSelectionMode.RANDOM,
             question_count=2,
         )
-        with patch.object(
-            ExamRepository, "get_exam_by_id", new=AsyncMock(return_value=current_exam)
-        ), self.assertRaises(ExamAuthorizationError):
+        with (
+            patch.object(
+                ExamRepository,
+                "get_exam_by_id",
+                new=AsyncMock(return_value=current_exam),
+            ),
+            self.assertRaises(ExamAuthorizationError),
+        ):
             await ExamService.configure_questions(
                 db, actor=contributor, exam_id=current_exam.id, payload=payload
             )  # type: ignore[arg-type]
@@ -380,9 +393,8 @@ class ExamServiceTests(unittest.IsolatedAsyncioTestCase):
                 ExamRepository,
                 "list_question_selections",
                 new=AsyncMock(return_value=selections),
-            ),self.assertRaisesRegex(
-            ValueError, "clear_existing_manual_selections=true"
-        )
+            ),
+            self.assertRaisesRegex(ValueError, "clear_existing_manual_selections=true"),
         ):
             await ExamService.configure_questions(
                 db, actor=actor(), exam_id=current_exam.id, payload=payload
@@ -494,16 +506,14 @@ class ExamServiceTests(unittest.IsolatedAsyncioTestCase):
                 ExamRepository, "clear_question_selections", new=AsyncMock()
             ) as clear_selections,
             patch.object(ExamRepository, "save_exam", new=AsyncMock()) as save_exam,
+            self.assertRaisesRegex(ExamAuthorizationError, "only questions they added"),
         ):
-            with self.assertRaisesRegex(
-                ExamAuthorizationError, "only questions they added"
-            ):
-                await ExamService.remove_manual_question(
-                    db,
-                    actor=contributor,  # type: ignore[arg-type]
-                    exam_id=current_exam.id,
-                    payload=ManualQuestionRemove(question_id=question_id),
-                )
+            await ExamService.remove_manual_question(
+                db,
+                actor=contributor,  # type: ignore[arg-type]
+                exam_id=current_exam.id,
+                payload=ManualQuestionRemove(question_id=question_id),
+            )
 
         get_selection.assert_awaited_once_with(
             db,

@@ -112,13 +112,16 @@ class QuestionManagementScopeTests(unittest.IsolatedAsyncioTestCase):
         requested_bank_id = uuid4()
         db = object()
 
-        with patch.object(
-            QuestionService,
-            "list_actor_authorable_question_banks",
-            new=AsyncMock(return_value=[allowed_bank]),
-        ), self.assertRaisesRegex(
-            Exception,
-            "not allowed to manage questions in this bank",
+        with (
+            patch.object(
+                QuestionService,
+                "list_actor_authorable_question_banks",
+                new=AsyncMock(return_value=[allowed_bank]),
+            ),
+            self.assertRaisesRegex(
+                Exception,
+                "not allowed to manage questions in this bank",
+            ),
         ):
             await QuestionService.list_actor_manageable_questions(
                 db,

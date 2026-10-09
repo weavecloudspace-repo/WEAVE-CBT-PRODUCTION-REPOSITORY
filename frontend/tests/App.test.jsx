@@ -186,6 +186,17 @@ describe('Weave backend integration shell', () => {
           activated_at: '2026-08-22T09:00:00Z',
         })
       },
+      'GET /api/v1/student/auth/status': () => jsonResponse({
+        student_id: '77777777-7777-7777-7777-777777777777',
+        candidate_id: candidateId,
+        exam_id: examId,
+        exam_title: 'Mathematics CA1',
+        display_name: 'Taiwo Adewale',
+        availability: 'ready',
+        is_makeup: false,
+        scheduled_start_at: null,
+        activated_at: '2026-08-22T09:00:00Z',
+      }),
       'POST /api/v1/student/attempts/current/start': () => jsonResponse(currentAttempt()),
       'GET /api/v1/student/attempts/current': () => jsonResponse(currentAttempt()),
       [`PUT /api/v1/student/attempts/current/questions/${attemptQuestionId}/answer`]: ({ options }) => {

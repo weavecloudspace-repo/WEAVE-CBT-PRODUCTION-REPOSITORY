@@ -403,10 +403,11 @@ class AcademicEligibilityTests(unittest.IsolatedAsyncioTestCase):
                 AcademicRepository,
                 "get_class_term_department",
                 new=AsyncMock(return_value=None),
-            ),self.assertRaisesRegex(
-            AcademicScopeError,
-            "requires a department specialization",
-        )
+            ),
+            self.assertRaisesRegex(
+                AcademicScopeError,
+                "requires a department specialization",
+            ),
         ):
             await AcademicEligibilityService.subject_applies_to_class(
                 object(),  # type: ignore[arg-type]
@@ -434,7 +435,8 @@ class AcademicEligibilityTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(
                     return_value=SimpleNamespace(id=class_id, is_active=False)
                 ),
-            ),self.assertRaisesRegex(AcademicScopeError, "Class is inactive")
+            ),
+            self.assertRaisesRegex(AcademicScopeError, "Class is inactive"),
         ):
             await AcademicEligibilityService.subject_applies_to_class(
                 object(),  # type: ignore[arg-type]

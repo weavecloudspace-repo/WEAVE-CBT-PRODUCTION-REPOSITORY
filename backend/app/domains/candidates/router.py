@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -84,10 +85,10 @@ async def list_exam_roster(
     exam_id: UUID,
     db: DbSession,
     actor: CurrentLocalActor,
-    candidate_status: CandidateStatus | None = Query(default=None, alias="status"),
-    class_id: UUID | None = Query(default=None),
-    search: str | None = Query(default=None, max_length=128),
-    attempt_state: CandidateAttemptStateFilter | None = Query(default=None),
+    candidate_status: Annotated[CandidateStatus | None, Query(alias="status")] = None,
+    class_id: Annotated[UUID | None, Query()] = None,
+    search: Annotated[str | None, Query(max_length=128)] = None,
+    attempt_state: Annotated[CandidateAttemptStateFilter | None, Query()] = None,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> CandidateRosterResponse:

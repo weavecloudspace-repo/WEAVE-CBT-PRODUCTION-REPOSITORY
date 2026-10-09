@@ -51,7 +51,9 @@ def test_create_rejects_naive_schedule_timestamp() -> None:
     with pytest.raises(
         ValidationError, match="scheduled_start_at must include a timezone"
     ):
-        ExamCreate(**create_payload(scheduled_start_at=datetime.now(UTC).replace(tzinfo=None)))
+        ExamCreate(
+            **create_payload(scheduled_start_at=datetime.now(UTC).replace(tzinfo=None))
+        )
 
 
 def test_create_rejects_latest_start_without_scheduled_start() -> None:

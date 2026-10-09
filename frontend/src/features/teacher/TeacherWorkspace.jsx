@@ -159,7 +159,6 @@ function useTeacherData(gateway) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     loadTeacherData(gateway)
       .then((loaded) => {
         if (cancelled) return;

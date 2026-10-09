@@ -5,6 +5,8 @@ on:
     branches: [implementing-services]
     paths:
       - "deployment/cli/src/weave_cli/commands/**"
+      - "deployment/cli/src/weave_cli/platforms/**"
+      - "deployment/cli/tests/test_wsl_session.py"
       - "deployment/cli/tests/test_commands.py"
       - "deployment/cli/tests/test_entrypoint.py"
       - "deployment/cli/src/weave_cli/main.py"
@@ -14,6 +16,8 @@ on:
   pull_request:
     paths:
       - "deployment/cli/src/weave_cli/commands/**"
+      - "deployment/cli/src/weave_cli/platforms/**"
+      - "deployment/cli/tests/test_wsl_session.py"
       - "deployment/cli/tests/test_commands.py"
       - "deployment/cli/tests/test_entrypoint.py"
       - "deployment/cli/src/weave_cli/main.py"
@@ -43,3 +47,5 @@ jobs:
           uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_entrypoint.py -v
           uv run --project deployment weave --help
           uv run --project deployment weave install --help
+      - name: Verify Windows runtime session task safety
+        run: uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_wsl_session.py -v

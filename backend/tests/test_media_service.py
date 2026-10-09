@@ -44,7 +44,8 @@ class MediaServiceTests(unittest.IsolatedAsyncioTestCase):
                 local_media_storage,
                 "delete",
                 new=AsyncMock(),
-            ) as delete_file,self.assertRaisesRegex(RuntimeError, "database failure")
+            ) as delete_file,
+            self.assertRaisesRegex(RuntimeError, "database failure"),
         ):
             await MediaService.upload_question_image(
                 db,
@@ -89,7 +90,8 @@ class MediaServiceTests(unittest.IsolatedAsyncioTestCase):
                 local_media_storage,
                 "delete",
                 new=AsyncMock(),
-            ) as delete_file,self.assertRaisesRegex(ValueError, "still referenced")
+            ) as delete_file,
+            self.assertRaisesRegex(ValueError, "still referenced"),
         ):
             await MediaService.delete_unreferenced_asset(
                 db,

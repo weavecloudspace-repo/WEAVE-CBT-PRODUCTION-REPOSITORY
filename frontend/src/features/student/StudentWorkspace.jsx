@@ -14,7 +14,7 @@ const TIMEOUT_RETRY_MS = 3_000
 export function StudentWorkspace(props) {
   return (
     <StudentLogoutConfirmation onLogout={props.returnToSignIn}>
-      {(requestLogout) => <StudentWorkspaceContent {...props} requestLogout={requestLogout} />}
+      {(requestLogout) => <StudentWorkspaceContent key={props.resolution?.exam?.id || 'current'} {...props} requestLogout={requestLogout} />}
     </StudentLogoutConfirmation>
   )
 }
@@ -28,6 +28,7 @@ function StudentWorkspaceContent({ exam, resolution, gateway, dispatch, returnTo
   const [submissionRequested, setSubmissionRequested] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [timeoutSubmitting, setTimeoutSubmitting] = useState(false)
+  const [previousStage, setPreviousStage] = useState(exam.stage)
   const submissionDialogRef = useRef(null)
   const submissionPending = useRef(false)
   const timeoutPending = useRef(false)
@@ -37,9 +38,24 @@ function StudentWorkspaceContent({ exam, resolution, gateway, dispatch, returnTo
   const startPending = useRef(false)
   const pendingSaves = useRef(new Set())
   const [clock, setClock] = useState(() => Date.now())
+  if (previousStage !== exam.stage) {
+    setPreviousStage(exam.stage)
+    if (exam.stage !== 'active') {
+      setTimeoutSubmitting(false)
+      setSuspension(null)
+      setAttempt(null)
+    }
+  }
   const isSuspended = exam.stage === 'active' && Boolean(suspension || attempt?.exam_suspended || resolution?.state === 'suspended')
   const interrupted = exam.stage === 'active' && attempt?.status === 'interrupted'
   const remaining = Math.max(0, (attempt?.remaining_seconds || 0) - (attempt?.exam_suspended || attempt?.status !== 'in_progress' ? 0 : Math.floor(Math.max(0, clock - (attempt?.clock_received_at || clock)) / 1000)))
+
+  useEffect(() => {
+    if (exam.stage !== 'active') {
+      suspensionHandled.current = false
+      timeoutPending.current = false
+    }
+  }, [exam.stage])
 
   useEffect(() => {
     if (exam.stage !== 'active' || !attempt?.id || submitted || isSuspended || interrupted) return undefined
@@ -78,14 +94,6 @@ function StudentWorkspaceContent({ exam, resolution, gateway, dispatch, returnTo
     onExamSuspended?.(suspension?.message || (resolution?.state === 'suspended' ? resolution.statusMessage : undefined))
   }, [isSuspended, onExamSuspended, resolution, suspension])
 
-  useEffect(() => {
-    if (exam.stage === 'active') return
-    suspensionHandled.current = false
-    timeoutPending.current = false
-    setTimeoutSubmitting(false)
-    setSuspension(null)
-    setAttempt(null)
-  }, [exam.stage])
 
   useEffect(() => {
     if (exam.stage !== 'active') return undefined

@@ -110,7 +110,7 @@ export function LoginShell({ kind, title, subtitle, branding, children, error, l
               onSubmit={(event) => { event.preventDefault(); onSubmit() }}
             >
               <div className="weave-login-form__fields">{children}</div>
-              {error && <Notice tone="danger">{error}</Notice>}
+              {error && <Notice tone="danger" dismissOnUnmount>{error}</Notice>}
               <button className="weave-login-submit" type="submit" disabled={loading}>
                 {loading ? 'Checking...' : 'Sign In'}
               </button>

@@ -88,7 +88,8 @@ class ResultRetryServiceTests(unittest.IsolatedAsyncioTestCase):
                         result_disposition=ExamResultDisposition.VOIDED
                     )
                 ),
-            ),self.assertRaisesRegex(Exception, "APPROVED")
+            ),
+            self.assertRaisesRegex(Exception, "APPROVED"),
         ):
             await ResultRetryService.retry_detached_failures(
                 db,

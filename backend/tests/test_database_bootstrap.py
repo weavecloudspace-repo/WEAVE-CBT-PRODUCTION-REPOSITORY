@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 from uuid import uuid4
 
 import pytest
@@ -78,6 +79,11 @@ async def fresh_database():
 
 @pytest.mark.asyncio
 async def test_fresh_startup_and_restart_preserve_data(fresh_database):
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+
+    from app.core.migrations import include_schema_object
+
     assert await bootstrap_database(fresh_database) is True
     async with fresh_database.begin() as connection:
         tables = set(
@@ -88,6 +94,22 @@ async def test_fresh_startup_and_restart_preserve_data(fresh_database):
             ).scalars()
         )
         assert tables == set(Base.metadata.tables) | {"alembic_version"}
+        assert (
+            await connection.run_sync(
+                lambda sync: compare_metadata(
+                    MigrationContext.configure(
+                        sync,
+                        opts={
+                            "compare_type": True,
+                            "compare_server_default": True,
+                            "include_object": include_schema_object,
+                        },
+                    ),
+                    Base.metadata,
+                )
+            )
+            == []
+        )
         assert (
             await connection.execute(text("SELECT version_num FROM alembic_version"))
         ).scalar_one() == "20261006_initial_schema"
@@ -115,7 +137,9 @@ async def test_unversioned_schema_is_not_silently_adopted(fresh_database):
         await bootstrap_database(fresh_database)
     async with fresh_database.connect() as connection:
         assert (
-            await connection.execute(text("SELECT to_regclass('public.alembic_version')"))
+            await connection.execute(
+                text("SELECT to_regclass('public.alembic_version')")
+            )
         ).scalar_one() is None
 
 
@@ -124,7 +148,9 @@ async def test_outdated_revision_requires_explicit_upgrade(fresh_database):
     await bootstrap_database(fresh_database)
     async with fresh_database.begin() as connection:
         await connection.execute(
-            text("UPDATE public.alembic_version SET version_num = 'unknown_old_revision'")
+            text(
+                "UPDATE public.alembic_version SET version_num = 'unknown_old_revision'"
+            )
         )
     with pytest.raises(RuntimeError, match="requires an Alembic upgrade"):
         await bootstrap_database(fresh_database)
@@ -186,11 +212,14 @@ async def test_missing_contributor_trigger_is_rejected(fresh_database):
 
 @pytest.mark.asyncio
 async def test_failed_initialization_rolls_back_all_tables(fresh_database, monkeypatch):
-    def fail(_connection):
-        raise RuntimeError("trigger installation failed")
+    from app.core.schema_baseline import create_schema
 
-    monkeypatch.setattr("app.core.database_bootstrap.create_contributor_triggers", fail)
-    with pytest.raises(RuntimeError, match="trigger installation failed"):
+    def fail(_connection):
+        create_schema(_connection)
+        raise RuntimeError("baseline installation failed")
+
+    monkeypatch.setattr("app.core.schema_baseline.create_schema", fail)
+    with pytest.raises(RuntimeError, match="baseline installation failed"):
         await bootstrap_database(fresh_database)
     async with fresh_database.connect() as connection:
         assert not list(
@@ -200,3 +229,68 @@ async def test_failed_initialization_rolls_back_all_tables(fresh_database, monke
                 )
             ).scalars()
         )
+
+
+@pytest.mark.asyncio
+async def test_missing_resume_check_is_rejected(fresh_database):
+    await bootstrap_database(fresh_database)
+    async with fresh_database.begin() as connection:
+        await connection.execute(
+            text(
+                "ALTER TABLE public.attempt_interruptions "
+                "DROP CONSTRAINT ck_attempt_interruptions_resume_actor_required"
+            )
+        )
+    with pytest.raises(RuntimeError, match="resume_actor_required is missing"):
+        await bootstrap_database(fresh_database)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("already_initialized", [False, True])
+async def test_future_migration_does_not_duplicate_current_model_column(
+    fresh_database, monkeypatch, tmp_path, already_initialized
+):
+    from alembic.config import Config
+    from sqlalchemy import Column, String
+
+    from app.core.migrations import migration_config
+
+    if already_initialized:
+        await bootstrap_database(fresh_database)
+    source = migration_config()
+    scripts = tmp_path / "alembic"
+    shutil.copytree(source.get_main_option("script_location"), scripts)
+    (scripts / "versions" / "future_probe.py").write_text(
+        "from alembic import op\n"
+        "import sqlalchemy as sa\n"
+        'revision = "future_probe"\n'
+        'down_revision = "20261006_initial_schema"\n'
+        "def upgrade():\n"
+        '    op.add_column("school_profiles", sa.Column("future_probe", sa.String(40)))\n',
+        encoding="utf-8",
+    )
+
+    def future_config():
+        config = Config(source.config_file_name)
+        config.set_main_option("script_location", str(scripts))
+        return config
+
+    monkeypatch.setattr("app.core.database_bootstrap.migration_config", future_config)
+    monkeypatch.setattr(
+        "app.core.database_bootstrap.migration_head", lambda: "future_probe"
+    )
+    table = Base.metadata.tables["school_profiles"]
+    probe = Column("future_probe", String(40))
+    table.append_column(probe)
+    try:
+        assert await bootstrap_database(fresh_database) is (not already_initialized)
+        assert await bootstrap_database(fresh_database) is False
+        async with fresh_database.connect() as connection:
+            assert (
+                await connection.execute(
+                    text("SELECT version_num FROM alembic_version")
+                )
+            ).scalar_one() == "future_probe"
+            await connection.execute(text("SELECT future_probe FROM school_profiles"))
+    finally:
+        table._columns.remove(probe)

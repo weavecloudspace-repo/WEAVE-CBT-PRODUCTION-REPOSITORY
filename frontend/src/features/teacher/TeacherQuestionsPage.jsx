@@ -9,11 +9,15 @@ import './question-lifecycle-modal.css'
 
 const PAGE_SIZE = 10
 
-export function TeacherQuestionsPage({ state, dispatch, teacherData, gateway }) {
+export function TeacherQuestionsPage(props) {
+  return <TeacherQuestionsContent key={props.state.staff.selectedBankId || 'all'} {...props} />
+}
+
+function TeacherQuestionsContent({ state, dispatch, teacherData, gateway }) {
   const [query, setQuery] = useState('')
-  const [bankId, setBankId] = useState('all')
+  const [bankId, setBankId] = useState(state.staff.selectedBankId || 'all')
   const [tab, setTab] = useState('all')
-  const [page, setPage] = useState(1)
+  const [requestedPage, setPage] = useState(1)
   const [lifecycleQuestionId, setLifecycleQuestionId] = useState(null)
   const [lifecyclePosition, setLifecyclePosition] = useState(null)
   const [lifecycleBusyId, setLifecycleBusyId] = useState(null)
@@ -21,13 +25,6 @@ export function TeacherQuestionsPage({ state, dispatch, teacherData, gateway }) 
   const [lifecycleModalError, setLifecycleModalError] = useState('')
   const lifecycleRef = useRef(null)
 
-  useEffect(() => {
-    const preferredBank = state.staff.selectedBankId
-    if (preferredBank && teacherData.banks.some((bank) => bank.id === preferredBank)) {
-      setBankId(preferredBank)
-      setPage(1)
-    }
-  }, [state.staff.selectedBankId, teacherData.banks])
 
   const scopedQuestions = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -60,11 +57,9 @@ export function TeacherQuestionsPage({ state, dispatch, teacherData, gateway }) 
   }, [teacherData.questions])
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const page = Math.min(requestedPage, pageCount)
   const visibleQuestions = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  useEffect(() => {
-    if (page > pageCount) setPage(pageCount)
-  }, [page, pageCount])
 
   const closeLifecycle = () => {
     setLifecycleQuestionId(null)
@@ -101,7 +96,7 @@ export function TeacherQuestionsPage({ state, dispatch, teacherData, gateway }) 
   useEffect(() => {
     if (!pendingLifecycleAction) return undefined
     const closeOnEscape = (event) => {
-      if (event.key === 'Escape' && !lifecycleBusyId) closeLifecycleConfirmation()
+      if (event.key === 'Escape' && !lifecycleBusyId) { setPendingLifecycleAction(null); setLifecycleModalError('') }
     }
     document.addEventListener('keydown', closeOnEscape)
     return () => document.removeEventListener('keydown', closeOnEscape)

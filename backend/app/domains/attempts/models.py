@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum as PyEnum
+from enum import StrEnum
 from uuid import UUID
 
 from sqlalchemy import (
@@ -32,14 +32,14 @@ from app.domains.questions.models import QuestionType
 ATTEMPT_REASON_MAX_LENGTH = 500
 
 
-class AttemptStatus(str, PyEnum):
+class AttemptStatus(StrEnum):
     IN_PROGRESS = "in_progress"
     INTERRUPTED = "interrupted"
     SUBMITTED = "submitted"
     TERMINATED = "terminated"
 
 
-class AttemptEndReason(str, PyEnum):
+class AttemptEndReason(StrEnum):
     CANDIDATE_SUBMITTED = "candidate_submitted"
     TIME_EXPIRED = "time_expired"
     EXAM_CLOSED = "exam_closed"

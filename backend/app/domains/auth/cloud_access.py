@@ -218,8 +218,7 @@ async def _complete_cloud_repair(
             raise WeaveContractError(
                 "Weave attempted to extend the absolute CBT staff authorization lifetime."
             )
-        if refresh_expiry < session.expires_at:
-            session.expires_at = refresh_expiry
+        session.expires_at = min(session.expires_at, refresh_expiry)
 
         raw_access_token = token_pair.access_token.get_secret_value()
         session.weave_access_token_encrypted = encrypt_local_secret(

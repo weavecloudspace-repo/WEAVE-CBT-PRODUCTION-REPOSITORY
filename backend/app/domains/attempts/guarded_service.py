@@ -404,7 +404,9 @@ class AttemptService(_AttemptService):
             await db.commit()
         except IntegrityError as exc:
             await db.rollback()
-            raise AttemptStateError("Selected attempts could not be interrupted") from exc
+            raise AttemptStateError(
+                "Selected attempts could not be interrupted"
+            ) from exc
 
         return AttemptBulkOperatorResponse(
             action="interrupt",

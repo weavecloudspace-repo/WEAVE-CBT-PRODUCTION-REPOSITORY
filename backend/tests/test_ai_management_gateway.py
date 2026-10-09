@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -30,7 +30,7 @@ class WeaveAIGatewayTests(unittest.IsolatedAsyncioTestCase):
             "actor_type": "teacher",
             "actor_id": str(actor_id),
             "weekly": {
-                "week_start": date.today().isoformat(),
+                "week_start": datetime.now(UTC).date().isoformat(),
                 "credit_limit": 100,
                 "used_credits": 20,
                 "reserved_credits": 10,

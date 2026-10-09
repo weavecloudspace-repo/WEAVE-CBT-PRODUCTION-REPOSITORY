@@ -440,40 +440,6 @@ class CandidateRepository:
         return list(result.scalars().all())
 
     @staticmethod
-    async def list_pending_makeups_for_student(
-        db: AsyncSession,
-        *,
-        student_id: UUID,
-        session_id: UUID,
-        term_id: UUID,
-    ) -> list[tuple[CandidateMakeupAuthorization, ExamCandidate, Exam]]:
-        result = await db.execute(
-            select(
-                CandidateMakeupAuthorization,
-                ExamCandidate,
-                Exam,
-            )
-            .join(
-                ExamCandidate,
-                ExamCandidate.id == CandidateMakeupAuthorization.candidate_id,
-            )
-            .join(Exam, Exam.id == ExamCandidate.exam_id)
-            .where(
-                ExamCandidate.student_id == student_id,
-                CandidateMakeupAuthorization.revoked_at.is_(None),
-                CandidateMakeupAuthorization.consumed_at.is_(None),
-                Exam.session_id == session_id,
-                Exam.term_id == term_id,
-            )
-            .order_by(
-                Exam.scheduled_start_at.asc().nulls_last(),
-                Exam.id.asc(),
-                ExamCandidate.id.asc(),
-            )
-        )
-        return list(result.tuples().all())
-
-    @staticmethod
     async def count_pending_makeups_for_student(
         db: AsyncSession,
         *,

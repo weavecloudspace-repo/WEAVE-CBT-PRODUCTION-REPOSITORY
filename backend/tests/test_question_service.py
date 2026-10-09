@@ -374,9 +374,8 @@ class QuestionServiceTests(unittest.IsolatedAsyncioTestCase):
                 QuestionRepository,
                 "count_questions_for_bank",
                 new=AsyncMock(return_value=1),
-            ),self.assertRaisesRegex(
-            ValueError, "only change while the bank is empty"
-        )
+            ),
+            self.assertRaisesRegex(ValueError, "only change while the bank is empty"),
         ):
             await QuestionService.update_question_bank(
                 db,
@@ -423,7 +422,8 @@ class QuestionServiceTests(unittest.IsolatedAsyncioTestCase):
                 QuestionRepository,
                 "delete_question",
                 new=AsyncMock(),
-            ) as delete_question,self.assertRaisesRegex(ValueError, "cannot be deleted")
+            ) as delete_question,
+            self.assertRaisesRegex(ValueError, "cannot be deleted"),
         ):
             await QuestionService.delete_unused_question(
                 db,

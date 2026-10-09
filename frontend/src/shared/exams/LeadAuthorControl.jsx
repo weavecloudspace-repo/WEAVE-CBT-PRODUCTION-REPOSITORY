@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Notice, SelectControl } from '../ui'
 
-export function LeadAuthorControl({
+export function LeadAuthorControl(props) {
+  return <LeadAuthorContent key={`${props.subjectId || ''}:${props.termId || ''}`} {...props} />
+}
+
+function LeadAuthorContent({
   gateway,
   subjectId,
   termId,
@@ -10,28 +14,14 @@ export function LeadAuthorControl({
   onResolvedName,
   disabled = false,
 }) {
+  const canLoad = Boolean(subjectId && termId && typeof gateway?.exams?.listLeadCandidates === 'function')
   const [candidates, setCandidates] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(canLoad)
+  const [error, setError] = useState(subjectId && termId && !canLoad ? 'Eligible teachers could not be loaded. Administrator coordination is still available.' : '')
 
   useEffect(() => {
-    if (!subjectId || !termId) {
-      setCandidates([])
-      setLoading(false)
-      setError('')
-      return undefined
-    }
-
+    if (!canLoad) return undefined
     let cancelled = false
-    setLoading(true)
-    setError('')
-    setCandidates([])
-
-    if (typeof gateway?.exams?.listLeadCandidates !== 'function') {
-      setLoading(false)
-      setError('Eligible teachers could not be loaded. Administrator coordination is still available.')
-      return undefined
-    }
 
     gateway.exams.listLeadCandidates({ curriculum_subject_id: subjectId, term_id: termId })
       .then((rows) => {
@@ -45,7 +35,7 @@ export function LeadAuthorControl({
       })
 
     return () => { cancelled = true }
-  }, [gateway, subjectId, termId])
+  }, [canLoad, gateway, subjectId, termId])
 
   const options = useMemo(() => {
     const rows = [

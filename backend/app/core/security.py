@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import os
 import secrets
@@ -150,7 +151,7 @@ def _normalize_utc_datetime(value: datetime | None) -> datetime:
 
 def _require_non_empty_string(value: str, field_name: str) -> str:
     if not isinstance(value, str):
-        raise ValueError(f"{field_name} must be a string.")
+        raise TypeError(f"{field_name} must be a string.")
     normalized = value.strip()
     if not normalized:
         raise ValueError(f"{field_name} cannot be empty.")
@@ -249,10 +250,8 @@ def ensure_local_signing_secret() -> str:
             secret_file.flush()
             os.fsync(secret_file.fileno())
     except Exception:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             secret_path.unlink()
-        except FileNotFoundError:
-            pass
         raise
 
     _restrict_secret_file_permissions(secret_path)

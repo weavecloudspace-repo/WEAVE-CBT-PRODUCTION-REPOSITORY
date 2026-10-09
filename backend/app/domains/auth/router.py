@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Header, HTTPException, Response, status
@@ -96,7 +97,7 @@ async def login_staff(
 async def refresh_staff(
     response: Response,
     db: DbSession,
-    idempotency_key: UUID = Header(..., alias="Idempotency-Key"),
+    idempotency_key: Annotated[UUID, Header(alias="Idempotency-Key")],
     refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE_NAME),
 ) -> StaffLoginResponse:
     if not refresh_token:

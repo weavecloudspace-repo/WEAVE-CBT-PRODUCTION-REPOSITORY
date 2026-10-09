@@ -8,6 +8,7 @@ const READ_ONLY_EXAM_STATES = new Set(['closing', 'cancelling', 'closed', 'cance
 
 export function RosterCandidateActionButton({ candidate, exam, gateway, onChanged }) {
   const [dialog, setDialog] = useState(null)
+  const [authorizationClock, setAuthorizationClock] = useState(() => Date.now())
   const [authorizations, setAuthorizations] = useState([])
   const [loadingAuthorizations, setLoadingAuthorizations] = useState(false)
   const [busy, setBusy] = useState('')
@@ -33,7 +34,7 @@ export function RosterCandidateActionButton({ candidate, exam, gateway, onChange
   const canResume = !readOnlyExam && exam.status === 'active' && attemptStatus === 'interrupted'
 
   const activeAuthorization = useMemo(() => {
-    const now = Date.now()
+    const now = authorizationClock
     return [...authorizations]
       .sort((a, b) => new Date(b.granted_at).getTime() - new Date(a.granted_at).getTime())
       .find((authorization) => {
@@ -41,7 +42,7 @@ export function RosterCandidateActionButton({ candidate, exam, gateway, onChange
         if (!authorization.expires_at) return true
         return new Date(authorization.expires_at).getTime() > now
       }) || null
-  }, [authorizations])
+  }, [authorizations, authorizationClock])
 
   const loadAuthorizations = useCallback(async () => {
     setLoadingAuthorizations(true)
@@ -58,14 +59,20 @@ export function RosterCandidateActionButton({ candidate, exam, gateway, onChange
 
   useEffect(() => {
     if (!dialog) return undefined
-    if (dialog === 'late-start') void loadAuthorizations()
+    if (dialog !== 'late-start') return undefined
+    const timer = window.setInterval(() => setAuthorizationClock(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [dialog])
+
+  useEffect(() => {
+    if (!dialog) return undefined
 
     const closeOnEscape = (event) => {
       if (event.key === 'Escape' && !busy) setDialog(null)
     }
     document.addEventListener('keydown', closeOnEscape)
     return () => document.removeEventListener('keydown', closeOnEscape)
-  }, [busy, dialog, loadAuthorizations])
+  }, [busy, dialog])
 
   const closeDialog = () => {
     if (busy) return
@@ -206,7 +213,7 @@ export function RosterCandidateActionButton({ candidate, exam, gateway, onChange
         )}
 
         {canGrantLateStart && (
-          <button className="admin-roster-row-action admin-roster-row-action--secondary" type="button" disabled={Boolean(busy)} onClick={() => { setError(''); setDialog('late-start') }}>
+          <button className="admin-roster-row-action admin-roster-row-action--secondary" type="button" disabled={Boolean(busy)} onClick={() => { setError(''); setAuthorizationClock(Date.now()); setDialog('late-start'); void loadAuthorizations() }}>
             {candidate.late_start_authorized ? 'Late start granted' : 'Late start'}
           </button>
         )}

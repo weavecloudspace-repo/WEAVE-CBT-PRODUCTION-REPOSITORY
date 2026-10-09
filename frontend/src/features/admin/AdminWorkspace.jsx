@@ -73,7 +73,12 @@ const adminNav = [
 export function AdminWorkspace({ state, dispatch, signOut, gateway }) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const workspaceView = topLevelView(state.staff.section)
-  const [openGroup, setOpenGroup] = useState(() => groupForView(topLevelView(state.staff.section)))
+  const [previousView, setPreviousView] = useState(workspaceView)
+  const [openGroup, setOpenGroup] = useState(() => groupForView(workspaceView))
+  if (previousView !== workspaceView) {
+    setPreviousView(workspaceView)
+    setOpenGroup(groupForView(workspaceView))
+  }
   const adminData = useAdminData(gateway)
   const activeAuthoringData = useMemo(() => ({
     ...adminData,
@@ -96,11 +101,6 @@ export function AdminWorkspace({ state, dispatch, signOut, gateway }) {
     }
   }, [])
 
-  useEffect(() => {
-    const activeGroup = groupForView(workspaceView)
-    if (activeGroup) setOpenGroup(activeGroup)
-    else setOpenGroup(null)
-  }, [workspaceView])
 
   const navigate = useCallback((view, patch = {}) => {
     const previewPatch = view === 'preview-question'

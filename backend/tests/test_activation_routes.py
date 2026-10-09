@@ -99,7 +99,8 @@ class ActivationRouteContractTests(unittest.IsolatedAsyncioTestCase):
                 ExamService,
                 "activate_exam",
                 new=AsyncMock(),
-            ) as activate,self.assertRaises(HTTPException) as captured
+            ) as activate,
+            self.assertRaises(HTTPException) as captured,
         ):
             await exam_router.activate_exam(exam_id, db, self.admin)
 

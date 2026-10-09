@@ -1,16 +1,7 @@
 name: Frontend validation
 
 on:
-  push:
-    branches: [implementing-services]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend-validation.yml"
-  pull_request:
-    branches: [implementing-services]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend-validation.yml"
+  workflow_call:
   workflow_dispatch:
 
 permissions:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enum import Enum as PyEnum
+from enum import StrEnum
 from uuid import UUID
 
 from sqlalchemy import (
@@ -28,7 +28,7 @@ from app.core.database import Base
 QUESTION_BANK_NAME_MAX_LENGTH = 255
 
 
-class QuestionType(str, PyEnum):
+class QuestionType(StrEnum):
     SINGLE_CHOICE = "single_choice"
     MULTIPLE_CHOICE = "multiple_choice"
 

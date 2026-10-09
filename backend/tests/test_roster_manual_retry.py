@@ -114,16 +114,13 @@ class ManualRosterRetryServiceTests(unittest.IsolatedAsyncioTestCase):
                 "app.domains.candidates.lifecycle_service.ExamRepository.save_exam",
                 AsyncMock(),
             ) as save_exam,
+            self.assertRaisesRegex(CandidateRosterError, "FAILED state"),
         ):
-            with self.assertRaisesRegex(
-                CandidateRosterError,
-                "FAILED state",
-            ):
-                await CandidateService.retry_failed_roster(
-                    self.db,
-                    actor=self.actor,
-                    exam_id=self.exam_id,
-                )
+            await CandidateService.retry_failed_roster(
+                self.db,
+                actor=self.actor,
+                exam_id=self.exam_id,
+            )
 
         save_exam.assert_not_awaited()
         self.db.commit.assert_not_awaited()
@@ -151,13 +148,13 @@ class ManualRosterRetryServiceTests(unittest.IsolatedAsyncioTestCase):
                 "app.domains.candidates.lifecycle_service.ExamRepository.save_exam",
                 AsyncMock(),
             ) as save_exam,
+            self.assertRaisesRegex(CandidateRosterError, "superseded"),
         ):
-            with self.assertRaisesRegex(CandidateRosterError, "superseded"):
-                await CandidateService.retry_failed_roster(
-                    self.db,
-                    actor=self.actor,
-                    exam_id=self.exam_id,
-                )
+            await CandidateService.retry_failed_roster(
+                self.db,
+                actor=self.actor,
+                exam_id=self.exam_id,
+            )
 
         get_child.assert_awaited_once_with(self.db, self.exam_id)
         save_exam.assert_not_awaited()

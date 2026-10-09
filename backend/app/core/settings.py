@@ -16,7 +16,7 @@ Architecture rules:
   not configured through environment variables.
 """
 
-from enum import Enum as PyEnum
+from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 
@@ -24,7 +24,7 @@ from pydantic import AnyHttpUrl, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Environment(str, PyEnum):
+class Environment(StrEnum):
     """Supported application runtime environments."""
 
     DEVELOPMENT = "dev"

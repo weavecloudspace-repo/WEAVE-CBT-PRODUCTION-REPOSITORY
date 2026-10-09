@@ -59,7 +59,9 @@ async def sync_exam_results(_ctx: dict, exam_id: str) -> None:
                         response.rejected,
                         parsed_exam_id,
                         response.batch_id,
-                        "; ".join(f"{error.code}: {error.detail}" for error in response.errors),
+                        "; ".join(
+                            f"{error.code}: {error.detail}" for error in response.errors
+                        ),
                     )
                 logger.info(
                     "Synchronized result batch %s for exam %s: received=%s applied=%s unchanged=%s rejected=%s",
@@ -82,7 +84,14 @@ async def sync_exam_results(_ctx: dict, exam_id: str) -> None:
                     "%s failed results. Reasons: %s",
                     parsed_exam_id,
                     len(active_failures),
-                    "; ".join(sorted({row.sync_error or "No failure reason recorded" for row in active_failures})),
+                    "; ".join(
+                        sorted(
+                            {
+                                row.sync_error or "No failure reason recorded"
+                                for row in active_failures
+                            }
+                        )
+                    ),
                 )
             await db.rollback()
     except Exception:

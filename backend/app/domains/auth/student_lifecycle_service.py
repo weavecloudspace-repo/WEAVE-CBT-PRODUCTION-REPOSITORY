@@ -22,7 +22,9 @@ SUSPENDED_MESSAGE = (
     "This examination is temporarily paused. Please wait for an administrator "
     "to resume it. Your saved work and remaining time are protected."
 )
-RESUME_MESSAGE = "Your examination is ready to resume. Your saved answers are preserved."
+RESUME_MESSAGE = (
+    "Your examination is ready to resume. Your saved answers are preserved."
+)
 COMPLETED_MESSAGE = (
     "You have already completed this examination. Your score is ready to view."
 )

@@ -15,7 +15,6 @@ os.environ.setdefault(
 )
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
-from app import model_registry  # noqa: F401
 from app.core.database import Base
 from app.domains.academics.models import CurriculumSubjectDepartment
 from app.domains.academics.repository import AcademicRepository

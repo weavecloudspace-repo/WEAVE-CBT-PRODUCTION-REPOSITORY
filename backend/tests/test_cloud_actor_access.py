@@ -110,9 +110,7 @@ class CloudActorAccessTests(unittest.IsolatedAsyncioTestCase):
         with patch(
             "app.domains.auth.cloud_access._inspect_cloud_access",
             new=AsyncMock(
-                return_value=_CloudAccessPreparation(
-                    access_token="current-actor-token"
-                )
+                return_value=_CloudAccessPreparation(access_token="current-actor-token")
             ),
         ) as inspect:
             result = await get_or_repair_weave_actor_access_token(
@@ -204,8 +202,7 @@ class CloudActorAccessTests(unittest.IsolatedAsyncioTestCase):
                     side_effect=[
                         _CloudAccessPreparation(),
                         _CloudAccessPreparation(
-                            operation_id=operation_id,
-                            refresh_token="old-cloud-refresh",
+                            operation_id=operation_id, refresh_token="old-cloud-refresh"
                         ),
                     ]
                 ),
@@ -226,12 +223,12 @@ class CloudActorAccessTests(unittest.IsolatedAsyncioTestCase):
                 "app.domains.auth.cloud_access._mark_cloud_repair_degraded",
                 new=AsyncMock(),
             ) as mark_degraded,
+            self.assertRaises(WeaveUnavailableError),
         ):
-            with self.assertRaises(WeaveUnavailableError):
-                await get_or_repair_weave_actor_access_token(
-                    db,
-                    session_id=session_id,
-                )
+            await get_or_repair_weave_actor_access_token(
+                db,
+                session_id=session_id,
+            )
 
         mark_degraded.assert_awaited_once_with(
             db,
@@ -254,8 +251,7 @@ class CloudActorAccessTests(unittest.IsolatedAsyncioTestCase):
                     side_effect=[
                         _CloudAccessPreparation(),
                         _CloudAccessPreparation(
-                            operation_id=operation_id,
-                            refresh_token="old-cloud-refresh",
+                            operation_id=operation_id, refresh_token="old-cloud-refresh"
                         ),
                     ]
                 ),
@@ -272,21 +268,19 @@ class CloudActorAccessTests(unittest.IsolatedAsyncioTestCase):
                 "app.domains.auth.cloud_access.weave_auth_gateway.refresh_staff_authorization",
                 new=AsyncMock(
                     side_effect=WeaveRequestRejectedError(
-                        status_code=401,
-                        detail="Actor authorization revoked.",
+                        status_code=401, detail="Actor authorization revoked."
                     )
                 ),
             ),
             patch(
-                "app.domains.auth.cloud_access._revoke_cloud_session",
-                new=AsyncMock(),
+                "app.domains.auth.cloud_access._revoke_cloud_session", new=AsyncMock()
             ) as revoke,
+            self.assertRaises(WeaveRequestRejectedError),
         ):
-            with self.assertRaises(WeaveRequestRejectedError):
-                await get_or_repair_weave_actor_access_token(
-                    db,
-                    session_id=session_id,
-                )
+            await get_or_repair_weave_actor_access_token(
+                db,
+                session_id=session_id,
+            )
 
         revoke.assert_awaited_once()
         self.assertEqual(revoke.await_args.kwargs["session_id"], session_id)
@@ -304,12 +298,12 @@ class CloudActorAccessTests(unittest.IsolatedAsyncioTestCase):
                 "app.domains.auth.cloud_access.staff_refresh_lock",
                 side_effect=_coordination_failure,
             ),
+            self.assertRaises(WeaveUnavailableError),
         ):
-            with self.assertRaises(WeaveUnavailableError):
-                await get_or_repair_weave_actor_access_token(
-                    db,
-                    session_id=session_id,
-                )
+            await get_or_repair_weave_actor_access_token(
+                db,
+                session_id=session_id,
+            )
 
 
 if __name__ == "__main__":

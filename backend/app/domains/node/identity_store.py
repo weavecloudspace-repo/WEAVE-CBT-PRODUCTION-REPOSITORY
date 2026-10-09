@@ -306,9 +306,6 @@ class NodeIdentityStore:
 
             yield
 
-        except NodeIdentityStorageError:
-            raise
-
         finally:
             if file_descriptor is not None:
                 await asyncio.to_thread(

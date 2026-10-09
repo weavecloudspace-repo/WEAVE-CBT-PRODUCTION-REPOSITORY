@@ -1,5 +1,3 @@
-# ruff: noqa: E402
-
 import os
 import unittest
 from datetime import UTC, datetime
@@ -75,7 +73,9 @@ class StudentCompletedAttemptResolutionTests(unittest.IsolatedAsyncioTestCase):
             )
         return resolution, candidate_rows, get_attempt
 
-    async def test_unfinished_attempt_is_reported_for_resume_after_suspension(self) -> None:
+    async def test_unfinished_attempt_is_reported_for_resume_after_suspension(
+        self,
+    ) -> None:
         for status in (AttemptStatus.IN_PROGRESS, AttemptStatus.INTERRUPTED):
             with self.subTest(attempt_status=status):
                 candidate, exam = self.row(ExamStatus.SUSPENDED)
@@ -83,7 +83,9 @@ class StudentCompletedAttemptResolutionTests(unittest.IsolatedAsyncioTestCase):
                     [(candidate, exam)], {candidate.id: status}
                 )
                 self.assertTrue(suspended.has_unfinished_attempt)
-                self.assertEqual(suspended.availability, StudentExamAvailability.SUSPENDED)
+                self.assertEqual(
+                    suspended.availability, StudentExamAvailability.SUSPENDED
+                )
 
                 exam.status = ExamStatus.ACTIVE
                 resumed, _, _ = await self.resolve_rows(

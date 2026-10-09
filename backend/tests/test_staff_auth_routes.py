@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import os
 import unittest
 
@@ -11,7 +10,9 @@ os.environ.setdefault(
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 os.environ.setdefault("WEAVE_API_BASE_URL", "https://weave.invalid")
 
-from app.domains.auth.router import refresh_staff, router
+from fastapi import FastAPI
+
+from app.domains.auth.router import router
 
 
 class StaffAuthRouteContractTests(unittest.TestCase):
@@ -28,9 +29,13 @@ class StaffAuthRouteContractTests(unittest.TestCase):
         self.assertIn(("/auth/logout", "POST"), route_methods)
 
     def test_refresh_requires_idempotency_key_header(self):
-        parameter = inspect.signature(refresh_staff).parameters["idempotency_key"]
-        self.assertEqual(parameter.default.alias, "Idempotency-Key")
-        self.assertTrue(parameter.default.is_required())
+        app = FastAPI()
+        app.include_router(router)
+        parameters = app.openapi()["paths"]["/auth/refresh"]["post"]["parameters"]
+        header = next(item for item in parameters if item["name"] == "Idempotency-Key")
+        self.assertEqual(header["in"], "header")
+        self.assertTrue(header["required"])
+        self.assertEqual(header["schema"]["format"], "uuid")
 
 
 if __name__ == "__main__":

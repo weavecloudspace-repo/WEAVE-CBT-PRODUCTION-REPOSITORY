@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
@@ -233,7 +234,9 @@ async def list_exam_attempts(
     exam_id: UUID,
     db: DbSession,
     actor: CurrentLocalActor,
-    attempt_statuses: list[AttemptStatus] | None = Query(default=None, alias="status"),
+    attempt_statuses: Annotated[
+        list[AttemptStatus] | None, Query(alias="status")
+    ] = None,
     candidate_id: UUID | None = None,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=200),

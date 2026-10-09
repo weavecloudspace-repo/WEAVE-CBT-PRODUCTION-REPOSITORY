@@ -58,7 +58,6 @@ export function useAdminData(gateway) {
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
     loadAdminData(gateway)
       .then((loaded) => {
         if (cancelled) return

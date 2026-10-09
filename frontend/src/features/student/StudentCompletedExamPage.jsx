@@ -23,11 +23,10 @@ function StudentCompletedExamContent({ gateway, returnToSignIn, dispatch, isMake
 
   useEffect(() => {
     let cancelled = false
-    setError('')
     gateway.attempts
       .getCurrentAttemptResult()
       .then((payload) => {
-        if (!cancelled) setResult(payload)
+        if (!cancelled) { setError(''); setResult(payload) }
       })
       .catch((requestError) => {
         if (!cancelled) {
@@ -54,7 +53,7 @@ function StudentCompletedExamContent({ gateway, returnToSignIn, dispatch, isMake
             <button
               className="premium-btn-primary premium-submission-card__logout"
               type="button"
-              onClick={() => setRefreshToken((value) => value + 1)}
+              onClick={() => { setError(''); setRefreshToken((value) => value + 1) }}
             >
               Try again
             </button>

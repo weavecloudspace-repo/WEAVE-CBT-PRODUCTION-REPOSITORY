@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum as PyEnum
+from enum import StrEnum
 from uuid import UUID
 
 from sqlalchemy import (
@@ -32,7 +32,7 @@ NAME_MAX_LENGTH = 255
 STATUS_REASON_MAX_LENGTH = 500
 
 
-class CandidateStatus(str, PyEnum):
+class CandidateStatus(StrEnum):
     """Eligibility state of a candidate on one examination roster."""
 
     ELIGIBLE = "eligible"

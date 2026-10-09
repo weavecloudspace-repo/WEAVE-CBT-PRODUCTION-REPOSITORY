@@ -100,7 +100,10 @@ async def finalize_expired_attempts(ctx: dict) -> dict[str, int]:
                 0,
                 attempt.time_limit_seconds - attempt.elapsed_seconds,
             )
-            if attempt.active_since + timedelta(seconds=uncheckpointed_allowance) <= now:
+            if (
+                attempt.active_since + timedelta(seconds=uncheckpointed_allowance)
+                <= now
+            ):
                 possible_expired_ids.append(attempt.id)
         await db.rollback()
 

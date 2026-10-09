@@ -31,8 +31,6 @@ export function AdminResultsPage({ adminData, gateway, onNavigate }) {
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError('')
     gateway.results.listResultReviewSets()
       .then((payload) => {
         if (!cancelled) setReviews(payload?.reviews || [])
@@ -237,7 +235,7 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
       if (!cancelled) setError(requestError.userMessage || 'Weave could not load the result decision state.')
     })
     return () => { cancelled = true }
-  }, [exam?.id, gateway, refreshToken])
+  }, [exam, gateway, refreshToken])
 
   useEffect(() => {
     if (!exam) return undefined
@@ -261,7 +259,7 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [exam?.id, gateway, page, query, refreshToken, syncStatus])
+  }, [exam, gateway, page, query, refreshToken, syncStatus])
 
   if (!exam) {
     return (

@@ -13,17 +13,19 @@ os.environ.setdefault(
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 os.environ["DEBUG"] = "false"
 
-from app.domains.academics.repository import AcademicRepository  # noqa: E402
-from app.domains.auth.student_schemas import StudentExamAvailability  # noqa: E402
-from app.domains.auth.student_service import (  # noqa: E402
+from app.domains.academics.repository import AcademicRepository
+from app.domains.auth.student_schemas import StudentExamAvailability
+from app.domains.auth.student_service import (
     StudentAuthService,
 )
-from app.domains.exams.models import ExamStatus  # noqa: E402
-from app.domains.sync.invalidation import SyncInvalidationRepository  # noqa: E402
+from app.domains.exams.models import ExamStatus
+from app.domains.sync.invalidation import SyncInvalidationRepository
 
 
 class RevisionRosterIntegrityTests(unittest.IsolatedAsyncioTestCase):
-    async def test_student_candidate_lookup_only_considers_latest_revision(self) -> None:
+    async def test_student_candidate_lookup_only_considers_latest_revision(
+        self,
+    ) -> None:
         """A candidate row on a superseded SEALED revision must be invisible."""
 
         result = MagicMock()

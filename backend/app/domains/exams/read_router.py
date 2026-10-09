@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -33,7 +34,7 @@ async def list_exams(
     assessment_scheme_id: UUID | None = None,
     assessment_component_id: UUID | None = None,
     created_by_actor_id: UUID | None = None,
-    exam_status: ExamStatus | None = Query(default=None, alias="status"),
+    exam_status: Annotated[ExamStatus | None, Query(alias="status")] = None,
     roster_status: ExamRosterStatus | None = None,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=200),

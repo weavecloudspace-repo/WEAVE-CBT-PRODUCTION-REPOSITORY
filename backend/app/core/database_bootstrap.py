@@ -6,17 +6,25 @@ import asyncio
 import logging
 
 from alembic.migration import MigrationContext
-from sqlalchemy import Column, inspect, text
+from alembic.script import ScriptDirectory
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    ForeignKeyConstraint,
+    UniqueConstraint,
+    inspect,
+    text,
+)
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.orm import configure_mappers
 
 import app.model_registry  # noqa: F401
+from alembic import command
 from app.core.database import Base, engine
-from app.core.migrations import migration_head
+from app.core.migrations import migration_config, migration_head
 from app.domains.exams.database_schema import (
     CONTRIBUTOR_TRIGGERS,
-    create_contributor_triggers,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,19 +95,19 @@ def _validate_existing_schema(connection: Connection) -> None:
         }
         for constraint in table.constraints:
             if (
-                constraint.__visit_name__ == "check_constraint"
+                isinstance(constraint, CheckConstraint)
                 and constraint.name not in actual_checks
             ):
                 problems.append(f"{table.name} check {constraint.name} is missing")
             elif (
-                constraint.__visit_name__ == "unique_constraint"
+                isinstance(constraint, UniqueConstraint)
                 and tuple(column.name for column in constraint.columns)
                 not in actual_unique
             ):
                 problems.append(
                     f"{table.name} unique constraint {constraint.name} is missing"
                 )
-            elif constraint.__visit_name__ == "foreign_key_constraint":
+            elif isinstance(constraint, ForeignKeyConstraint):
                 signature = (
                     tuple(element.parent.name for element in constraint.elements),
                     constraint.elements[0].column.table.name,
@@ -134,7 +142,7 @@ def _validate_existing_schema(connection: Connection) -> None:
 
 
 async def bootstrap_database(database_engine: AsyncEngine = engine) -> bool:
-    """Initialize once under a transaction lock; return whether tables were created."""
+    """Apply Alembic under a transaction lock; never adopt an unversioned schema."""
     configure_mappers()
     head = migration_head()
     expected_tables = {table.name for table in Base.metadata.tables.values()}
@@ -153,42 +161,48 @@ async def bootstrap_database(database_engine: AsyncEngine = engine) -> bool:
         )
         existing_tables = set(result.scalars())
         if existing_tables:
-            missing = expected_tables - existing_tables
-            if missing:
+            if not (existing_tables - {"alembic_version"}):
                 raise RuntimeError(
-                    "The CBT database is partially initialized or belongs to another application. "
-                    "Refusing automatic repair. Missing tables: "
-                    + ", ".join(sorted(missing))
+                    "The CBT database has a migration marker without application tables. "
+                    "Refusing automatic repair or stamping."
                 )
             current = await connection.run_sync(
                 lambda sync: MigrationContext.configure(sync).get_current_heads()
             )
-            if current != (head,):
+            scripts = ScriptDirectory.from_config(migration_config())
+            known = {revision.revision for revision in scripts.walk_revisions()}
+            if len(current) != 1 or current[0] not in known:
                 raise RuntimeError(
                     "The CBT database requires an Alembic upgrade or explicit adoption. "
                     "Refusing automatic repair or stamping. Back up the database and "
                     "run `alembic upgrade head` from backend/ for a versioned database. "
                     f"Current revisions: {current}; expected: {head}."
                 )
-            await connection.run_sync(_validate_existing_schema)
-            logger.info("CBT database schema validated; initialization skipped")
-            return False
-        await connection.run_sync(
-            lambda sync: Base.metadata.create_all(sync, checkfirst=False)
+
+        def upgrade(sync: Connection) -> None:
+            config = migration_config()
+            config.attributes["connection"] = sync
+            command.upgrade(config, "head")
+
+        await connection.run_sync(upgrade)
+        tables = set(
+            (
+                await connection.execute(
+                    text(
+                        "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'"
+                    )
+                )
+            ).scalars()
         )
-        await connection.run_sync(create_contributor_triggers)
-
-        def stamp(sync: Connection) -> None:
-            context = MigrationContext.configure(sync)
-            from alembic.script import ScriptDirectory
-
-            from app.core.migrations import migration_config
-
-            context.stamp(ScriptDirectory.from_config(migration_config()), head)
-
-        await connection.run_sync(stamp)
-        logger.info("Created %s CBT tables in a fresh database", len(expected_tables))
-        return True
+        missing = expected_tables - tables
+        if missing:
+            raise RuntimeError(
+                "The CBT database is partially initialized. Refusing automatic repair. "
+                "Missing tables: " + ", ".join(sorted(missing))
+            )
+        await connection.run_sync(_validate_existing_schema)
+        logger.info("CBT database migrated and validated at revision %s", head)
+        return not existing_tables
 
 
 async def _main() -> None:

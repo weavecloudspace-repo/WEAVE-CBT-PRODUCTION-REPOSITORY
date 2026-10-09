@@ -20,7 +20,7 @@ records.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum as PyEnum
+from enum import StrEnum
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -54,7 +54,7 @@ RUNTIME_SHUTDOWN_REASON_MAX_LENGTH = 500
 # ========================== #
 
 
-class OutboxEventStatus(str, PyEnum):
+class OutboxEventStatus(StrEnum):
     """
     Delivery state of a durable realtime outbox event.
 

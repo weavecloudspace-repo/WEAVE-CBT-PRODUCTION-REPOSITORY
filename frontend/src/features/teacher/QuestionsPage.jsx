@@ -1,3 +1,4 @@
+import { useImagePreview } from '../../shared/useImagePreview'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { RiArchiveLine, RiCloseLine, RiDeleteBinLine, RiImageAddLine, RiMore2Line, RiRefreshLine, RiSearchLine } from '@remixicon/react'
@@ -17,7 +18,7 @@ export function QuestionsPage({ dispatch, teacherData, gateway }) {
   const [query, setQuery] = useState('')
   const [bankId, setBankId] = useState('all')
   const [tab, setTab] = useState('all')
-  const [page, setPage] = useState(1)
+  const [requestedPage, setPage] = useState(1)
   const [lifecycleQuestionId, setLifecycleQuestionId] = useState(null)
   const [lifecyclePosition, setLifecyclePosition] = useState(null)
   const [lifecycleBusyId, setLifecycleBusyId] = useState(null)
@@ -46,11 +47,9 @@ export function QuestionsPage({ dispatch, teacherData, gateway }) {
   }, [bankId, query, tab, teacherData.questions])
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const page = Math.min(requestedPage, pageCount)
   const visibleQuestions = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  useEffect(() => {
-    if (page > pageCount) setPage(pageCount)
-  }, [page, pageCount])
 
   const closeLifecycle = () => {
     setLifecycleQuestionId(null)
@@ -90,7 +89,7 @@ export function QuestionsPage({ dispatch, teacherData, gateway }) {
     if (!pendingLifecycleAction) return undefined
 
     const closeOnEscape = (event) => {
-      if (event.key === 'Escape' && !lifecycleBusyId) closeLifecycleConfirmation()
+      if (event.key === 'Escape' && !lifecycleBusyId) { setPendingLifecycleAction(null); setLifecycleModalError('') }
     }
 
     document.addEventListener('keydown', closeOnEscape)
@@ -461,23 +460,13 @@ export function CreateQuestionPage({ state, dispatch, teacherData, gateway }) {
   const [prompt, setPrompt] = useState(selectedQuestion?.prompt || '')
   const [instruction, setInstruction] = useState(selectedQuestion?.instruction || '')
   const [options, setOptions] = useState(initialOptions)
-  const [imageFile, setImageFile] = useState(null)
-  const [imagePreviewUrl, setImagePreviewUrl] = useState('')
+  const [imageFile, imagePreviewUrl, setImageFile] = useImagePreview()
   const [removeExistingImage, setRemoveExistingImage] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveStage, setSaveStage] = useState('')
   const imageInputRef = useRef(null)
 
-  useEffect(() => {
-    if (!imageFile || typeof URL.createObjectURL !== 'function') {
-      setImagePreviewUrl('')
-      return undefined
-    }
-    const objectUrl = URL.createObjectURL(imageFile)
-    setImagePreviewUrl(objectUrl)
-    return () => URL.revokeObjectURL(objectUrl)
-  }, [imageFile])
 
   const toggleCorrect = (id) => {
     setCorrect((current) => type === 'single' ? [id] : current.includes(id) ? current.filter((item) => item !== id) : [...current, id])

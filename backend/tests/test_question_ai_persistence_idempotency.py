@@ -39,7 +39,9 @@ def _payload(draft_id):
 
 
 @pytest.mark.asyncio
-async def test_persist_reviewed_questions_replays_existing_draft_without_reinserting() -> None:
+async def test_persist_reviewed_questions_replays_existing_draft_without_reinserting() -> (
+    None
+):
     service = QuestionAIService()
     actor = SimpleNamespace(id=uuid4(), role="teacher", is_active=True)
     bank_id = uuid4()
@@ -84,7 +86,9 @@ async def test_persist_reviewed_questions_replays_existing_draft_without_reinser
 
 
 @pytest.mark.asyncio
-async def test_persist_reviewed_questions_rejects_changed_payload_for_same_draft() -> None:
+async def test_persist_reviewed_questions_rejects_changed_payload_for_same_draft() -> (
+    None
+):
     service = QuestionAIService()
     actor = SimpleNamespace(id=uuid4(), role="admin", is_active=True)
     bank_id = uuid4()
@@ -98,15 +102,17 @@ async def test_persist_reviewed_questions_rejects_changed_payload_for_same_draft
         request_hash="0" * 64,
     )
 
-    with patch.object(
-        QuestionAIRepository,
-        "get_import_batch_by_draft_id",
-        new=AsyncMock(return_value=batch),
+    with (
+        patch.object(
+            QuestionAIRepository,
+            "get_import_batch_by_draft_id",
+            new=AsyncMock(return_value=batch),
+        ),
+        pytest.raises(QuestionConflictError, match="already persisted"),
     ):
-        with pytest.raises(QuestionConflictError, match="already persisted"):
-            await service.persist_reviewed_questions(
-                object(),
-                actor=actor,
-                bank_id=bank_id,
-                payload=payload,
-            )
+        await service.persist_reviewed_questions(
+            object(),
+            actor=actor,
+            bank_id=bank_id,
+            payload=payload,
+        )

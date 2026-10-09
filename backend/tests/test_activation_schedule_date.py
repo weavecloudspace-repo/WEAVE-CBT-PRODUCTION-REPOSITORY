@@ -10,21 +10,20 @@ os.environ.setdefault(
 )
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 
-from fastapi import HTTPException  # noqa: E402
+from fastapi import HTTPException
 
-from app.domains.exams import router as exam_router  # noqa: E402
-from app.domains.exams import timetable_router  # noqa: E402
-from app.domains.exams.exceptions import ExamStateError  # noqa: E402
-from app.domains.exams.models import ExamStatus  # noqa: E402
-from app.domains.exams.operations_service import ExamOperationsService  # noqa: E402
-from app.domains.exams.repository import ExamRepository  # noqa: E402
-from app.domains.exams.service import ExamService  # noqa: E402
-from app.domains.exams.timetable_schemas import BatchExamStartRequest  # noqa: E402
-from app.domains.exams.timetable_service import (  # noqa: E402
+from app.domains.exams import router as exam_router
+from app.domains.exams import timetable_router
+from app.domains.exams.exceptions import ExamStateError
+from app.domains.exams.models import ExamStatus
+from app.domains.exams.operations_service import ExamOperationsService
+from app.domains.exams.repository import ExamRepository
+from app.domains.exams.service import ExamService
+from app.domains.exams.timetable_schemas import BatchExamStartRequest
+from app.domains.exams.timetable_service import (
     ActivationPreflight,
     ExamTimetableService,
 )
-
 
 EXPIRED_SCHEDULE_MESSAGE = (
     "This examination was scheduled for a previous date. "
@@ -101,9 +100,7 @@ class ActivationScheduleDateTests(unittest.IsolatedAsyncioTestCase):
         # exam belongs to September 27 while activation is attempted on
         # September 28. This protects the business-date rule from a naive UTC
         # date comparison.
-        source = self.exam(
-            scheduled_start_at=datetime(2026, 9, 27, 22, 30, tzinfo=UTC)
-        )
+        source = self.exam(scheduled_start_at=datetime(2026, 9, 27, 22, 30, tzinfo=UTC))
         checked_at = datetime(2026, 9, 27, 23, 30, tzinfo=UTC)
 
         preflight = await self.run_preflight(source=source, checked_at=checked_at)
@@ -119,9 +116,7 @@ class ActivationScheduleDateTests(unittest.IsolatedAsyncioTestCase):
         # The UTC date changes between these timestamps, but both are September
         # 28 in WAT. A same-day delayed sitting must therefore remain eligible
         # for the existing late-start/recovery workflow.
-        source = self.exam(
-            scheduled_start_at=datetime(2026, 9, 27, 23, 30, tzinfo=UTC)
-        )
+        source = self.exam(scheduled_start_at=datetime(2026, 9, 27, 23, 30, tzinfo=UTC))
         checked_at = datetime(2026, 9, 28, 0, 15, tzinfo=UTC)
 
         preflight = await self.run_preflight(source=source, checked_at=checked_at)
@@ -148,13 +143,16 @@ class ActivationScheduleDateTests(unittest.IsolatedAsyncioTestCase):
         )
         db = AsyncMock()
 
-        with patch.object(
-            ExamTimetableService,
-            "activation_preflight",
-            new=AsyncMock(return_value=blocked),
-        ), self.assertRaisesRegex(
-            ExamStateError,
-            "scheduled date has passed",
+        with (
+            patch.object(
+                ExamTimetableService,
+                "activation_preflight",
+                new=AsyncMock(return_value=blocked),
+            ),
+            self.assertRaisesRegex(
+                ExamStateError,
+                "scheduled date has passed",
+            ),
         ):
             await ExamTimetableService.require_activation_clear(
                 db,

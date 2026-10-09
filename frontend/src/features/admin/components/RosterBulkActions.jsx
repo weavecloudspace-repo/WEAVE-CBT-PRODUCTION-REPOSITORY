@@ -1,3 +1,4 @@
+import { bulkTargetId } from './rosterBulkTargets'
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { RiAddLine, RiCloseLine, RiForbidLine, RiTimeLine, RiPauseCircleLine, RiSettings3Line, RiArrowRightLine } from '@remixicon/react'
@@ -6,21 +7,7 @@ import '../admin-roster-bulk.css'
 
 const ALL_PAGE_SIZE = 100
 
-export function bulkTargetId(action, candidate) {
-  if (!action) return null
-  if (action === 'block') {
-    return candidate.status === 'eligible' && !candidate.attempt ? candidate.id : null
-  }
-  if (action === 'late-start') {
-    return candidate.status === 'eligible' && !candidate.attempt && candidate.late_start_required
-      ? candidate.id
-      : null
-  }
-  if (action === 'interrupt') {
-    return candidate.attempt?.status === 'in_progress' ? candidate.attempt.id : null
-  }
-  return null
-}
+
 
 export function RosterBulkActions(props) {
   const launcherInstance = Object.prototype.hasOwnProperty.call(props, 'disabled')

@@ -50,7 +50,9 @@ class QuestionAIImage(QuestionAISchema):
         try:
             decoded = base64.b64decode(self.data_base64, validate=True)
         except (binascii.Error, ValueError, TypeError) as exc:
-            raise ValueError("data_base64 must contain valid Base64 image data") from exc
+            raise ValueError(
+                "data_base64 must contain valid Base64 image data"
+            ) from exc
         if not decoded or len(decoded) > MAX_AI_IMAGE_BYTES:
             raise ValueError("AI image payload exceeds the maximum allowed size")
         digest = hashlib.sha256(decoded).hexdigest()
@@ -83,12 +85,18 @@ class QuestionAIDraft(QuestionAISchema):
     def validate_answers(self) -> Self:
         correct_count = sum(1 for option in self.options if option.is_correct)
         if self.question_type == "single_choice" and correct_count != 1:
-            raise ValueError("A single-choice question must have exactly one correct option")
+            raise ValueError(
+                "A single-choice question must have exactly one correct option"
+            )
         if self.question_type == "multiple_choice":
             if correct_count < 2:
-                raise ValueError("A multiple-choice question must have at least two correct options")
+                raise ValueError(
+                    "A multiple-choice question must have at least two correct options"
+                )
             if correct_count == len(self.options):
-                raise ValueError("A multiple-choice question must have at least one incorrect option")
+                raise ValueError(
+                    "A multiple-choice question must have at least one incorrect option"
+                )
         return self
 
 
@@ -104,8 +112,13 @@ class QuestionAIGenerateRequest(QuestionAISchema):
     @model_validator(mode="after")
     def validate_counts(self) -> Self:
         if self.question_type_counts is not None:
-            if any(type(count) is not int or count < 0 for count in self.question_type_counts.values()):
-                raise ValueError("question_type_counts values must be non-negative integers")
+            if any(
+                type(count) is not int or count < 0
+                for count in self.question_type_counts.values()
+            ):
+                raise ValueError(
+                    "question_type_counts values must be non-negative integers"
+                )
             if sum(self.question_type_counts.values()) != self.question_count:
                 raise ValueError("question_type_counts must sum to question_count")
         return self
@@ -152,7 +165,9 @@ class QuestionAIRegenerateResponse(QuestionAISchema):
 
 class QuestionAIBulkSaveRequest(QuestionAISchema):
     draft_id: UUID
-    questions: list[QuestionAIDraft] = Field(min_length=1, max_length=MAX_AI_QUESTION_COUNT)
+    questions: list[QuestionAIDraft] = Field(
+        min_length=1, max_length=MAX_AI_QUESTION_COUNT
+    )
 
 
 class QuestionAIBulkSaveResponse(QuestionAISchema):

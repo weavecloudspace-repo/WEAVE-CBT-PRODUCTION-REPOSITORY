@@ -236,7 +236,9 @@ class CandidateService(_CandidateService):
             .all()
         )
         if len(candidates) != len(ids):
-            raise ValueError("One or more selected candidates are not in this examination")
+            raise ValueError(
+                "One or more selected candidates are not in this examination"
+            )
 
         attempts = list(
             (
@@ -251,7 +253,9 @@ class CandidateService(_CandidateService):
             raise ValueError(
                 "One or more selected candidates have already started; use attempt controls instead"
             )
-        if any(candidate.status != CandidateStatus.ELIGIBLE for candidate in candidates):
+        if any(
+            candidate.status != CandidateStatus.ELIGIBLE for candidate in candidates
+        ):
             raise ValueError("Only eligible candidates can be bulk blocked")
 
         for candidate in candidates:
@@ -321,8 +325,12 @@ class CandidateService(_CandidateService):
             .all()
         )
         if len(candidates) != len(ids):
-            raise ValueError("One or more selected candidates are not in this examination")
-        if any(candidate.status != CandidateStatus.ELIGIBLE for candidate in candidates):
+            raise ValueError(
+                "One or more selected candidates are not in this examination"
+            )
+        if any(
+            candidate.status != CandidateStatus.ELIGIBLE for candidate in candidates
+        ):
             raise ValueError("Only eligible candidates can receive late start")
 
         attempts = list(
@@ -475,7 +483,9 @@ class CandidateService(_CandidateService):
                 (
                     await db.execute(
                         select(CandidateLateStartAuthorization).where(
-                            CandidateLateStartAuthorization.candidate_id.in_(candidate_ids),
+                            CandidateLateStartAuthorization.candidate_id.in_(
+                                candidate_ids
+                            ),
                             CandidateLateStartAuthorization.consumed_at.is_(None),
                             CandidateLateStartAuthorization.revoked_at.is_(None),
                             or_(
@@ -535,7 +545,9 @@ class CandidateService(_CandidateService):
             .tuples()
             .all()
         )
-        attempt_counts = {status_value: int(count) for status_value, count in attempt_count_rows}
+        attempt_counts = {
+            status_value: int(count) for status_value, count in attempt_count_rows
+        }
 
         has_attempt = exists(
             select(ExamAttempt.id).where(ExamAttempt.candidate_id == ExamCandidate.id)

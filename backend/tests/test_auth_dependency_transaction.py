@@ -19,7 +19,7 @@ from app.domains.auth.student_lifecycle_service import (
 
 
 class _TransactionContext:
-    def __init__(self, db: "_TransactionAwareDb") -> None:
+    def __init__(self, db: _TransactionAwareDb) -> None:
         self.db = db
 
     async def __aenter__(self):

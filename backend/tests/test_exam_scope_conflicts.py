@@ -104,8 +104,7 @@ class ExamScopeCreationTests(unittest.IsolatedAsyncioTestCase):
                 "get_term_by_id",
                 new=AsyncMock(
                     return_value=SimpleNamespace(
-                        id=term_id,
-                        academic_session_id=session_id,
+                        id=term_id, academic_session_id=session_id
                     )
                 ),
             ),
@@ -124,8 +123,7 @@ class ExamScopeCreationTests(unittest.IsolatedAsyncioTestCase):
                 "get_component_by_id",
                 new=AsyncMock(
                     return_value=SimpleNamespace(
-                        id=component_id,
-                        assessment_scheme_id=scheme_id,
+                        id=component_id, assessment_scheme_id=scheme_id
                     )
                 ),
             ),
@@ -134,9 +132,7 @@ class ExamScopeCreationTests(unittest.IsolatedAsyncioTestCase):
                 "get_bank_by_id",
                 new=AsyncMock(
                     return_value=SimpleNamespace(
-                        id=bank_id,
-                        is_active=True,
-                        curriculum_subject_id=subject_id,
+                        id=bank_id, is_active=True, curriculum_subject_id=subject_id
                     )
                 ),
             ),
@@ -146,16 +142,13 @@ class ExamScopeCreationTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=existing),
             ) as get_revision,
             patch.object(ExamRepository, "add_exam", new=AsyncMock()) as add_exam,
+            self.assertRaisesRegex(ValueError, "already been conducted and closed"),
         ):
-            with self.assertRaisesRegex(
-                ValueError,
-                "already been conducted and closed",
-            ):
-                await ExamService.create_exam(
-                    db,
-                    actor=actor,  # type: ignore[arg-type]
-                    payload=payload,
-                )
+            await ExamService.create_exam(
+                db,
+                actor=actor,  # type: ignore[arg-type]
+                payload=payload,
+            )
 
         get_revision.assert_awaited_once_with(
             db,

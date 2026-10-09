@@ -31,11 +31,12 @@ class CBTAIManagementServiceTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value="weave-actor-token"),
             ) as get_actor_token,
         ):
-            server_credential, actor_token = (
-                await CBTAIManagementService._cloud_credentials(
-                    db,
-                    session_id=session_id,
-                )
+            (
+                server_credential,
+                actor_token,
+            ) = await CBTAIManagementService._cloud_credentials(
+                db,
+                session_id=session_id,
             )
 
         self.assertIs(server_credential, installation.server_credential)
@@ -62,12 +63,12 @@ class CBTAIManagementServiceTests(unittest.IsolatedAsyncioTestCase):
                     )
                 ),
             ),
+            self.assertRaises(WeaveRequestRejectedError) as captured,
         ):
-            with self.assertRaises(WeaveRequestRejectedError) as captured:
-                await CBTAIManagementService._cloud_credentials(
-                    db,
-                    session_id=session_id,
-                )
+            await CBTAIManagementService._cloud_credentials(
+                db,
+                session_id=session_id,
+            )
 
         self.assertEqual(captured.exception.status_code, 401)
         self.assertEqual(
@@ -86,9 +87,7 @@ class CBTAIManagementServiceTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(
             CBTAIManagementService,
             "_cloud_credentials",
-            new=AsyncMock(
-                return_value=(SecretStr("server-secret"), "actor-token")
-            ),
+            new=AsyncMock(return_value=(SecretStr("server-secret"), "actor-token")),
         ):
             result = await service.request_credits(
                 db,
