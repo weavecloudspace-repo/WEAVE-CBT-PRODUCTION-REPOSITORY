@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import shutil
 import subprocess
 import sys
@@ -20,7 +21,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 import typer
 
@@ -82,15 +83,95 @@ def _assets_root(assets_dir: Path | None) -> Path:
     if assets_dir is not None:
         return assets_dir.expanduser().resolve()
 
-    # Source checkout convenience; packaged distributions must supply
-    # --assets-dir until their deployment assets are bundled.
-    checkout_deployment = Path(__file__).resolve().parents[4]
-    if (checkout_deployment / "compose.yaml").is_file():
-        return checkout_deployment
-    raise InstallError(
-        "Deployment assets are unavailable. Supply --assets-dir pointing to "
-        "the directory containing compose.yaml, nginx/, and bootstrap/."
+    # Installed binary, system-wide Linux asset directory, source checkout.
+    candidates = (
+        Path(sys.executable).resolve().parent / "assets",
+        Path("/usr/local/share/weave-cbt/assets"),
+        Path(__file__).resolve().parents[4],
     )
+    for candidate in candidates:
+        if (candidate / "compose.yaml").is_file():
+            return candidate
+    raise InstallError("Missing bundled deployment assets; repair the CLI manager or use --assets-dir.")
+
+
+
+def _read_release_manifest(assets: Path) -> dict[str, str] | None:
+    path = assets / "release-manifest.json"
+    if not path.is_file():
+        return None  # Source-checkout installations use explicit --env-file.
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise InstallError(f"Invalid bundled release manifest: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise InstallError("Release manifest must be a JSON object.")
+    channel = payload.get("channel")
+    api = payload.get("weave_api_base_url")
+    image = payload.get("cbt_image")
+    version = payload.get("manager_version")
+    if channel not in {"staging", "production"}:
+        raise InstallError("Release channel must be staging or production.")
+    if not isinstance(api, str) or urlsplit(api).scheme != "https" or not urlsplit(api).hostname:
+        raise InstallError("WEAVE API release URL must use HTTPS.")
+    if not isinstance(image, str) or not image.startswith("ghcr.io/") or "@sha256:" not in image:
+        raise InstallError("Release image must reference an immutable GHCR SHA-256 digest.")
+    digest = image.rsplit("@sha256:", 1)[-1]
+    if len(digest) != 64 or not all(c in "0123456789abcdef" for c in digest.lower()):
+        raise InstallError("Release image SHA-256 digest is invalid.")
+    if not isinstance(version, str) or not version.strip():
+        raise InstallError("Release version is missing.")
+    return {"channel": channel, "api": api, "image": image, "version": version}
+
+
+def _prepare_environment(data_directory: Path, manifest: dict[str, str] | None) -> Path:
+    if manifest is None:
+        raise InstallError("Source checkout has no release manifest. Provide --env-file.")
+    path = data_directory / "runtime.env"
+    if path.exists():
+        values = _read_environment(path)
+        if values["WEAVE_IMAGE"] != manifest["image"] or values["WEAVE_API_BASE_URL"] != manifest["api"]:
+            raise InstallError("Existing runtime configuration does not match this release; refusing to overwrite secrets.")
+        return path
+
+    data_directory.mkdir(parents=True, exist_ok=True)
+    password = secrets.token_urlsafe(36)
+    values = {
+        "WEAVE_IMAGE": manifest["image"],
+        "POSTGRES_USER": "weave",
+        "POSTGRES_PASSWORD": password,
+        "POSTGRES_DB": "weave_cbt",
+        "DATABASE_URL": "postgresql+asyncpg://weave:" + quote(password, safe="") + "@postgres:5432/weave_cbt",
+        "REDIS_URL": "redis://redis:6379/0",
+        "ENVIRONMENT": "prod" if manifest["channel"] == "production" else "stg",
+        "WEAVE_API_BASE_URL": manifest["api"],
+        "DEBUG": "false",
+    }
+    content = "".join(f"{k}={v}\n" for k, v in values.items()).encode("utf-8")
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="wb", dir=data_directory, prefix=".runtime.", suffix=".tmp", delete=False) as fp:
+            temp_path = Path(fp.name)
+            if os.name != "nt":
+                os.chmod(temp_path, 0o600)
+            fp.write(content)
+            fp.flush()
+            os.fsync(fp.fileno())
+        if os.name == "nt":
+            result = subprocess.run([
+                "icacls", str(temp_path), "/inheritance:r",
+                "/grant:r", "*S-1-5-18:F", "*S-1-5-32-544:F",
+            ], capture_output=True, timeout=30, check=False)
+            if result.returncode != 0:
+                raise InstallError("Unable to restrict runtime.env permissions on Windows.")
+        if path.exists():
+            raise InstallError("Runtime configuration appeared concurrently; retry.")
+        os.replace(temp_path, path)
+        temp_path = None
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+    return path
 
 
 def _read_environment(source: Path) -> dict[str, str]:
@@ -431,7 +512,7 @@ def _verify_started_stack(runtime: DockerRuntime, compose: DockerCompose) -> Non
 
 def _perform_install(
     *,
-    env_file: Path,
+    env_file: Path | None,
     assets_dir: Path | None,
     install_dir: Path | None,
     data_dir: Path | None,
@@ -444,8 +525,6 @@ def _perform_install(
     install_directory = (install_dir or platform.default_install_directory).expanduser().resolve()
     data_directory = (data_dir or platform.default_data_directory).expanduser().resolve()
     assets = _assets_root(assets_dir)
-    env_file = env_file.expanduser().resolve()
-
     _log("Running installation preflight.")
     if not platform.is_admin():
         raise InstallError("Administrator/root privileges are required.")
@@ -456,15 +535,25 @@ def _perform_install(
         )
     if install_directory == data_directory:
         raise InstallError("Program and data directories must be different.")
-    if not env_file.is_file():
-        raise InstallError(f"Runtime environment file '{env_file}' is missing.")
     if rootfs_archive is not None:
         rootfs_archive = rootfs_archive.expanduser().resolve()
         if not rootfs_archive.is_file():
             raise InstallError(f"Ubuntu rootfs archive '{rootfs_archive}' is missing.")
 
     _verify_assets(assets)
+    manifest = _read_release_manifest(assets)
+    if env_file is None:
+        env_file = _prepare_environment(data_directory, manifest)
+    else:
+        env_file = env_file.expanduser().resolve()
+        if not env_file.is_file():
+            raise InstallError(f"Runtime environment file '{env_file}' is missing.")
     values = _read_environment(env_file)
+    if manifest is not None:
+        expected_env = "prod" if manifest["channel"] == "production" else "stg"
+        if values["ENVIRONMENT"] != expected_env or values["WEAVE_API_BASE_URL"] != manifest["api"]:
+            raise InstallError("Runtime environment does not match the manager's release channel.")
+
     _check_disk_space((install_directory, data_directory), min_free_gib)
 
     desired_files = (
@@ -524,8 +613,8 @@ def _perform_install(
 
 
 def install(
-    env_file: Path = typer.Option(
-        ..., "--env-file", help="Existing runtime.env configuration containing real secrets."
+    env_file: Path | None = typer.Option(
+        None, "--env-file", help="Optional custom runtime.env; generated securely by default."
     ),
     assets_dir: Path | None = typer.Option(
         None, "--assets-dir", help="Directory containing the WEAVE deployment assets."
