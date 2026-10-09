@@ -40,7 +40,8 @@ class LanTests(unittest.TestCase):
                 ps.assert_not_called()
 
     def test_never_overwrites_unowned_portproxy(self):
-        with tempfile.TemporaryDirectory() as directory, (
+        with (
+            tempfile.TemporaryDirectory() as directory,
             patch.object(lan, "_assert_private_interface"),
             patch.object(lan, "_mapped_destination", return_value="172.22.1.99/80"),
             patch.object(lan, "_firewall_exists", return_value=False),
@@ -52,7 +53,8 @@ class LanTests(unittest.TestCase):
             netsh.assert_not_called()
 
     def test_new_forwarding_is_bound_to_selected_host_and_subnet(self):
-        with tempfile.TemporaryDirectory() as directory, (
+        with (
+            tempfile.TemporaryDirectory() as directory,
             patch.object(lan, "_assert_private_interface"),
             patch.object(lan, "_mapped_destination", return_value=None),
             patch.object(lan, "_firewall_exists", return_value=False),
