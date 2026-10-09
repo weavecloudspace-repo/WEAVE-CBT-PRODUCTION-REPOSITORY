@@ -47,6 +47,34 @@ class LinuxBootstrapContractTests(unittest.TestCase):
             self.script,
         )
 
+    def test_candidate_probe_drains_long_apt_output_under_pipefail(self):
+        # Reproduces a Docker CE policy listing long enough to trigger SIGPIPE
+        # when awk exits after the first matching Candidate line.
+        statement = next(
+            line.strip() for line in self.script.splitlines()
+            if line.strip().startswith('candidate="$(apt-cache policy docker-ce | awk')
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            fake_cache = Path(temporary) / "apt-cache"
+            fake_cache.write_text(
+                r"""#!/usr/bin/env bash
+if [ "$1" != "policy" ] || [ "$2" != "docker-ce" ]; then exit 99; fi
+printf '%s\n' 'Candidate: 5:29.0.1-1~ubuntu.26.04~resolute'
+for ((i=0; i<100000; i++)); do printf '  %s\n' "$i"; done
+""",
+                encoding="utf-8",
+            )
+            fake_cache.chmod(0o755)
+            env = os.environ.copy()
+            env["PATH"] = temporary + os.pathsep + env.get("PATH", "")
+            result = subprocess.run(
+                ["bash", "-c", "set -Eeuo pipefail\n" + statement + "\necho \"$candidate\""],
+                env=env, capture_output=True, text=True, timeout=20, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(result.stdout.strip(), "5:29.0.1-1~ubuntu.26.04~resolute")
+
     def test_checks_complete_docker_package_set(self):
         for package in (
             "docker-ce",
