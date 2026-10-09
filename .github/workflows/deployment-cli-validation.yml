@@ -6,6 +6,8 @@ on:
     paths:
       - "deployment/cli/src/weave_cli/commands/**"
       - "deployment/cli/tests/test_commands.py"
+      - "deployment/cli/tests/test_entrypoint.py"
+      - "deployment/cli/src/weave_cli/main.py"
       - "deployment/pyproject.toml"
       - "deployment/uv.lock"
       - ".github/workflows/deployment-cli-validation.yml"
@@ -13,6 +15,8 @@ on:
     paths:
       - "deployment/cli/src/weave_cli/commands/**"
       - "deployment/cli/tests/test_commands.py"
+      - "deployment/cli/tests/test_entrypoint.py"
+      - "deployment/cli/src/weave_cli/main.py"
       - "deployment/pyproject.toml"
       - "deployment/uv.lock"
       - ".github/workflows/deployment-cli-validation.yml"
@@ -34,3 +38,8 @@ jobs:
         run: uv sync --project deployment --locked
       - name: Exercise command registration and safe runtime orchestration
         run: uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_commands.py -v
+      - name: Verify installed CLI entrypoint and command help
+        run: |
+          uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_entrypoint.py -v
+          uv run --project deployment weave --help
+          uv run --project deployment weave install --help
