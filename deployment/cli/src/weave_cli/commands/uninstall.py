@@ -6,6 +6,8 @@ from weave_cli.commands._shared import (
     COMMAND_ERRORS, banner, error, get_stack, info, success, warning,
 )
 
+from weave_cli.commands.lan import configure, LanError, _state_path
+
 
 def uninstall(
     purge_volumes: bool = typer.Option(
@@ -36,6 +38,10 @@ def uninstall(
         else:
             stack.compose.stop()
 
+        # Remove only opted-in WEAVE-owned LAN exposure before unregistering.
+        if stack.installation.runtime_type == "wsl2" and _state_path(stack.installation.data_directory).exists():
+            configure(stack.installation.data_directory, remove=True)
+
         # Registration is deleted only after Compose succeeds. Do not erase
         # runtime.env, data directories, distro, or unrelated Docker resources.
         stack.platform.remove_runtime_persistence()
@@ -46,7 +52,7 @@ def uninstall(
         else:
             success("Persistent school data volumes were preserved.")
         info("Docker Engine and WSL were not removed.")
-    except (*COMMAND_ERRORS, PermissionError) as exc:
+    except (*COMMAND_ERRORS, PermissionError, LanError) as exc:
         error(str(exc))
         raise typer.Exit(code=1) from exc
 

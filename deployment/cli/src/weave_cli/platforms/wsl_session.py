@@ -51,7 +51,14 @@ if ($task) {
 $ErrorActionPreference = 'Stop'
 $wslExecutable = Join-Path $env:SystemRoot 'System32\wsl.exe'
 while ($true) {{
-    & $wslExecutable --distribution {_literal(distribution)} --user root --exec /bin/sh -c 'systemctl start docker && exec sleep infinity'
+    & $wslExecutable --distribution {_literal(distribution)} --user root --exec /bin/sh -c 'systemctl start docker'
+    $manager = Join-Path $env:ProgramFiles 'WeaveCBT\weave.exe'
+    if ((Test-Path -LiteralPath $manager) -and $LASTEXITCODE -eq 0) {{
+        # The CLI returns successfully when LAN forwarding was never enabled.
+        # A forwarding error must not terminate the session keeping Docker alive.
+        & $manager lan --refresh | Out-Null
+    }}
+    & $wslExecutable --distribution {_literal(distribution)} --user root --exec /bin/sh -c 'exec sleep infinity'
     Start-Sleep -Seconds 5
 }}
 """

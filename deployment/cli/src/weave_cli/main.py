@@ -5,6 +5,7 @@ import typer
 from weave_cli.commands import (
     doctor,
     install,
+    lan,
     logs,
     restart,
     release,
@@ -27,6 +28,7 @@ app = typer.Typer(
 # Each command module receives this same Typer app and registers its function.
 for command in (
     install,
+    lan,
     start,
     stop,
     restart,
