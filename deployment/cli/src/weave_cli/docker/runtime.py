@@ -106,7 +106,7 @@ class DockerRuntime:
                         def relay() -> None:
                             assert process.stdout is not None
                             while True:
-                                chunk = process.stdout.read(4096)
+                                chunk = os.read(process.stdout.fileno(), 4096)
                                 if not chunk:
                                     break
                                 last_progress[0] = time.monotonic()
