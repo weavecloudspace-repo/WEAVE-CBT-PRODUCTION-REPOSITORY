@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import typer
 from typer.testing import CliRunner
 from weave_cli.installation import InstallationState
-from weave_cli.commands import doctor, logs, restart, start, status, stop, uninstall, update
+from weave_cli.commands import doctor, logs, restart, rollback, start, status, stop, uninstall, update
 from weave_cli.platforms.base import PlatformError
 
 
@@ -75,11 +75,11 @@ class CommandTests(unittest.TestCase):
 
     def test_all_commands_register(self):
         app = typer.Typer()
-        for module in (start, stop, restart, status, logs, doctor, update, uninstall):
+        for module in (start, stop, restart, status, logs, doctor, update, rollback, uninstall):
             module.register(app)
         result = self.runner.invoke(app, ["--help"])
         self.assertEqual(result.exit_code, 0, result.output)
-        for name in ("start", "stop", "restart", "status", "logs", "doctor", "update", "uninstall"):
+        for name in ("start", "stop", "restart", "status", "logs", "doctor", "update", "rollback", "uninstall"):
             self.assertIn(name, result.output)
 
     def test_start_recovers_stopped_engine(self):

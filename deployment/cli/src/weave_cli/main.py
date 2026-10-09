@@ -7,6 +7,7 @@ from weave_cli.commands import (
     install,
     logs,
     restart,
+    rollback,
     start,
     status,
     stop,
@@ -32,6 +33,7 @@ for command in (
     logs,
     doctor,
     update,
+    rollback,
     uninstall,
 ):
     command.register(app)

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.database import check_database_connection, dispose_database_engine
-from app.core.database_bootstrap import bootstrap_database
+from app.core.database_bootstrap import verify_database_schema
 from app.core.frontend import register_frontend_routes
 from app.core.integration_errors import register_weave_integration_error_handlers
 from app.core.redis import close_redis_client
@@ -49,7 +49,7 @@ async def lifespan(_app: FastAPI):
     """Start durable runtime recovery and non-blocking coordination."""
 
     await check_database_connection()
-    await bootstrap_database()
+    await verify_database_schema()
     await arq_producer.start()
     await runtime_heartbeat_service.start()
 

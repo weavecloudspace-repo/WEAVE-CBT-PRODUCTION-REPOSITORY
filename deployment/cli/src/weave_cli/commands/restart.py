@@ -2,6 +2,8 @@
 
 import typer
 
+from weave_cli.commands.update_recovery import guard_pending_update
+
 from weave_cli.commands._shared import (
     COMMAND_ERRORS, banner, fail, get_stack, info, success,
 )
@@ -12,6 +14,7 @@ def restart() -> None:
     banner("Restarting services")
     try:
         stack = get_stack()
+        guard_pending_update(stack.installation.data_directory)
         info("Ensuring persistent runtime startup...")
         stack.platform.ensure_runtime_persistence()
         if not stack.runtime.docker_engine_running():
