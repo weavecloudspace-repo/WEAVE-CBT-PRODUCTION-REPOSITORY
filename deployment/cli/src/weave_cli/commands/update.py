@@ -113,6 +113,8 @@ def update(
     """Upgrade a pinned CBT image/schema with a reversible database snapshot."""
     banner("Updating WEAVE CBT")
     try:
+        if image is not None:
+            _validate_image(image)
         stack = get_stack()
         if image is None:
             release = _read_release_manifest(_assets_root(None))
