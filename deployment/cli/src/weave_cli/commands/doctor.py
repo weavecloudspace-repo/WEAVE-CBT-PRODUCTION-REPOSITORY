@@ -34,7 +34,7 @@ def doctor() -> None:
             warning("No running containers detected.")
             raise typer.Exit(code=1)
 
-        if stack.state.runtime_type == "wsl2":
+        if stack.installation.runtime_type == "wsl2":
             warning(
                 "Windows WSL2 NAT can isolate services from school LAN devices. "
                 "Test access from an actual student computer; do not assume localhost is sufficient."
