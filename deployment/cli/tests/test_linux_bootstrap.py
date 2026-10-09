@@ -13,6 +13,7 @@ BOOTSTRAP_PATH = (
 )
 
 
+@unittest.skipIf(os.name == "nt", "Linux Bash tests run on the Linux CI runner, not Windows WSL.")
 class LinuxBootstrapContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

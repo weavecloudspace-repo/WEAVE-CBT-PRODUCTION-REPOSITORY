@@ -718,7 +718,7 @@ function Ensure-WslSystemdSupport {
     $version = Invoke-WeaveWslCommand -Arguments @("--version") -CaptureOutput -TimeoutSeconds 90
     $wslVersion = $null
     if ($version.ExitCode -eq 0) {
-        $versionText = ($version.Output -join " ")
+        $versionText = (($version.Output -join " ") -replace [char]0, "")
         $match = [Regex]::Match($versionText, '(\d+)\.(\d+)\.(\d+)')
         if ($match.Success) {
             $wslVersion = [Version]::new(
@@ -754,7 +754,7 @@ function Ensure-WslSystemdSupport {
     if ($version.ExitCode -ne 0) {
         throw "Microsoft WSL does not recognize --version after update. A modern WSL release with systemd support is required."
     }
-    $versionText = ($version.Output -join " ")
+    $versionText = (($version.Output -join " ") -replace [char]0, "")
     $match = [Regex]::Match($versionText, '(\d+)\.(\d+)\.(\d+)')
     if (-not $match.Success) {
         throw "Cannot verify WSL version after update; refusing to enable systemd without an identifiable runtime."

@@ -1,3 +1,4 @@
+import os
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -52,6 +53,7 @@ class DockerProviderTests(unittest.TestCase):
 
         self.assertEqual(command, ["/usr/bin/docker", "info"])
 
+    @unittest.skipIf(os.name == "nt", "POSIX filesystem path assertion.")
     def test_linux_provider_keeps_host_path(self):
         path = Path("/opt/weave-cbt/compose.yaml")
         self.assertEqual(

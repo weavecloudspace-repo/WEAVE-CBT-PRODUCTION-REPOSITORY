@@ -14,6 +14,7 @@ WINDOWS_BOOTSTRAP = (
 )
 
 
+@unittest.skipIf(os.name == "nt", "Linux Bash integration tests run on Linux, not Windows WSL.")
 class WindowsWslEmbeddedBashTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
