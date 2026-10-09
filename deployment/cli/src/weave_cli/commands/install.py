@@ -24,6 +24,7 @@ from urllib.parse import unquote, urlsplit
 
 import typer
 
+from weave_cli.commands._shared import banner, error, info, success, warning
 from weave_cli.docker.compose import DockerCompose, DockerComposeError
 from weave_cli.docker.provider import LinuxDockerProvider, WindowsWslDockerProvider
 from weave_cli.docker.runtime import DockerRuntime, DockerRuntimeError
@@ -64,7 +65,7 @@ class InstallationNeedsReboot(InstallError):
 
 
 def _log(message: str) -> None:
-    typer.echo(f"[WEAVE][INSTALL] {message}")
+    info(message)
 
 
 def _detect_platform() -> tuple[BasePlatform, str, DockerRuntime]:
@@ -490,6 +491,8 @@ def _perform_install(
         assets=assets,
         rootfs_archive=rootfs_archive,
     )
+    _log("Configuring persistent runtime startup.")
+    platform.ensure_runtime_persistence()
 
     # Record only an actual application deployment, not WSL/Docker bootstrap.
     _log("Staging application files and private runtime configuration.")
@@ -551,6 +554,7 @@ def install(
     ),
 ) -> None:
     """Install WEAVE CBT without overwriting existing application data."""
+    banner("Installing local server")
     try:
         state = _perform_install(
             env_file=env_file,
@@ -562,19 +566,18 @@ def install(
             min_free_gib=min_free_gib,
         )
     except InstallationNeedsReboot as exc:
-        typer.echo(f"[WEAVE][REBOOT] {exc}")
+        warning(str(exc))
         raise typer.Exit(code=10) from exc
     except (InstallError, InstallationStateError, DockerRuntimeError, DockerComposeError, PlatformError, OSError) as exc:
-        typer.echo(f"[WEAVE][ERROR] {exc}", err=True)
+        error(str(exc))
         raise typer.Exit(code=1) from exc
 
-    typer.echo(
-        "[WEAVE][OK] Installation verified and registered.\n"
-        f"  Version: {state.installed_version}\n"
-        f"  Install directory: {state.install_directory}\n"
-        f"  Data directory: {state.data_directory}\n"
-        f"  State file: {InstallationManager(_detect_platform()[0]).state_path}"
-    )
+    typer.echo()
+    success("Installation verified and registered.")
+    info(f"Version: {state.installed_version}")
+    info(f"Install directory: {state.install_directory}")
+    info(f"Data directory: {state.data_directory}")
+    info(f"State file: {InstallationManager(_detect_platform()[0]).state_path}")
 
 
 def register(app: typer.Typer) -> None:

@@ -53,6 +53,12 @@ class BasePlatform(ABC):
         """
         raise NotImplementedError
 
+    def ensure_runtime_persistence(self) -> None:
+        """Keep the host runtime available; native Linux needs no session keeper."""
+
+    def remove_runtime_persistence(self) -> None:
+        """Remove host session management when uninstalling the application."""
+
     @abstractmethod
     def start_docker_engine(
         self,

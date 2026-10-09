@@ -12,6 +12,8 @@ def restart() -> None:
     banner("Restarting services")
     try:
         stack = get_stack()
+        info("Ensuring persistent runtime startup...")
+        stack.platform.ensure_runtime_persistence()
         if not stack.runtime.docker_engine_running():
             info("Starting Docker Engine...")
             stack.platform.start_docker_engine()

@@ -23,3 +23,16 @@ When working inside `deployment`, omit `--project deployment`. Running
 Build the installable distributions with `uv build deployment`.
 Use the deployment Python environment (`deployment/.venv`) in your editor
 when working on this package so it can resolve these installed imports.
+
+On Windows, `install`, `start`, and `restart` ensure a hidden scheduled task
+named `WEAVE CBT Runtime - WeaveCBT` holds a WSL session open. Docker's systemd
+service alone does not keep WSL alive. The task starts immediately and at the
+installation owner's Windows sign-in, and retries when the WSL process exits.
+Run `uv run weave start` from Administrator PowerShell once to configure this
+for an existing installation. You can then close the WSL terminal.
+
+The task runs under the Windows user who owns the WSL distribution, not SYSTEM.
+It requires that user to be signed in; it does not provide service availability
+before sign-in or after sign-out. `uninstall` removes the task, while `stop`
+stops application containers and leaves runtime management in place. Native
+Linux continues to use its existing systemd Docker service.

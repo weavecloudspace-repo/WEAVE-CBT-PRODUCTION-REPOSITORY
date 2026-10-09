@@ -11,6 +11,7 @@ import typer
 from typer.testing import CliRunner
 from weave_cli.installation import InstallationState
 from weave_cli.commands import doctor, logs, restart, start, status, stop, uninstall, update
+from weave_cli.platforms.base import PlatformError
 
 
 def stack_fixture(data_dir: Path | None = None):
@@ -39,6 +40,38 @@ class CommandTests(unittest.TestCase):
         app = typer.Typer()
         module.register(app)
         return self.runner.invoke(app, list(args), input=input)
+
+    def test_start_configures_persistence_even_when_docker_is_running(self):
+        stack = stack_fixture()
+        with patch.object(start, "get_stack", return_value=stack):
+            result = self.invoke(start)
+        self.assertEqual(result.exit_code, 0, result.output)
+        stack.platform.ensure_runtime_persistence.assert_called_once()
+        stack.compose.start.assert_called_once()
+
+    def test_start_does_not_continue_when_persistence_fails(self):
+        stack = stack_fixture()
+        stack.platform.ensure_runtime_persistence.side_effect = PlatformError("Task failed")
+        with patch.object(start, "get_stack", return_value=stack):
+            result = self.invoke(start)
+        self.assertEqual(result.exit_code, 1, result.output)
+        stack.compose.start.assert_not_called()
+
+    def test_uninstall_removes_session_task(self):
+        stack = stack_fixture()
+        with patch.object(uninstall, "get_stack", return_value=stack):
+            result = self.invoke(uninstall, ["--yes"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        stack.platform.remove_runtime_persistence.assert_called_once()
+        stack.manager.delete.assert_called_once()
+
+    def test_uninstall_retains_registration_when_task_removal_fails(self):
+        stack = stack_fixture()
+        stack.platform.remove_runtime_persistence.side_effect = PlatformError("Task failed")
+        with patch.object(uninstall, "get_stack", return_value=stack):
+            result = self.invoke(uninstall, ["--yes"])
+        self.assertEqual(result.exit_code, 1, result.output)
+        stack.manager.delete.assert_not_called()
 
     def test_all_commands_register(self):
         app = typer.Typer()

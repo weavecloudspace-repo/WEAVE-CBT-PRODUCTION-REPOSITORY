@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 from weave_cli.platforms.base import BasePlatform, PlatformError
+from weave_cli.platforms.wsl_session import manage_session
 
 
 class WindowsPlatform(BasePlatform):
@@ -70,6 +71,16 @@ class WindowsPlatform(BasePlatform):
             return bool(ctypes.windll.shell32.IsUserAnAdmin())
         except (AttributeError, OSError):
             return False
+
+    def ensure_runtime_persistence(self) -> None:
+        if not self.wsl_distribution:
+            raise PlatformError("A WSL distribution is required for session persistence.")
+        manage_session(self.wsl_distribution)
+
+    def remove_runtime_persistence(self) -> None:
+        if not self.wsl_distribution:
+            raise PlatformError("A WSL distribution is required for session persistence.")
+        manage_session(self.wsl_distribution, remove=True)
 
     def start_docker_engine(
         self,

@@ -38,6 +38,7 @@ def uninstall(
 
         # Registration is deleted only after Compose succeeds. Do not erase
         # runtime.env, data directories, distro, or unrelated Docker resources.
+        stack.platform.remove_runtime_persistence()
         stack.manager.delete()
         success("WEAVE CBT unregistered; application files were retained.")
         if purge_volumes:
