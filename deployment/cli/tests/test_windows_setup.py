@@ -1,6 +1,9 @@
 """Verify Windows console installer commands without touching machine PATH/UAC."""
 import base64
 import importlib.util
+import json
+import tempfile
+import zipfile
 import subprocess
 import sys
 import unittest
@@ -43,6 +46,34 @@ class WindowsInstallerContractTests(unittest.TestCase):
             self.assertEqual(setup.main(), 0)
             verify.assert_called_once_with(verify_only=True)
 
+    def test_embedded_release_verification_without_installing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / 'payload.zip'
+            manifest = json.dumps({
+                "channel": "staging",
+                "cbt_image": "ghcr.io/example/cbt@sha256:" + "a" * 64,
+            })
+            with zipfile.ZipFile(archive, 'w') as bundle:
+                bundle.writestr('weave.exe', b'fake executable for mocked test')
+                bundle.writestr('assets/compose.yaml', b'services: {}')
+                bundle.writestr('assets/release-manifest.json', manifest)
+            with (
+                patch.object(setup, '__file__', str(Path(directory) / 'setup.py')),
+                patch.object(setup.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as run,
+            ):
+                setup.perform_install(verify_only=True)
+                run.assert_called_once()
+            self.assertFalse((Path(directory) / 'WeaveCBT').exists())
+
+    def test_embedded_release_rejects_path_traversal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / 'payload.zip'
+            with zipfile.ZipFile(archive, 'w') as bundle:
+                bundle.writestr('../outside.txt', b'malicious')
+            with patch.object(setup, '__file__', str(Path(directory) / 'setup.py')):
+                with self.assertRaisesRegex(RuntimeError, 'Unsafe path|missing required'):
+                    setup.perform_install(verify_only=True)
+            self.assertFalse((Path(directory) / 'outside.txt').exists())
     def test_installer_exits_immediately_on_non_windows_hosts(self):
         with patch.object(setup.sys, "platform", "linux"):
             self.assertEqual(setup.main(), 1)
