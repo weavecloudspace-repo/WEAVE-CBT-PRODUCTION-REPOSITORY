@@ -10,6 +10,7 @@ on:
       - "deployment/cli/tests/test_windows_wsl_features.ps1"
       - "deployment/cli/tests/test_windows_bootstrap_state.ps1"
       - "deployment/cli/tests/test_windows_wsl_version.ps1"
+      - "deployment/cli/tests/test_windows_native_commands.ps1"
       - ".github/workflows/deployment-bootstrap-validation.yml"
   pull_request:
     branches: [implementing-services]
@@ -20,6 +21,7 @@ on:
       - "deployment/cli/tests/test_windows_wsl_features.ps1"
       - "deployment/cli/tests/test_windows_bootstrap_state.ps1"
       - "deployment/cli/tests/test_windows_wsl_version.ps1"
+      - "deployment/cli/tests/test_windows_native_commands.ps1"
       - ".github/workflows/deployment-bootstrap-validation.yml"
 
 permissions:
@@ -65,3 +67,4 @@ jobs:
         run: |
           .\deployment\cli\tests\test_windows_bootstrap_state.ps1
           .\deployment\cli\tests\test_windows_wsl_version.ps1
+          .\deployment\cli\tests\test_windows_native_commands.ps1
