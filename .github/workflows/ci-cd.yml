@@ -118,7 +118,7 @@ jobs:
           DEBUG=false
           EOF
           printf 'WEAVE_IMAGE=%s\n' "$IMAGE" >> deployment/ci.env
-          docker compose -p weave-cbt-ci -f deployment/compose.yaml --env-file deployment/ci.env up -d --wait --wait-timeout 240
+          docker compose -p weave-cbt-ci -f deployment/compose.yaml -f deployment/ci-mirrors.yaml --env-file deployment/ci.env up -d --wait --wait-timeout 240
           for route in staff student; do
             curl --fail --retry 20 --retry-delay 3 --retry-all-errors "http://localhost/$route" -o "/tmp/$route.html"
             grep -q '<html' "/tmp/$route.html"
