@@ -21,6 +21,9 @@ from weave_cli.commands._shared import banner, error, get_stack, info, success, 
 PORT = 80
 RULE = "WEAVE-CBT-LAN-TCP80"
 DISTRIBUTION = "WeaveCBT"
+PRIVATE_RANGES = tuple(ipaddress.IPv4Network(cidr) for cidr in (
+    "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"
+))
 
 
 class LanError(RuntimeError):
@@ -32,7 +35,7 @@ def _private_address(value: str) -> str:
         address = ipaddress.IPv4Address(value)
     except ipaddress.AddressValueError as exc:
         raise LanError("Supply a valid IPv4 address.") from exc
-    if not address.is_private or address.is_loopback or address.is_link_local or address.is_unspecified:
+    if not any(address in network for network in PRIVATE_RANGES):
         raise LanError("The listening address must be a specific private LAN IPv4 address.")
     return str(address)
 
@@ -43,8 +46,8 @@ def _private_subnet(value: str, address: str) -> str:
     except (ipaddress.AddressValueError, ipaddress.NetmaskValueError, ValueError) as exc:
         raise LanError("Supply a valid canonical IPv4 CIDR subnet, e.g. 192.168.1.0/24.") from exc
     # Limit unintended access: one school LAN subnet, not an entire private /8.
-    if (not network.is_private or network.prefixlen < 24
-            or ipaddress.IPv4Address(address) not in network):
+    if (not any(network.subnet_of(allowed) for allowed in PRIVATE_RANGES)
+            or network.prefixlen < 24 or ipaddress.IPv4Address(address) not in network):
         raise LanError("Client subnet must be private, /24 or narrower, and contain the host LAN address.")
     return str(network)
 
@@ -198,11 +201,13 @@ def configure(data: Path, *, listen_address: str | None = None,
         expected = f'{stored["wsl_address"]}/{PORT}'
         if destination not in (None, expected):
             raise LanError("Portproxy was changed outside WEAVE; refusing to delete an unrelated mapping.")
+        firewall = _firewall_exists()
+        if firewall:
+            _verify_firewall(old_ip, stored["client_subnet"])
         if destination is not None:
             _run(["netsh.exe", "interface", "portproxy", "delete", "v4tov4",
                   "listenport=80", f"listenaddress={old_ip}"])
-        if _firewall_exists():
-            _verify_firewall(old_ip, stored["client_subnet"])
+        if firewall:
             _powershell("Remove-NetFirewallRule -Name '" + RULE + "' -ErrorAction Stop")
         _state_path(data).unlink()
         return True
@@ -228,17 +233,54 @@ def configure(data: Path, *, listen_address: str | None = None,
     target_ip = _wsl_address()
     if target_ip == address:
         raise LanError("WSL address matches Windows listener; NAT portproxy is not applicable.")
-    if destination != f"{target_ip}/{PORT}":
-        if destination:
-            _run(["netsh.exe", "interface", "portproxy", "delete", "v4tov4",
-                  "listenport=80", f"listenaddress={address}"])
-        _run(["netsh.exe", "interface", "portproxy", "add", "v4tov4",
-              "listenport=80", f"listenaddress={address}", "connectport=80",
-              f"connectaddress={target_ip}"])
-    if not firewall:
-        _add_firewall(address, subnet)
-    _verify_firewall(address, subnet)
-    _save_state(data, {"listen_address": address, "client_subnet": subnet, "wsl_address": target_ip})
+    previous_removed = False
+    new_mapping = False
+    firewall_created = False
+    try:
+        if destination != f"{target_ip}/{PORT}":
+            if destination:
+                _run(["netsh.exe", "interface", "portproxy", "delete", "v4tov4",
+                      "listenport=80", f"listenaddress={address}"])
+                previous_removed = True
+            _run(["netsh.exe", "interface", "portproxy", "add", "v4tov4",
+                  "listenport=80", f"listenaddress={address}", "connectport=80",
+                  f"connectaddress={target_ip}"])
+            new_mapping = True
+        if not firewall:
+            _add_firewall(address, subnet)
+            firewall_created = True
+        _verify_firewall(address, subnet)
+        _save_state(data, {"listen_address": address, "client_subnet": subnet, "wsl_address": target_ip})
+    except (LanError, OSError) as exc:
+        recovery_errors = []
+        # Roll back only changes made by this invocation. No unrelated
+        # mapping or firewall rule is ever removed.
+        if firewall_created:
+            try:
+                _powershell("Remove-NetFirewallRule -Name '" + RULE + "' -ErrorAction Stop")
+            except LanError as recovery:
+                recovery_errors.append(str(recovery))
+        if new_mapping:
+            try:
+                _run(["netsh.exe", "interface", "portproxy", "delete", "v4tov4",
+                      "listenport=80", f"listenaddress={address}"])
+            except LanError as recovery:
+                recovery_errors.append(str(recovery))
+        if previous_removed:
+            try:
+                old_ip = destination.rsplit("/", 1)[0]
+                _run(["netsh.exe", "interface", "portproxy", "add", "v4tov4",
+                      "listenport=80", f"listenaddress={address}", "connectport=80",
+                      f"connectaddress={old_ip}"])
+            except LanError as recovery:
+                recovery_errors.append(str(recovery))
+        if recovery_errors:
+            raise LanError(
+                f"LAN update failed and compensation was incomplete: {exc}. "
+                "Inspect portproxy and firewall rules manually: "
+                + "; ".join(recovery_errors)
+            ) from exc
+        raise
     return True
 
 
