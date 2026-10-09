@@ -83,9 +83,11 @@ async def test_api_startup_does_not_migrate_a_fresh_database(fresh_database):
         await verify_database_schema(fresh_database)
     async with fresh_database.connect() as connection:
         assert not list(
-            (await connection.execute(text(
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
-            ))).scalars()
+            (
+                await connection.execute(
+                    text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+                )
+            ).scalars()
         )
 
 
@@ -103,9 +105,9 @@ async def test_api_startup_verifies_migrated_database_read_only(fresh_database):
 async def test_api_startup_rejects_outdated_revision_without_upgrading(fresh_database):
     await bootstrap_database(fresh_database)
     async with fresh_database.begin() as connection:
-        await connection.execute(text(
-            "UPDATE alembic_version SET version_num = 'unknown_old_revision'"
-        ))
+        await connection.execute(
+            text("UPDATE alembic_version SET version_num = 'unknown_old_revision'")
+        )
     with pytest.raises(RuntimeError, match="do not match migration head"):
         await verify_database_schema(fresh_database)
     async with fresh_database.connect() as connection:
