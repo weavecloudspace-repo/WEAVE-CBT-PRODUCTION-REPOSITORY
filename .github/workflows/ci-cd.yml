@@ -184,6 +184,8 @@ jobs:
           Compress-Archive -Path build\payload\* -DestinationPath build\payload.zip -Force
           python -m nuitka --mode=onefile --assume-yes-for-downloads --include-data-files=build/payload.zip=payload.zip --output-dir=dist --output-filename=$name deployment\distribution\windows\setup.py
           if ($LASTEXITCODE -ne 0) { throw "Windows setup build failed." }
+          & ("dist\" + $name) --verify-payload
+          if ($LASTEXITCODE -ne 0) { throw "Compiled Windows setup payload verification failed." }
       - name: Linux terminal package
         if: runner.os == 'Linux'
         shell: bash
@@ -200,6 +202,11 @@ jobs:
           cp -R deployment/nginx deployment/bootstrap build/package/weave-cbt/assets/
           python deployment/distribution/make_manifest.py --channel "$CHANNEL" --image "$CBT_IMAGE" --version "1.0.$GITHUB_RUN_NUMBER" --destination build/package/weave-cbt/assets/release-manifest.json
           tar -C build/package -czf "dist/weave-cbt-$CHANNEL-linux-amd64.tar.gz" weave-cbt
+          test -s "dist/weave-cbt-$CHANNEL-linux-amd64.tar.gz"
+          mkdir -p build/smoke
+          tar -C build/smoke -xzf "dist/weave-cbt-$CHANNEL-linux-amd64.tar.gz"
+          build/smoke/weave-cbt/weave --help
+          test -f build/smoke/weave-cbt/assets/release-manifest.json
       - uses: actions/upload-artifact@v4
         with:
           name: manager-${{ runner.os }}

@@ -38,7 +38,7 @@ def independent_console() -> bool:
         return False
 
 
-def perform_install() -> None:
+def perform_install(*, verify_only: bool = False) -> None:
     bundle = Path(__file__).resolve().parent / "payload.zip"
     if not bundle.is_file():
         raise RuntimeError("Embedded WEAVE CBT payload.zip is missing.")
@@ -55,6 +55,23 @@ def perform_install() -> None:
     assets = payload / "assets"
     if not source.is_file() or not (assets / "compose.yaml").is_file() or not (assets / "release-manifest.json").is_file():
         raise RuntimeError("Installer payload incomplete. Redownload from the official WEAVE release.")
+
+    if verify_only:
+        try:
+            metadata = json.loads((assets / "release-manifest.json").read_text(encoding="utf-8"))
+        except (ValueError, OSError) as exc:
+            raise RuntimeError(f"Bundled release manifest is unreadable: {exc}") from exc
+        if not isinstance(metadata, dict) or metadata.get("channel") not in ("production", "staging"):
+            raise RuntimeError("Bundled release manifest has an invalid channel.")
+        image = metadata.get("cbt_image", "")
+        if not isinstance(image, str) or "@sha256:" not in image or len(image.rsplit("@sha256:", 1)[-1]) != 64:
+            raise RuntimeError("Bundled Docker image must have an immutable SHA-256 digest.")
+        check = subprocess.run([str(source), "--help"], stdout=subprocess.DEVNULL,
+                               stderr=subprocess.PIPE, text=True, timeout=60, check=False)
+        if check.returncode != 0:
+            raise RuntimeError("Embedded weave.exe failed to run: " + (check.stderr or "")[-400:])
+        output("OK", f"Verified embedded CLI and {metadata['channel']} release manifest.")
+        return
 
     directory = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "WeaveCBT"
     # A staging setup cannot silently replace an existing production manager.
@@ -132,6 +149,13 @@ def main() -> int:
         output("ERROR", "This setup program is for Windows.")
         return 1
     print(f"\n{BLUE}WEAVE CBT CLI MANAGER SETUP{RESET}\n")
+    if "--verify-payload" in sys.argv[1:]:
+        try:
+            perform_install(verify_only=True)
+            return 0
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            output("ERROR", str(exc))
+            return 1
     if not admin():
         output("STEP", "Requesting Administrator elevation through Windows UAC...")
         try:

@@ -33,6 +33,16 @@ class WindowsInstallerContractTests(unittest.TestCase):
         self.assertIn("exit $child.ExitCode", script)
         self.assertNotIn("ShellExecuteW", script)
 
+    def test_payload_verification_skips_administrator_elevation(self):
+        with (
+            patch.object(setup.sys, "platform", "win32"),
+            patch.object(setup.sys, "argv", ["WEAVE-CBT-Setup.exe", "--verify-payload"]),
+            patch.object(setup, "perform_install") as verify,
+            patch.object(setup, "admin", side_effect=AssertionError("Should not request elevation")),
+        ):
+            self.assertEqual(setup.main(), 0)
+            verify.assert_called_once_with(verify_only=True)
+
     def test_installer_exits_immediately_on_non_windows_hosts(self):
         with patch.object(setup.sys, "platform", "linux"):
             self.assertEqual(setup.main(), 1)
