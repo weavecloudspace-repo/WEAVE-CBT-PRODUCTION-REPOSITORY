@@ -296,9 +296,13 @@ function Invoke-WeaveWslCommand {
             throw "Failed to start wsl.exe."
         }
 
+        # Write Bash script input asynchronously. Synchronous Write() before
+        # reading output can deadlock if Bash prints while still reading stdin.
+        # Windows PowerShell 5.1 supports StreamWriter.WriteAsync() via .NET.
+        $inputTask = $null
+        $inputClosed = -not $startInfo.RedirectStandardInput
         if ($startInfo.RedirectStandardInput) {
-            $process.StandardInput.Write($InputText)
-            $process.StandardInput.Close()
+            $inputTask = $process.StandardInput.WriteAsync($InputText)
         }
 
         # Read stderr concurrently so diagnostic output cannot fill its pipe
@@ -308,6 +312,11 @@ function Invoke-WeaveWslCommand {
 
         if ($CaptureOutput -or $Quiet) {
             $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+            if (-not $inputClosed) {
+                $inputTask.GetAwaiter().GetResult()
+                $process.StandardInput.Close()
+                $inputClosed = $true
+            }
             if ($TimeoutSeconds -gt 0) {
                 if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
                     $process.Kill()
@@ -328,6 +337,11 @@ function Invoke-WeaveWslCommand {
             $elapsedWatch = [Diagnostics.Stopwatch]::StartNew()
 
             while ($true) {
+                if (-not $inputClosed -and $inputTask.IsCompleted) {
+                    $inputTask.GetAwaiter().GetResult()
+                    $process.StandardInput.Close()
+                    $inputClosed = $true
+                }
                 if ($TimeoutSeconds -gt 0 -and $elapsedWatch.Elapsed.TotalSeconds -ge $TimeoutSeconds) {
                     $process.Kill()
                     $process.WaitForExit()
@@ -349,6 +363,12 @@ function Invoke-WeaveWslCommand {
                     Write-WeaveWait "Linux provisioning command is still running ($seconds seconds elapsed)."
                     $idleWatch.Restart()
                 }
+            }
+
+            if (-not $inputClosed) {
+                $inputTask.GetAwaiter().GetResult()
+                $process.StandardInput.Close()
+                $inputClosed = $true
             }
 
             while (-not $process.WaitForExit(1000)) {
