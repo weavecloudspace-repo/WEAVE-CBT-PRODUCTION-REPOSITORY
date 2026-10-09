@@ -2,6 +2,7 @@
 
 import unittest
 
+from click import unstyle
 from typer.testing import CliRunner
 
 from weave_cli.main import app
@@ -23,12 +24,12 @@ class EntrypointTests(unittest.TestCase):
     def test_install_help_does_not_run_installer(self):
         result = self.runner.invoke(app, ["install", "--help"])
         self.assertEqual(result.exit_code, 0, result.output)
-        self.assertIn("--env-file", result.output)
+        self.assertIn("--env-file", unstyle(result.output))
 
     def test_logs_help_exposes_follow_flag(self):
         result = self.runner.invoke(app, ["logs", "--help"])
         self.assertEqual(result.exit_code, 0, result.output)
-        self.assertIn("--follow", result.output)
+        self.assertIn("--follow", unstyle(result.output))
 
     def test_unknown_command_is_rejected(self):
         result = self.runner.invoke(app, ["unknown-command"])
