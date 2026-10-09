@@ -302,13 +302,6 @@ def _ensure_docker(
         if runtime.docker_engine_running():
             return
 
-    if runtime_type == "wsl2" and rootfs_archive is None and not _weave_wsl_distro_exists():
-        raise InstallError(
-            "Dedicated WeaveCBT WSL distribution is missing. The current "
-            "Windows bootstrap requires --rootfs-archive for a first install. "
-            "Automatic Ubuntu rootfs acquisition is not implemented."
-        )
-
     _log("Provisioning the Docker runtime using the platform bootstrap.")
     if runtime_type == "wsl2":
         command = [
