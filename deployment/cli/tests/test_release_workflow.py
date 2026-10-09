@@ -31,6 +31,18 @@ class ReleaseWorkflowContractTests(unittest.TestCase):
         self.assertEqual(self.workflow.count(mapping), 3)
         self.assertNotIn("CHANNEL: ${{ github.ref_name }}", self.workflow)
 
+    def test_packaging_does_not_upload_nuitka_build_directories(self):
+        # Nuitka writes setup.build/setup.dist beside the finished EXE.
+        self.assertIn("path: dist/*.exe", self.workflow)
+        self.assertIn("path: dist/*.tar.gz", self.workflow)
+        self.assertNotIn("path: dist/*\n", self.workflow)
+
+    def test_release_checksums_only_real_installer_files(self):
+        self.assertIn('sha256sum -- *.exe *.tar.gz > SHA256SUMS', self.workflow)
+        self.assertNotIn('sha256sum * > SHA256SUMS', self.workflow)
+        self.assertIn('if [ ! -f "$entry" ]', self.workflow)
+        self.assertIn('gh release create "$TAG" "${windows[@]}" "${linux[@]}" dist/SHA256SUMS', self.workflow)
+
     def test_anonymous_image_check_before_installer_release(self):
         self.assertIn('DOCKER_CONFIG="$anonymous_config" docker manifest inspect', self.workflow)
 

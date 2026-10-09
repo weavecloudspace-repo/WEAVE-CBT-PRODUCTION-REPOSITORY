@@ -280,10 +280,19 @@ jobs:
           build/smoke/weave-cbt/weave --help
           build/smoke/weave-cbt/weave release
           test -f build/smoke/weave-cbt/assets/release-manifest.json
+      # Nuitka also creates .build/.dist directories in dist/. Ship only
+      # the verified executable, never its intermediate working directories.
       - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
         with:
           name: manager-${{ runner.os }}
-          path: dist/*
+          path: dist/*.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: manager-${{ runner.os }}
+          path: dist/*.tar.gz
           if-no-files-found: error
 
   release:
@@ -310,9 +319,22 @@ jobs:
           CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}
         run: |
           set -Eeuo pipefail
-          cd dist
-          sha256sum * > SHA256SUMS
-          cd ..
+          # Require exactly the two compiled manager packages. Prevent
+          # Nuitka intermediate directories or unexpected files leaking to releases.
+          shopt -s nullglob
+          windows=(dist/*.exe)
+          linux=(dist/*.tar.gz)
+          if [ "${#windows[@]}" -ne 1 ] || [ "${#linux[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one Windows .exe and one Linux .tar.gz in dist/."
+            exit 1
+          fi
+          for entry in dist/*; do
+            if [ ! -f "$entry" ]; then
+              echo "::error::Unexpected directory or non-file release artifact: $entry"
+              exit 1
+            fi
+          done
+          (cd dist && sha256sum -- *.exe *.tar.gz > SHA256SUMS)
           if [ "$CHANNEL" = staging ]; then
             TAG="staging-1.0.$GITHUB_RUN_NUMBER"
             PRERELEASE=--prerelease
@@ -320,4 +342,4 @@ jobs:
             TAG="v1.0.$GITHUB_RUN_NUMBER"
             PRERELEASE=
           fi
-          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "WEAVE CBT $TAG" $PRERELEASE --notes "Matched CBT image from commit $GITHUB_SHA. Install CLI manager, then run weave install."
+          gh release create "$TAG" "${windows[@]}" "${linux[@]}" dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "WEAVE CBT $TAG" $PRERELEASE --notes "Matched CBT image from commit $GITHUB_SHA. Install CLI manager, then run weave install."
