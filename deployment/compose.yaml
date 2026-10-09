@@ -26,6 +26,10 @@ services:
   bootstrap:
     image: ${WEAVE_IMAGE:?WEAVE_IMAGE is required}
     command: [/app/weave-cbt/weave-cbt, bootstrap]
+    # Populate the initially empty Docker volume in one sequential container.
+    # This avoids concurrent copy-up of the image's identity/media/branding.
+    volumes:
+      - weave_data:/var/lib/weave-cbt
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
