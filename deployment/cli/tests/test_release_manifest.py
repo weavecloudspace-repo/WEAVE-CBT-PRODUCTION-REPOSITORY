@@ -22,6 +22,10 @@ class ReleaseManifestTests(unittest.TestCase):
             "manager_version": "1.0.1",
             "cbt_image": IMAGE,
             "weave_api_base_url": "https://weave-staging-api-staging.up.railway.app",
+            "ubuntu": {
+                "download_url": "https://cloud-images.ubuntu.com/wsl/releases/noble/current/ubuntu-noble-wsl-amd64-24.04lts.rootfs.tar.gz",
+                "sha256": "2a790896740b14d637dbdc583cce1ba081ac53b9e9cdb46dc09a2f73abbd9934",
+            },
         }
 
     def write_manifest(self):
@@ -33,6 +37,18 @@ class ReleaseManifestTests(unittest.TestCase):
 
     def test_wrong_digest_rejected(self):
         self.manifest["cbt_image"] = IMAGE[:-1]
+        self.write_manifest()
+        with self.assertRaises(InstallError):
+            _read_release_manifest(self.assets)
+
+    def test_untrusted_ubuntu_domain_rejected(self):
+        self.manifest["ubuntu"]["download_url"] = "https://cloud-images.ubuntu.com.attacker.example/archive.tar.gz"
+        self.write_manifest()
+        with self.assertRaises(InstallError):
+            _read_release_manifest(self.assets)
+
+    def test_bad_ubuntu_digest_rejected(self):
+        self.manifest["ubuntu"]["sha256"] = "0" * 63
         self.write_manifest()
         with self.assertRaises(InstallError):
             _read_release_manifest(self.assets)

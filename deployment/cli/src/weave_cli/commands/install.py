@@ -121,7 +121,27 @@ def _read_release_manifest(assets: Path) -> dict[str, str] | None:
         raise InstallError("Release image SHA-256 digest is invalid.")
     if not isinstance(version, str) or not version.strip():
         raise InstallError("Release version is missing.")
-    return {"channel": channel, "api": api, "image": image, "version": version}
+    ubuntu = payload.get("ubuntu")
+    if not isinstance(ubuntu, dict):
+        raise InstallError("Release manifest must pin the official Ubuntu WSL rootfs.")
+    ubuntu_url = ubuntu.get("download_url")
+    ubuntu_sha = ubuntu.get("sha256")
+    if not isinstance(ubuntu_url, str):
+        raise InstallError("Ubuntu download URL is missing.")
+    parsed_ubuntu_url = urlsplit(ubuntu_url)
+    if (parsed_ubuntu_url.scheme != "https"
+            or parsed_ubuntu_url.hostname != "cloud-images.ubuntu.com"
+            or parsed_ubuntu_url.username or parsed_ubuntu_url.password
+            or parsed_ubuntu_url.query or parsed_ubuntu_url.fragment
+            or not parsed_ubuntu_url.path.endswith(".tar.gz")):
+        raise InstallError("Ubuntu archive must use a direct official Canonical HTTPS TAR URL.")
+    if (not isinstance(ubuntu_sha, str) or len(ubuntu_sha) != 64
+            or not all(c in "0123456789abcdef" for c in ubuntu_sha.lower())):
+        raise InstallError("Release Ubuntu SHA-256 must contain 64 hexadecimal characters.")
+    return {
+        "channel": channel, "api": api, "image": image, "version": version,
+        "ubuntu_url": ubuntu_url, "ubuntu_sha": ubuntu_sha.lower(),
+    }
 
 
 def _prepare_environment(data_directory: Path, manifest: dict[str, str] | None) -> Path:
@@ -367,6 +387,8 @@ def _ensure_docker(
     runtime_type: str,
     assets: Path,
     rootfs_archive: Path | None,
+    ubuntu_url: str | None = None,
+    ubuntu_sha: str | None = None,
 ) -> None:
     if runtime.docker_engine_running():
         _log("Dedicated Docker Engine is already running.")
@@ -395,6 +417,8 @@ def _ensure_docker(
         ]
         if rootfs_archive is not None:
             command.extend(["-RootfsArchive", str(rootfs_archive)])
+        if ubuntu_url is not None and ubuntu_sha is not None:
+            command.extend(["-UbuntuUrl", ubuntu_url, "-UbuntuSha256", ubuntu_sha])
     else:
         command = ["bash", str(assets / "bootstrap/linux/bootstrap.sh")]
 
@@ -572,6 +596,8 @@ def _perform_install(
         runtime_type=runtime_type,
         assets=assets,
         rootfs_archive=rootfs_archive,
+        ubuntu_url=manifest["ubuntu_url"] if manifest else None,
+        ubuntu_sha=manifest["ubuntu_sha"] if manifest else None,
     )
     _log("Configuring persistent runtime startup.")
     platform.ensure_runtime_persistence()
