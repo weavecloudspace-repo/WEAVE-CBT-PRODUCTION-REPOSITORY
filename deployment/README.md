@@ -1,15 +1,54 @@
 # WEAVE deployment tooling
 
-## Image publishing
+## V1 release and installation architecture
 
-The `WEAVE CBT image` workflow runs frontend/backend validation, builds the
-current `runtime` Docker target, and verifies Compose bootstrap plus staff,
-student and API routes before publishing. Pull requests build and verify only.
-Pushes to `implementing-services` publish
-`ghcr.io/weavecloudspace-repo/weave-cbt-production-repository:sha-<full-commit>`
-and update its `implementing-services` tag. Use the commit tag or image digest
-for reproducible installations. Windows setup EXE and Manager release publishing
-are no longer part of CI. Existing CLI/bootstrap validation workflows remain.
+All branches run backend, frontend, CLI and platform bootstrap tests. Only
+`staging` and `master` publish application Docker images and compiled CLI
+manager installers. Staging publishes prereleases; master publishes production.
+
+Each official release contains a digest-pinned CBT application image and
+matched Windows and Linux CLI packages from the same commit. The Windows
+`WEAVE-CBT-Setup.exe` is a colored **console** application, not a wizard.
+It installs the WEAVE manager into Program Files, safely registers PATH,
+and prints the exact next command: open a NEW elevated PowerShell and run
+`weave install`. Double-clicking the Setup EXE also opens a console.
+
+On Linux, extract the official tar.gz, run `sudo ./install.sh`, then
+`sudo weave install` from any directory. Packaged releases ship Compose,
+Nginx, and OS bootstrap assets with the correct channel manifest.
+`weave install` reads its embedded WEAVE API URL and digest-pinned image,
+generates secure database credentials, and no longer requires explicit
+`--assets-dir`, `--env-file` or `--rootfs-archive` for normal installations.
+
+GitHub Actions verifies the compiled Windows setup with `--verify-payload`
+before publishing. This self-test checks the embedded `weave.exe` and manifest
+without requesting administrator privileges or altering machine state.
+The Linux job extracts its package and runs the compiled `weave --help`.
+
+## Windows WSL and Docker reliability
+
+The Windows bootstrap uses supported Microsoft WSL install/update commands
+and checks for WSL systemd support (0.67.6+). Windows prerequisites are
+enabled without an unexpected reboot. If restart is required, the bootstrap
+records its state, exits 3010 and directs the administrator to reboot and
+rerun `weave install`. It downloads the official Canonical Ubuntu 24.04
+AMD64 WSL rootfs over HTTPS and verifies the release-pinned SHA-256 digest.
+Downloads have bounded attempts and can resume, where supported.
+
+Docker package downloads use an inactivity watchdog and controlled retries
+without interrupting dpkg configuration. Docker Compose image pulls stream
+progress and fail/retry on inactivity or overall timeout.
+
+Current Windows baseline: compatible Windows 10/11, Windows Server 2022/2025,
+AMD64 hardware, WSL2 virtualization, and Windows PowerShell 5.1. Windows
+Server 2019 is outside the current WSL2 support matrix.
+
+IMPORTANT: A passing Windows CI syntax/test runner does not prove that a
+fresh machine can install WSL2 and Docker. The current WSL persistence task
+requires an interactive sign-in and does not guarantee hosting before login
+or after sign-out. Windows firewall, WSL networking, LAN reachability, and
+fresh-machine boot/reboot behavior require actual Windows acceptance testing.
+Do not advertise unattended Windows availability until those tests pass.
 
 ## Database initialization
 
