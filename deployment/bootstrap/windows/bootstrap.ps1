@@ -31,43 +31,43 @@ function Write-WeaveStep {
         [string]$Message
     )
 
-    Write-Host "[WEAVE] $Message"
+    Write-Host "[WEAVE] $Message" -ForegroundColor Cyan
 }
 
 
 function Write-WeaveCheck {
     param([Parameter(Mandatory)][string]$Message)
-    Write-Host "[WEAVE][CHECK] $Message"
+    Write-Host "[WEAVE][CHECK] $Message" -ForegroundColor Cyan
 }
 
 
 function Write-WeaveAction {
     param([Parameter(Mandatory)][string]$Message)
-    Write-Host "[WEAVE][ACTION] $Message"
+    Write-Host "[WEAVE][ACTION] $Message" -ForegroundColor Blue
 }
 
 
 function Write-WeaveSuccess {
     param([Parameter(Mandatory)][string]$Message)
-    Write-Host "[WEAVE][OK] $Message"
+    Write-Host "[WEAVE][OK] $Message" -ForegroundColor Green
 }
 
 
 function Write-WeaveSkip {
     param([Parameter(Mandatory)][string]$Message)
-    Write-Host "[WEAVE][SKIP] $Message"
+    Write-Host "[WEAVE][SKIP] $Message" -ForegroundColor DarkGray
 }
 
 
 function Write-WeaveWait {
     param([Parameter(Mandatory)][string]$Message)
-    Write-Host "[WEAVE][WAIT] $Message"
+    Write-Host "[WEAVE][WAIT] $Message" -ForegroundColor Yellow
 }
 
 
 function Write-WeaveWarning {
     param([Parameter(Mandatory)][string]$Message)
-    Write-Host "[WEAVE][WARN] $Message"
+    Write-Host "[WEAVE][WARN] $Message" -ForegroundColor Yellow
 }
 
 
