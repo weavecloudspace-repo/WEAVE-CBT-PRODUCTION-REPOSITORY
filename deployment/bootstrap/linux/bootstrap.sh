@@ -89,7 +89,7 @@ require_commands() {
 
     local command_name
 
-    for command_name in ps systemctl journalctl apt-get apt-cache dpkg dpkg-query install mktemp awk seq tr find date setsid; do
+    for command_name in ps systemctl journalctl apt-get apt-cache dpkg dpkg-query install mktemp awk seq tr find date setsid timeout; do
         if ! command -v "$command_name" >/dev/null 2>&1; then
             die "Required command '$command_name' is unavailable."
         fi
@@ -450,14 +450,14 @@ enable_docker_services() {
 
     log_action "Starting containerd service."
 
-    if ! systemctl start containerd.service; then
+    if ! timeout --signal=TERM 180s systemctl start containerd.service; then
         show_service_diagnostics containerd.service
         die "Failed to start containerd.service."
     fi
 
     log_action "Starting Docker service."
 
-    if ! systemctl start docker.service; then
+    if ! timeout --signal=TERM 180s systemctl start docker.service; then
         show_service_diagnostics docker.service
         die "Failed to start docker.service."
     fi

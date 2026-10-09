@@ -981,7 +981,7 @@ if command -v docker >/dev/null 2>&1 \
     echo "[WEAVE][ACTION] Enabling and starting Docker services."
     systemctl enable docker.service >/dev/null
     systemctl enable containerd.service >/dev/null 2>&1 || true
-    systemctl start docker.service
+    timeout --signal=TERM 180s systemctl start docker.service
     echo "[WEAVE][OK] Existing Docker installation is ready."
     exit 0
 fi
@@ -1003,7 +1003,7 @@ apt_weave() {
 }
 
 echo "[WEAVE][ACTION] Refreshing Ubuntu package metadata (network retries enabled)."
-apt_weave update
+timeout --signal=TERM --kill-after=10s 600s "${APT_GET[@]}" update
 echo "[WEAVE][ACTION] Installing repository prerequisites."
 apt_weave install -y ca-certificates curl
 

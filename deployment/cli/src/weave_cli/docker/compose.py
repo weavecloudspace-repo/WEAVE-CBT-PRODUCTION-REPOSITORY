@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 
 from weave_cli.docker.runtime import (
     DEFAULT_TIMEOUT,
     CommandResult,
     DockerRuntime,
+    DockerRuntimeError,
 )
 
 
@@ -81,7 +83,7 @@ class DockerCompose:
             ]
             + command,
             stream=stream,
-            timeout=None if stream else timeout,
+            timeout=timeout,
         )
 
         if not result.successful:
@@ -232,6 +234,31 @@ psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
 
         return self._run_compose_command(command=["ps"])
 
+    def _pull_with_retry(self, services: list[str]) -> CommandResult:
+        """Show pull progress and retry bounded network failures.
+
+        A failed pull does not delete cached image layers. Subsequent attempts
+        reuse Docker's completed downloads. This does not interrupt dpkg or
+        any application/database state.
+        """
+        failures: list[str] = []
+        for attempt in range(1, 4):
+            print(f"[WEAVE][ACTION] Pulling {', '.join(services)} (attempt {attempt}/3)", flush=True)
+            try:
+                return self._run_compose_command(
+                    command=["pull", *services],
+                    stream=True,
+                    timeout=1200,
+                )
+            except (DockerComposeError, DockerRuntimeError) as exc:
+                failures.append(str(exc))
+                if attempt < 3:
+                    print(f"[WEAVE][WARN] Docker image pull failed; retrying in {5 * attempt}s: {exc}", flush=True)
+                    time.sleep(5 * attempt)
+        raise DockerComposeError(
+            f"Docker image pull failed after three attempts for {', '.join(services)}: {failures[-1]}"
+        )
+
     def pull_weave_image(
         self,
     ) -> CommandResult:
@@ -248,10 +275,7 @@ psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
             pull bootstrap api worker
         """
 
-        return self._run_compose_command(
-            command=["pull", "bootstrap", "api", "worker"],
-            timeout=None,
-        )
+        return self._pull_with_retry(["bootstrap", "api", "worker"])
 
     def pull_postgres_image(
         self,
@@ -268,10 +292,7 @@ psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
             pull postgres
         """
 
-        return self._run_compose_command(
-            command=["pull", "postgres"],
-            timeout=None,
-        )
+        return self._pull_with_retry(["postgres"])
 
     def pull_redis_image(
         self,
@@ -288,10 +309,7 @@ psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
             pull redis
         """
 
-        return self._run_compose_command(
-            command=["pull", "redis"],
-            timeout=None,
-        )
+        return self._pull_with_retry(["redis"])
 
     def pull_nginx_image(
         self,
@@ -308,10 +326,7 @@ psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
             pull nginx
         """
 
-        return self._run_compose_command(
-            command=["pull", "nginx"],
-            timeout=None,
-        )
+        return self._pull_with_retry(["nginx"])
 
     def logs(
         self,
