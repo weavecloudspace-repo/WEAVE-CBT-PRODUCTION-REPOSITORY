@@ -18,7 +18,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.database import Base
-from app.core.database_bootstrap import bootstrap_database
+from app.core.database_bootstrap import bootstrap_database, verify_database_schema
 from app.domains.auth.models import LocalActorSession, LocalRefreshToken
 
 
@@ -75,6 +75,43 @@ async def fresh_database():
                     text(f'DROP DATABASE "{database_name}" WITH (FORCE)')
                 )
         await admin.dispose()
+
+
+@pytest.mark.asyncio
+async def test_api_startup_does_not_migrate_a_fresh_database(fresh_database):
+    with pytest.raises(RuntimeError, match="has not been migrated"):
+        await verify_database_schema(fresh_database)
+    async with fresh_database.connect() as connection:
+        assert not list(
+            (await connection.execute(text(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+            ))).scalars()
+        )
+
+
+@pytest.mark.asyncio
+async def test_api_startup_verifies_migrated_database_read_only(fresh_database):
+    assert await bootstrap_database(fresh_database) is True
+    await verify_database_schema(fresh_database)
+    async with fresh_database.connect() as connection:
+        assert (
+            await connection.execute(text("SELECT version_num FROM alembic_version"))
+        ).scalar_one() == "20261006_initial_schema"
+
+
+@pytest.mark.asyncio
+async def test_api_startup_rejects_outdated_revision_without_upgrading(fresh_database):
+    await bootstrap_database(fresh_database)
+    async with fresh_database.begin() as connection:
+        await connection.execute(text(
+            "UPDATE alembic_version SET version_num = 'unknown_old_revision'"
+        ))
+    with pytest.raises(RuntimeError, match="do not match migration head"):
+        await verify_database_schema(fresh_database)
+    async with fresh_database.connect() as connection:
+        assert (
+            await connection.execute(text("SELECT version_num FROM alembic_version"))
+        ).scalar_one() == "unknown_old_revision"
 
 
 @pytest.mark.asyncio
