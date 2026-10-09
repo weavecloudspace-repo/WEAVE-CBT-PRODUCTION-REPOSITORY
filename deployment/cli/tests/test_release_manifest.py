@@ -41,6 +41,32 @@ class ReleaseManifestTests(unittest.TestCase):
             patch('weave_cli.commands.install.sys.executable', '/tmp/onefile-unpacked/weave'),
         ):
             self.assertEqual(_assets_root(None).resolve(), self.assets.resolve())
+    def test_release_command_reports_channel_without_docker(self):
+        from unittest.mock import patch
+        from typer.testing import CliRunner
+        from weave_cli.main import app
+        self.write_manifest()
+        with (
+            patch("weave_cli.commands.release._assets_root", return_value=self.assets),
+            patch("weave_cli.commands.release._verify_assets"),
+        ):
+            result = CliRunner().invoke(app, ["release"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("Channel: staging", result.output)
+        self.assertIn("Manager version: 1.0.1", result.output)
+        self.assertIn("weave-staging-api-staging.up.railway.app", result.output)
+
+    def test_release_command_rejects_missing_manifest(self):
+        from unittest.mock import patch
+        from typer.testing import CliRunner
+        from weave_cli.main import app
+        with (
+            patch("weave_cli.commands.release._assets_root", return_value=self.assets),
+            patch("weave_cli.commands.release._verify_assets"),
+        ):
+            result = CliRunner().invoke(app, ["release"])
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("no bundled release manifest", result.output)
     def test_valid_manifest(self):
         self.write_manifest()
         self.assertEqual(_read_release_manifest(self.assets)["channel"], "staging")
