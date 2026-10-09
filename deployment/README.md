@@ -79,8 +79,11 @@ this image. Do not blindly stamp a database whose schema is incomplete.
 
 ## Local image and schema rollback
 
-The installed `weave update --image <pinned-image>` command takes a
-**database snapshot before running new migrations**:
+The installed `weave update` command selects the manager's bundled,
+release-pinned Docker digest by default. Advanced operators can explicitly use
+`weave update --image <pinned-image>`; default channel/API mismatches are
+rejected before changing containers. Updates require interactive confirmation
+and take a **database snapshot before running new migrations**:
 
 1. Pull the new image while the old containers still serve requests.
 2. Quiesce Nginx, all three API replicas, and the worker (stop writers).
