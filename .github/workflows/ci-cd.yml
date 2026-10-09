@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: ["**"]
   workflow_dispatch:
+    inputs:
+      approve_production:
+        description: "Explicitly approve a Production release from master"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -56,8 +62,10 @@ jobs:
   image:
     name: Build, verify and publish application image
     if: >-
-      github.event_name == 'push' &&
-      (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')
+      (github.event_name == 'push' &&
+       (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/master' && inputs.approve_production == true)
     needs: [backend, frontend, bootstrap]
     outputs:
       image: ${{ steps.digest.outputs.image }}
@@ -164,8 +172,10 @@ jobs:
   compile-cli:
     name: Compile standalone CLI (${{ matrix.os }})
     if: >-
-      github.event_name == 'push' &&
-      (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')
+      (github.event_name == 'push' &&
+       (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/master' && inputs.approve_production == true)
     needs: [backend, frontend, bootstrap]
     strategy:
       matrix:
@@ -272,6 +282,12 @@ jobs:
 
   release:
     name: Publish versioned manager release
+    # A merge into master never publishes a customer installer automatically.
+    # Select "Run workflow" on master with approve_production=true to promote.
+    if: >-
+      (github.ref == 'refs/heads/staging' && github.event_name == 'push') ||
+      (github.ref == 'refs/heads/master' && github.event_name == 'workflow_dispatch' &&
+       inputs.approve_production == true)
     needs: [image, package]
     runs-on: ubuntu-latest
     permissions:
