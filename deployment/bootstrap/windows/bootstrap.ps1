@@ -859,6 +859,16 @@ function Ensure-WeaveDistro {
         New-Item -ItemType Directory -Path $script:DistroInstallDirectory -Force | Out-Null
     }
 
+    # Imported ext4.vhdx contains school exam data and database volumes.
+    # Restrict this directory before importing; never recurse existing VHDs.
+    $icacls = Join-Path $env:SystemRoot "System32\icacls.exe"
+    if (-not (Test-Path -LiteralPath $icacls -PathType Leaf)) {
+        throw "Windows icacls.exe is required to secure WSL data storage."
+    }
+    & $icacls $script:DistroInstallDirectory "/inheritance:r" "/grant:r" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to protect the WSL data directory ACL; import was not started."
+    }
     Write-WeaveAction "Importing dedicated '$script:DistroName' WSL2 distribution into '$script:DistroInstallDirectory'."
 
     $importResult = Invoke-WeaveWslCommand -Arguments @(
