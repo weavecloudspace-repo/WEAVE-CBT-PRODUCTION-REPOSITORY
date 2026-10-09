@@ -184,7 +184,7 @@ jobs:
           Compress-Archive -Path build\payload\* -DestinationPath build\payload.zip -Force
           python -m nuitka --mode=onefile --assume-yes-for-downloads --include-data-files=build/payload.zip=payload.zip --output-dir=dist --output-filename=$name deployment\distribution\windows\setup.py
           if ($LASTEXITCODE -ne 0) { throw "Windows setup build failed." }
-          & ("dist\" + $name) --verify-payload
+          & (Join-Path (Resolve-Path dist).Path $name) --verify-payload
           if ($LASTEXITCODE -ne 0) { throw "Compiled Windows setup payload verification failed." }
       - name: Linux terminal package
         if: runner.os == 'Linux'

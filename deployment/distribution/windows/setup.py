@@ -46,10 +46,15 @@ def perform_install(*, verify_only: bool = False) -> None:
     atexit.register(staging.cleanup)
     payload = Path(staging.name)
     with zipfile.ZipFile(bundle) as archive:
-        for member in archive.namelist():
-            # Never unpack a path that can escape the temporary directory.
-            if member.startswith("/") or ".." in Path(member.replace("\\", "/")).parts:
-                raise RuntimeError("Unsafe path in embedded installer payload.")
+        expected = {"weave.exe", "assets/compose.yaml", "assets/release-manifest.json"}
+        members = archive.namelist()
+        if not expected.issubset(set(members)):
+            raise RuntimeError("Embedded manager bundle is missing required release files.")
+        for member in members:
+            normalized = member.replace("\\", "/")
+            path = Path(normalized)
+            if (normalized.startswith("/") or ":" in normalized or ".." in path.parts):
+                raise RuntimeError("Unsafe path in embedded manager bundle.")
         archive.extractall(payload)
     source = payload / "weave.exe"
     assets = payload / "assets"
