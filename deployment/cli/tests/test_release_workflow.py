@@ -25,6 +25,12 @@ class ReleaseWorkflowContractTests(unittest.TestCase):
         self.assertIn("    needs: [image, compile-cli]", self.workflow)
         self.assertIn("compiled-cli-${{ runner.os }}", self.workflow)
 
+    def test_master_maps_to_production_for_installers_and_release(self):
+        # make_manifest accepts 'staging' or 'production', never 'master'.
+        mapping = "CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}"
+        self.assertEqual(self.workflow.count(mapping), 3)
+        self.assertNotIn("CHANNEL: ${{ github.ref_name }}", self.workflow)
+
     def test_anonymous_image_check_before_installer_release(self):
         self.assertIn('DOCKER_CONFIG="$anonymous_config" docker manifest inspect', self.workflow)
 
