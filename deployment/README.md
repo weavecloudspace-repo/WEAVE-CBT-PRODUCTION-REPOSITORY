@@ -3,8 +3,15 @@
 ## V1 release and installation architecture
 
 All branches run backend, frontend, CLI and platform bootstrap tests. Only
-`staging` and `master` publish application Docker images and compiled CLI
-manager installers. Staging publishes prereleases; master publishes production.
+`staging` and `master` build or publish Docker images and compiled CLI
+manager installers. Staging publishes prereleases automatically. A push
+to `master` validates/builds but **does not publish a Production GitHub Release**:
+select GitHub Actions > WEAVE CBT image > Run workflow on `master`, and set
+`approve_production=true` to authorize production promotion. Docker image and
+Windows/Linux CLI compilation run concurrently; final installers wait for the
+published immutable image digest. GitHub Actions also verifies that the GHCR
+image is publicly retrievable without a registry login before publishing an
+installer, because schools should not need GitHub credentials.
 
 Each official release contains a digest-pinned CBT application image and
 matched Windows and Linux CLI packages from the same commit. The Windows
