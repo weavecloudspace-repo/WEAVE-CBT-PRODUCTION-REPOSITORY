@@ -69,14 +69,26 @@ From a **different device on the same trusted school LAN**, browse to the
 Windows host's LAN IPv4 address (for example, http://192.168.x.x/staff).
 Do not assume success on localhost means students can connect.
 
-Microsoft documents that the default WSL2 NAT mode needs explicit host-to-WSL
-LAN routing, commonly with an appropriately scoped `netsh interface portproxy`
-rule and Windows Firewall configuration. The WSL NAT IP can change after
-restart. Windows 11 mirrored networking is a separate option with its own
-firewall requirements. The manager currently does **not** automatically
-configure these rules; unattended LAN access remains a release blocker.
-Do not publish an Internet-wide firewall rule or overwrite an existing
-portproxy binding during testing.
+Microsoft documents that default WSL2 NAT requires host-to-WSL routing.
+The CLI supports an explicit, administrator-approved private-network setup:
+
+    weave lan --listen-address 192.168.1.24 --client-subnet 192.168.1.0/24
+    weave lan --refresh
+
+Use the actual host IPv4 and the narrowest trusted school subnet. Confirm
+the Windows network category is Private or DomainAuthenticated. Verify
+`netsh interface portproxy show v4tov4` contains only the intended host
+listener and WSL destination. Confirm the WEAVE CBT TCP/80 inbound rule
+permits only the selected address/subnet, then test from a DIFFERENT PC.
+
+After a host reboot and interactive sign-in, verify that the scheduled WSL
+keeper refreshes a changed NAT destination. Verify `weave start` and
+`weave restart` reconcile stale addresses. Test collision protection by
+using an unrelated existing portproxy on a disposable test VM.
+
+To change network, run `weave lan --remove` before selecting a new scope.
+Mirrored mode, VPN routing, before-login hosting, and sign-out persistence
+are not guaranteed. Do not configure Internet-wide firewall access.
 
 ## 5. Restart, sign-out, and data persistence
 

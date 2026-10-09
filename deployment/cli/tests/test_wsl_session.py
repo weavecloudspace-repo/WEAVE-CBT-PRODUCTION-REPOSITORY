@@ -74,6 +74,12 @@ class WslSessionTests(unittest.TestCase):
             with self.assertRaisesRegex(PlatformError, "Access denied"):
                 manage_session("WeaveCBT")
 
+    def test_keeper_refreshes_existing_lan_mapping(self):
+        generated = task_script("WeaveCBT")
+        self.assertIn("lan --refresh", generated)
+        self.assertIn("exec sleep infinity", generated)
+        self.assertIn("-AtLogOn", generated)
+
     def test_timeout_is_reported(self):
         with (
             patch("weave_cli.platforms.wsl_session.subprocess.run",

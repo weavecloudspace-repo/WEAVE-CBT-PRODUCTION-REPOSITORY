@@ -57,6 +57,38 @@ or after sign-out. Windows firewall, WSL networking, LAN reachability, and
 fresh-machine boot/reboot behavior require actual Windows acceptance testing.
 Do not advertise unattended Windows availability until those tests pass.
 
+## Opt-in school LAN access on Windows
+
+Windows WSL2 NAT is not automatically reachable from other computers on the
+school LAN. After `weave install` completes, an administrator can enable a
+narrowly scoped TCP/80 listener on a **specific private Windows LAN IPv4**:
+
+```powershell
+weave lan --listen-address 192.168.1.24 --client-subnet 192.168.1.0/24
+weave lan --refresh
+```
+
+Use the actual Windows host IP and smallest appropriate trusted school subnet;
+do not copy the example addresses verbatim. The command refuses public/wildcard
+listeners, public or overly broad subnets, non-Private/Domain host connections,
+unrelated portproxy entries, and unrelated firewall rules. It stores the
+managed mapping in `lan.json` alongside the installation's configuration,
+and restricts the Windows Firewall inbound rule to the selected host IP and
+client subnet. It does not open a public Internet listener.
+
+On `weave start` and `weave restart`, the WSL NAT destination is refreshed
+if forwarding was enabled. The existing interactive-logon WSL session task
+also attempts to refresh after it launches Docker. To change the host LAN IP
+or subnet, first run `weave lan --remove` and then configure a new mapping.
+A failed refresh must be investigated before an exam; verify the endpoint
+from a separate student computer, not just localhost.
+
+This is a Windows WSL2 **NAT-mode** helper, not a general solution for
+mirrored networking, VPNs, multiple-subnet school networks, or public exposure.
+The WSL keeper remains an interactive-logon task and cannot serve schools
+before sign-in or after sign-out. A reboot and sign-in acceptance test is
+required before claiming reliable overnight hosting.
+
 ## Database initialization
 
 The compiled one-shot `bootstrap` command exclusively applies `alembic upgrade head`
