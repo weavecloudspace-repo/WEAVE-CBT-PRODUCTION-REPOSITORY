@@ -52,6 +52,7 @@ class DockerCompose:
         *,
         stream: bool = False,
         timeout: int | None = DEFAULT_TIMEOUT,
+        stall_timeout: int | None = None,
     ) -> CommandResult:
         """
         Runs a Docker Compose command with the specified arguments
@@ -84,6 +85,7 @@ class DockerCompose:
             + command,
             stream=stream,
             timeout=None if stream and timeout == DEFAULT_TIMEOUT else timeout,
+            stall_timeout=stall_timeout,
         )
 
         if not result.successful:
@@ -249,6 +251,7 @@ psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
                     command=["pull", *services],
                     stream=True,
                     timeout=1200,
+                    stall_timeout=180,
                 )
             except (DockerComposeError, DockerRuntimeError) as exc:
                 failures.append(str(exc))

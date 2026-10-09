@@ -3,6 +3,9 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import sys
+import threading
+import time
 import tempfile
 from collections.abc import Sequence
 from contextlib import ExitStack
@@ -57,6 +60,7 @@ class DockerRuntime:
         *,
         timeout: int | None = DEFAULT_TIMEOUT,
         stream: bool = False,
+        stall_timeout: int | None = None,
     ) -> CommandResult:
         """
         Execute a Docker CLI command through the configured provider.
@@ -79,20 +83,60 @@ class DockerRuntime:
 
         try:
             with ExitStack() as stack:
+                monitored = stream and stall_timeout is not None
                 stdout = (
+                    subprocess.PIPE if monitored else
                     None if stream else stack.enter_context(tempfile.TemporaryFile())
                 )
                 stderr = (
+                    subprocess.STDOUT if monitored else
                     None if stream else stack.enter_context(tempfile.TemporaryFile())
                 )
                 process = subprocess.Popen(
-                    process_command,
-                    stdout=stdout,
-                    stderr=stderr,
+                    process_command, stdout=stdout, stderr=stderr,
                     start_new_session=os.name != "nt",
                 )
                 try:
-                    return_code = process.wait(timeout=timeout)
+                    if monitored:
+                        # Only Docker image transfers use this watchdog. Never
+                        # terminate dpkg or migration/database operations.
+                        started = time.monotonic()
+                        last_progress = [started]
+
+                        def relay() -> None:
+                            assert process.stdout is not None
+                            while True:
+                                chunk = process.stdout.read(4096)
+                                if not chunk:
+                                    break
+                                last_progress[0] = time.monotonic()
+                                try:
+                                    sys.stdout.buffer.write(chunk)
+                                    sys.stdout.buffer.flush()
+                                except (AttributeError, OSError):
+                                    sys.stdout.write(chunk.decode("utf-8", errors="replace"))
+                                    sys.stdout.flush()
+
+                        reader = threading.Thread(target=relay, daemon=True)
+                        reader.start()
+                        while True:
+                            try:
+                                return_code = process.wait(timeout=2)
+                                break
+                            except subprocess.TimeoutExpired:
+                                now = time.monotonic()
+                                if timeout is not None and now - started >= timeout:
+                                    self._stop_process_tree(process)
+                                    raise DockerRuntimeError(f"Docker command timed out after {timeout} seconds.")
+                                if now - last_progress[0] >= stall_timeout:
+                                    self._stop_process_tree(process)
+                                    raise DockerRuntimeError(
+                                        f"Docker download stalled for {stall_timeout} seconds without output."
+                                    )
+                        reader.join(timeout=5)
+                        return CommandResult(return_code, "", "")
+                    else:
+                        return_code = process.wait(timeout=timeout)
                 except (subprocess.TimeoutExpired, KeyboardInterrupt):
                     self._stop_process_tree(process)
                     raise

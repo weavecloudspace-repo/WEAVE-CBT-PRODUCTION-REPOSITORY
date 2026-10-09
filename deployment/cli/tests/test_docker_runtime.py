@@ -59,6 +59,13 @@ class DockerRuntimeTests(unittest.TestCase):
         self.assertTrue(result.successful)
         self.assertEqual((result.stdout, result.stderr), ("", ""))
 
+    def test_stalled_stream_is_cancelled_without_waiting_for_total_deadline(self):
+        with self.assertRaisesRegex(DockerRuntimeError, "stalled"):
+            self.runtime.run_docker_command(
+                ["-c", "import time; print('starting', flush=True); time.sleep(30)"],
+                stream=True, stall_timeout=1, timeout=60,
+            )
+
     def test_interrupt_cleans_up_and_propagates(self):
         with (
             patch("weave_cli.docker.runtime.subprocess.Popen") as spawn,
