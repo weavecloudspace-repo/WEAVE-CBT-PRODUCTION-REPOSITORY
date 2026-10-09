@@ -680,7 +680,13 @@ function Ensure-WslAvailable {
     # Fresh Windows Server machines may reject --install until these features
     # have been enabled and the host restarted.
     Write-WeaveAction "Installing Microsoft WSL without a default Linux distribution."
-    $installResult = Invoke-WeaveWslCommand -Arguments @("--install", "--no-distribution") -TimeoutSeconds 600
+    try {
+        $installResult = Invoke-WeaveWslCommand -Arguments @("--install", "--no-distribution") -TimeoutSeconds 600
+    }
+    catch {
+        Write-WeaveWarning "Normal WSL installation timed out: $($_.Exception.Message). Trying official web-download fallback."
+        $installResult = [PSCustomObject]@{ ExitCode = -1 }
+    }
     if ($installResult.ExitCode -ne 0 -and $installResult.ExitCode -ne $script:RebootRequiredExitCode) {
         Write-WeaveWarning "Default WSL installation failed; retrying official web-download method."
         $installResult = Invoke-WeaveWslCommand -Arguments @("--install", "--no-distribution", "--web-download") -TimeoutSeconds 600
@@ -703,6 +709,65 @@ function Ensure-WslAvailable {
     Write-WeaveSuccess "Microsoft WSL runtime initialized."
 
 }
+
+function Ensure-WslSystemdSupport {
+    # Docker Engine runs as a systemd service in our dedicated distro.
+    # Microsoft's inbox/older WSL can report --status successfully but cannot
+    # support systemd. Modern WSL 0.67.6+ is a hard prerequisite.
+    Write-WeaveCheck "Verifying modern Microsoft WSL with systemd support."
+    $version = Invoke-WeaveWslCommand -Arguments @("--version") -CaptureOutput -TimeoutSeconds 90
+    $wslVersion = $null
+    if ($version.ExitCode -eq 0) {
+        $versionText = ($version.Output -join " ")
+        $match = [Regex]::Match($versionText, '(\d+)\.(\d+)\.(\d+)')
+        if ($match.Success) {
+            $wslVersion = [Version]::new(
+                [int]$match.Groups[1].Value, [int]$match.Groups[2].Value, [int]$match.Groups[3].Value
+            )
+        }
+    }
+    if ($null -ne $wslVersion -and $wslVersion -ge [Version]::new(0, 67, 6)) {
+        Write-WeaveSuccess "WSL version $wslVersion supports systemd."
+        return
+    }
+
+    Write-WeaveAction "Updating the official Microsoft WSL runtime for systemd support."
+    try {
+        $updated = Invoke-WeaveWslCommand -Arguments @("--update", "--web-download") -TimeoutSeconds 600
+    }
+    catch {
+        Write-WeaveWarning "WSL web-download update timed out or failed: $($_.Exception.Message)"
+        $updated = [PSCustomObject]@{ ExitCode = -1 }
+    }
+    if ($updated.ExitCode -ne 0 -and $updated.ExitCode -ne $script:RebootRequiredExitCode) {
+        Write-WeaveWarning "WSL web-download update was not successful; trying standard Microsoft update."
+        $updated = Invoke-WeaveWslCommand -Arguments @("--update") -TimeoutSeconds 600
+    }
+    if ($updated.ExitCode -eq $script:RebootRequiredExitCode) {
+        Exit-RebootRequired -Message "Microsoft WSL update needs a Windows restart before Docker provisioning."
+    }
+    if ($updated.ExitCode -ne 0) {
+        throw "Unable to update Microsoft WSL (exit $($updated.ExitCode)). WSL 0.67.6+ is required for systemd. Check Windows build, HTTPS access and Microsoft WSL availability."
+    }
+
+    $version = Invoke-WeaveWslCommand -Arguments @("--version") -CaptureOutput -TimeoutSeconds 90
+    if ($version.ExitCode -ne 0) {
+        throw "Microsoft WSL does not recognize --version after update. A modern WSL release with systemd support is required."
+    }
+    $versionText = ($version.Output -join " ")
+    $match = [Regex]::Match($versionText, '(\d+)\.(\d+)\.(\d+)')
+    if (-not $match.Success) {
+        throw "Cannot verify WSL version after update; refusing to enable systemd without an identifiable runtime."
+    }
+    $actual = [Version]::new(
+        [int]$match.Groups[1].Value, [int]$match.Groups[2].Value, [int]$match.Groups[3].Value
+    )
+    if ($actual -lt [Version]::new(0, 67, 6)) {
+        throw "WSL version $actual does not support systemd. Update to WSL 0.67.6 or newer."
+    }
+    Write-WeaveSuccess "Microsoft WSL updated to $actual with systemd support."
+}
+
 
 function Ensure-UbuntuRootfs {
     if ($RootfsArchive) {
@@ -1340,6 +1405,7 @@ $script:RootSessionWarningShown = $false
 Write-WeaveStep "Starting Windows runtime bootstrap for WEAVE CBT."
 Assert-WindowsWsl2Compatibility
 Ensure-WslAvailable
+Ensure-WslSystemdSupport
 Ensure-WeaveDistro
 Ensure-WeaveDistroUsesWsl2
 Configure-Systemd
