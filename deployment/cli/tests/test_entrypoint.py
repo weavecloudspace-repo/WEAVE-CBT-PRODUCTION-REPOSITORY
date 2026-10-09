@@ -11,12 +11,12 @@ class EntrypointTests(unittest.TestCase):
     def setUp(self):
         self.runner = CliRunner()
 
-    def test_root_help_exposes_all_nine_commands(self):
+    def test_root_help_exposes_all_ten_commands(self):
         result = self.runner.invoke(app, ["--help"])
         self.assertEqual(result.exit_code, 0, result.output)
         for name in (
             "install", "start", "stop", "restart", "status",
-            "logs", "doctor", "update", "uninstall",
+            "logs", "doctor", "update", "rollback", "uninstall",
         ):
             self.assertIn(name, result.output)
 
