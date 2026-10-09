@@ -149,9 +149,48 @@ jobs:
           test -n "$DIGEST"
           echo "image=$IMAGE@$DIGEST" >> "$GITHUB_OUTPUT"
 
+  compile-cli:
+    name: Compile standalone CLI (${{ matrix.os }})
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')
+    needs: [backend, frontend, bootstrap]
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install manager compiler
+        run: python -m pip install -e ./deployment nuitka zstandard
+      - name: Compile Windows CLI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m nuitka --mode=onefile --assume-yes-for-downloads --output-dir=build/cli --output-filename=weave.exe deployment/cli/entrypoint.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows CLI compilation failed.' }
+          & (Resolve-Path build/cli/weave.exe).Path --help
+          if ($LASTEXITCODE -ne 0) { throw 'Compiled Windows CLI did not start.' }
+      - name: Compile Linux CLI
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m nuitka --mode=onefile --assume-yes-for-downloads --output-dir=build/cli --output-filename=weave deployment/cli/entrypoint.py
+          build/cli/weave --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compiled-cli-${{ runner.os }}
+          path: build/cli/weave*
+          if-no-files-found: error
+
   package:
     name: Package manager for ${{ matrix.os }}
-    needs: image
+    needs: [image, compile-cli]
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest]
@@ -162,7 +201,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install compiler and CLI
+      - uses: actions/download-artifact@v4
+        with:
+          name: compiled-cli-${{ runner.os }}
+          path: build/cli
+      - name: Install Windows setup compiler
+        if: runner.os == 'Windows'
         run: python -m pip install -e ./deployment nuitka zstandard
       - name: Windows console setup
         if: runner.os == 'Windows'
@@ -172,8 +216,6 @@ jobs:
           CHANNEL: ${{ github.ref_name }}
         run: |
           New-Item -ItemType Directory -Force -Path build\payload\assets,dist | Out-Null
-          python -m nuitka --mode=onefile --assume-yes-for-downloads --output-dir=build\cli --output-filename=weave.exe deployment\cli\entrypoint.py
-          if ($LASTEXITCODE -ne 0) { throw "CLI build failed." }
           Copy-Item build\cli\weave.exe build\payload\weave.exe
           Copy-Item deployment\compose.yaml build\payload\assets\compose.yaml
           Copy-Item deployment\nginx build\payload\assets\nginx -Recurse
@@ -197,7 +239,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p build/package/weave-cbt/assets dist
-          python -m nuitka --mode=onefile --assume-yes-for-downloads --output-dir=build/cli --output-filename=weave deployment/cli/entrypoint.py
           install -m 0755 build/cli/weave build/package/weave-cbt/weave
           install -m 0755 deployment/distribution/linux/install.sh build/package/weave-cbt/install.sh
           cp deployment/compose.yaml build/package/weave-cbt/assets/
