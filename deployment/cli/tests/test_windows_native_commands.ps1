@@ -36,5 +36,6 @@ if ($parseErrors.Count -gt 0) {
 }
 
 # Confirm supported overloads and .NET types in actual Windows PowerShell.
+Invoke-Expression $payload
 Test-PowerShell-Compat
 Write-Output "Windows PowerShell $($PSVersionTable.PSVersion): required Windows-native commands/types are available."
