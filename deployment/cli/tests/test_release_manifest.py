@@ -40,7 +40,7 @@ class ReleaseManifestTests(unittest.TestCase):
             patch('weave_cli.commands.install.sys.argv', [str(application), 'install']),
             patch('weave_cli.commands.install.sys.executable', '/tmp/onefile-unpacked/weave'),
         ):
-            self.assertEqual(_assets_root(None), self.assets)
+            self.assertEqual(_assets_root(None).resolve(), self.assets.resolve())
     def test_valid_manifest(self):
         self.write_manifest()
         self.assertEqual(_read_release_manifest(self.assets)["channel"], "staging")
