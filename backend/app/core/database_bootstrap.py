@@ -141,6 +141,48 @@ def _validate_existing_schema(connection: Connection) -> None:
         )
 
 
+async def verify_database_schema(database_engine: AsyncEngine = engine) -> None:
+    """Verify a migrated schema without DDL; safe for every API replica."""
+    configure_mappers()
+    head = migration_head()
+    expected_tables = {table.name for table in Base.metadata.tables.values()}
+    if not expected_tables:
+        raise RuntimeError("The model registry is empty; refusing API startup.")
+
+    async with database_engine.begin() as connection:
+        # Wait for the one-shot migration container if it holds the schema lock.
+        await connection.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"), {"key": _BOOTSTRAP_LOCK_KEY}
+        )
+        await connection.execute(text("SET LOCAL search_path TO public"))
+        tables = set(
+            (await connection.execute(text(
+                "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'"
+            ))).scalars()
+        )
+        if "alembic_version" not in tables:
+            raise RuntimeError(
+                "CBT database has not been migrated. Run the bootstrap container "
+                "before starting API replicas; refusing automatic repair or stamping."
+            )
+        current = await connection.run_sync(
+            lambda sync: MigrationContext.configure(sync).get_current_heads()
+        )
+        if current != (head,):
+            raise RuntimeError(
+                f"CBT database revisions {current!r} do not match migration head "
+                f"{head!r}. Run the bootstrap container before starting the API."
+            )
+        missing = expected_tables - tables
+        if missing:
+            raise RuntimeError(
+                "CBT database is missing application tables; refusing startup: "
+                + ", ".join(sorted(missing))
+            )
+        await connection.run_sync(_validate_existing_schema)
+    logger.info("CBT database verified at Alembic head %s", head)
+
+
 async def bootstrap_database(database_engine: AsyncEngine = engine) -> bool:
     """Apply Alembic under a transaction lock; never adopt an unversioned schema."""
     configure_mappers()
@@ -182,7 +224,10 @@ async def bootstrap_database(database_engine: AsyncEngine = engine) -> bool:
         def upgrade(sync: Connection) -> None:
             config = migration_config()
             config.attributes["connection"] = sync
-            command.upgrade(config, "head")
+            try:
+                command.upgrade(config, "head")
+            finally:
+                config.attributes.pop("connection", None)
 
         await connection.run_sync(upgrade)
         tables = set(
