@@ -152,6 +152,51 @@ class CommandTests(unittest.TestCase):
         stack.compose.destroy.assert_not_called()
         stack.manager.delete.assert_not_called()
 
+    def test_update_without_image_uses_bundled_release(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            image = "ghcr.io/weave/cbt@sha256:" + "a" * 64
+            (data / "runtime.env").write_text(
+                f"WEAVE_IMAGE={image}\nENVIRONMENT=stg\n"
+                "WEAVE_API_BASE_URL=https://staging.example.com\n", encoding="utf-8"
+            )
+            stack = stack_fixture(data)
+            manifest = {
+                "channel": "staging", "version": "1.0.1",
+                "image": image, "api": "https://staging.example.com",
+            }
+            with (
+                patch.object(update, "get_stack", return_value=stack),
+                patch.object(update, "_assets_root", return_value=data),
+                patch.object(update, "_read_release_manifest", return_value=manifest),
+            ):
+                result = self.invoke(update)
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertIn("already configured", result.output)
+            stack.compose.pull_weave_image.assert_not_called()
+
+    def test_update_rejects_wrong_channel_without_modifying_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            (data / "runtime.env").write_text(
+                "WEAVE_IMAGE=ghcr.io/weave/cbt:v1\nENVIRONMENT=prod\n"
+                "WEAVE_API_BASE_URL=https://api.example.com\n", encoding="utf-8"
+            )
+            stack = stack_fixture(data)
+            with (
+                patch.object(update, "get_stack", return_value=stack),
+                patch.object(update, "_assets_root", return_value=data),
+                patch.object(update, "_read_release_manifest", return_value={
+                    "channel": "staging", "version": "1.0.1",
+                    "image": "ghcr.io/weave/cbt:v2", "api": "https://staging.example.com",
+                }),
+            ):
+                result = self.invoke(update)
+            self.assertEqual(result.exit_code, 1)
+            self.assertIn("release channel", result.output)
+            stack.compose.snapshot_database.assert_not_called()
+            stack.compose.pull_weave_image.assert_not_called()
+
     def test_update_rejects_latest(self):
         with patch.object(update, "get_stack") as loader:
             result = self.invoke(update, ["--image", "weave:latest"])

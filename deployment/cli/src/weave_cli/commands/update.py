@@ -18,7 +18,7 @@ from weave_cli.commands._shared import (
     success,
     warning,
 )
-from weave_cli.commands.install import _verify_started_stack
+from weave_cli.commands.install import _verify_started_stack, _assets_root, _read_release_manifest
 from weave_cli.commands.update_recovery import (
     UpdateRecovery,
     guard_pending_update,
@@ -105,13 +105,31 @@ def restore_previous(stack, record: UpdateRecovery) -> None:
 
 
 def update(
-    image: str = typer.Option(..., "--image", help="New pinned WEAVE CBT image."),
+    image: str | None = typer.Option(
+        None, "--image",
+        help="Optional pinned image override; normally resolved from the packaged manager release.",
+    ),
 ) -> None:
-    """Upgrade the local image and schema; keep a reversible database snapshot."""
+    """Upgrade a pinned CBT image/schema with a reversible database snapshot."""
     banner("Updating WEAVE CBT")
     try:
-        _validate_image(image)
         stack = get_stack()
+        if image is None:
+            release = _read_release_manifest(_assets_root(None))
+            if release is None:
+                raise ValueError("This source manager has no release manifest; provide --image explicitly.")
+            env = (stack.installation.data_directory / "runtime.env").read_text(encoding="utf-8")
+            values = {}
+            for line in env.splitlines():
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    values[key.strip()] = value.strip()
+            expected = "prod" if release["channel"] == "production" else "stg"
+            if values.get("ENVIRONMENT") != expected or values.get("WEAVE_API_BASE_URL") != release["api"]:
+                raise ValueError("Installed CBT environment does not match the manager's release channel or WEAVE API.")
+            image = release["image"]
+            info(f"Using image from {release['channel']} manager {release['version']}.")
+        _validate_image(image)
         if not stack.platform.is_admin():
             raise PermissionError("Administrative privileges are required to update WEAVE CBT.")
         if not stack.runtime.docker_engine_running():
