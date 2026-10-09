@@ -686,6 +686,14 @@ def install(
     info(f"Install directory: {state.install_directory}")
     info(f"Data directory: {state.data_directory}")
     info(f"State file: {InstallationManager(_detect_platform()[0]).state_path}")
+    info("Next: test WEAVE CBT locally at http://localhost/ and verify student-browser access.")
+    if state.runtime_type == "wsl2":
+        warning(
+            "WSL2 default NAT does not automatically expose CBT to other LAN computers. "
+            "Verify Windows firewall and WSL networking before conducting an exam."
+        )
+    else:
+        info("Verify the host LAN address, firewall and network connectivity on student devices.")
 
 
 def register(app: typer.Typer) -> None:
