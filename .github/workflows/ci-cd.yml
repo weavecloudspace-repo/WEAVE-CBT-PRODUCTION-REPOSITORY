@@ -148,6 +148,18 @@ jobs:
           DIGEST=$(docker buildx imagetools inspect "$IMAGE:sha-$GITHUB_SHA" --format '{{.Manifest.Digest}}')
           test -n "$DIGEST"
           echo "image=$IMAGE@$DIGEST" >> "$GITHUB_OUTPUT"
+      - name: Require anonymous GHCR access for zero-login manager installations
+        env:
+          PUBLISHED_IMAGE: ${{ steps.digest.outputs.image }}
+        run: |
+          set -Eeuo pipefail
+          anonymous_config="$(mktemp -d)"
+          trap 'rm -rf "$anonymous_config"' EXIT
+          if ! DOCKER_CONFIG="$anonymous_config" docker manifest inspect "$PUBLISHED_IMAGE" >/dev/null; then
+            echo "::error::GHCR image is not anonymously pullable. Official manager installers do not require Docker login; make the GitHub Container Registry package public before release."
+            exit 1
+          fi
+          echo "Verified anonymous GHCR image access: $PUBLISHED_IMAGE" >> "$GITHUB_STEP_SUMMARY"
 
   compile-cli:
     name: Compile standalone CLI (${{ matrix.os }})
