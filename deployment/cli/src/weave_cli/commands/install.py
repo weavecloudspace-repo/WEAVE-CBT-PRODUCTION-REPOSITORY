@@ -85,6 +85,9 @@ def _assets_root(assets_dir: Path | None) -> Path:
 
     # Installed binary, system-wide Linux asset directory, source checkout.
     candidates = (
+        # Nuitka onefile preserves the original executable path in argv[0].
+        # sys.executable may refer to its temporary unpacked process instead.
+        Path(sys.argv[0]).resolve().parent / "assets",
         Path(sys.executable).resolve().parent / "assets",
         Path("/usr/local/share/weave-cbt/assets"),
         Path(__file__).resolve().parents[4],

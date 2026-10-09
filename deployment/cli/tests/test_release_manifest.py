@@ -31,6 +31,16 @@ class ReleaseManifestTests(unittest.TestCase):
     def write_manifest(self):
         (self.assets / "release-manifest.json").write_text(json.dumps(self.manifest), encoding="utf-8")
 
+    def test_assets_resolve_next_to_compiled_executable_not_temp_runtime(self):
+        from unittest.mock import patch
+        from weave_cli.commands.install import _assets_root
+        (self.assets / 'compose.yaml').write_text('services: {}', encoding='utf-8')
+        application = self.assets.parent / 'weave.exe'
+        with (
+            patch('weave_cli.commands.install.sys.argv', [str(application), 'install']),
+            patch('weave_cli.commands.install.sys.executable', '/tmp/onefile-unpacked/weave'),
+        ):
+            self.assertEqual(_assets_root(None), self.assets)
     def test_valid_manifest(self):
         self.write_manifest()
         self.assertEqual(_read_release_manifest(self.assets)["channel"], "staging")
