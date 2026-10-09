@@ -94,7 +94,16 @@ logon. A real Server Core/remote sign-out test is mandatory before advertising
 24/7, no-user-login Windows server hosting. Until then the known limitation
 must remain visible in release documentation.
 
-## 6. Package release acceptance
+## 6. Ordinary Windows laptops and desktops
+
+Confirm that CBT still responds during the intended exam window while the
+hosting machine is connected to AC power and its display is locked. A Windows
+laptop must not automatically sleep when its lid closes or when idle;
+otherwise Docker and exams may become unavailable. Verify the relevant power
+settings on the host rather than changing every school administrator's global
+power plan silently. Prefer wired Ethernet to unstable Wi-Fi for busy labs.
+
+## 7. Package release acceptance
 
 On the staging build verify the compiled EXE with `--verify-payload` before
 installation, plus actual installation on a fresh Windows VM and a physical
