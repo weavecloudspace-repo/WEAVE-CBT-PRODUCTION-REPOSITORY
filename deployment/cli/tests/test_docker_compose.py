@@ -132,6 +132,50 @@ class DockerComposeTests(unittest.TestCase):
             "/mnt/c/ProgramData/WeaveCBT/runtime.env",
         )
 
+
+    def test_quiesce_stops_only_writers_and_keeps_database_running(self):
+        self._assert_command(
+            "stop_application",
+            ["stop", "nginx", "api", "worker", "bootstrap"],
+            expected_timeout=None,
+        )
+
+    def test_snapshot_is_run_inside_local_postgres(self):
+        with patch.object(
+            self.runtime,
+            "run_docker_command",
+            return_value=CommandResult(0, "", ""),
+        ) as run:
+            self.compose.snapshot_database("weave_cbt_rollback_" + "a" * 32)
+
+        arguments = run.call_args.kwargs["arguments"]
+        self.assertEqual(arguments[-9:-6], ["exec", "-T", "postgres"])
+        self.assertIn("CREATE DATABASE", arguments[-3])
+        self.assertEqual(arguments[-1], "weave_cbt_rollback_" + "a" * 32)
+        self.assertIsNone(run.call_args.kwargs["timeout"])
+
+    def test_restore_keeps_failed_schema_available_until_verification(self):
+        with patch.object(
+            self.runtime,
+            "run_docker_command",
+            return_value=CommandResult(0, "", ""),
+        ) as run:
+            self.compose.restore_database(
+                "weave_cbt_rollback_" + "a" * 32,
+                "weave_cbt_failed_" + "a" * 32,
+            )
+
+        args = run.call_args.kwargs["arguments"]
+        self.assertIn("ALTER DATABASE", args[-4])
+        self.assertTrue(args[-2].startswith("weave_cbt_rollback_"))
+        self.assertTrue(args[-1].startswith("weave_cbt_failed_"))
+
+    def test_reject_arbitrary_database_identifier(self):
+        with patch.object(self.runtime, "run_docker_command") as run:
+            with self.assertRaises(ValueError):
+                self.compose.snapshot_database("postgres;DROP DATABASE")
+            run.assert_not_called()
+
     def test_missing_compose_file_is_rejected(self):
         self.compose_file.unlink()
 
