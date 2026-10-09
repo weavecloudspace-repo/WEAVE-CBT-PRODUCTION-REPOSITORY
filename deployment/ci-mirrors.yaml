@@ -1,0 +1,8 @@
+# CI-only registry override: retains the production Compose topology.
+services:
+  postgres:
+    image: public.ecr.aws/docker/library/postgres:16-alpine
+  redis:
+    image: public.ecr.aws/docker/library/redis:7-alpine
+  nginx:
+    image: public.ecr.aws/docker/library/nginx:stable-alpine
