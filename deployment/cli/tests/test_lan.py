@@ -79,6 +79,35 @@ class FirewallNormalizationTests(unittest.TestCase):
         self.assertIn('throw "Set the school network profile to Private"', command)
         self.assertIn("Console]::Error.WriteLine", command)
 
+    def test_firewall_rule_lookup_returns_absence_without_raising(self):
+        from subprocess import CompletedProcess
+        with patch.object(lan.subprocess, "run", return_value=CompletedProcess(
+                args=["powershell.exe"], returncode=0, stdout="", stderr="#< CLIXML\n<Objs />"
+        )) as run:
+            self.assertFalse(lan._firewall_exists())
+        encoded = run.call_args.args[0][-1]
+        script = __import__("base64").b64decode(encoded).decode("utf-16le")
+        self.assertIn("Get-NetFirewallRule", script)
+        self.assertIn("exit 0", script)
+        self.assertIn("SilentlyContinue", script)
+        self.assertIn("ProgressPreference = 'SilentlyContinue'", script)
+
+    @unittest.skipUnless(__import__("sys").platform == "win32", "Requires Windows PowerShell and firewall cmdlets.")
+    def test_actual_windows_missing_firewall_rule_succeeds(self):
+        with patch.object(lan, "RULE", "WEAVE-CBT-TEST-NONEXISTENT-NEVER-CREATE"):
+            self.assertFalse(lan._firewall_exists())
+
+    def test_clixml_progress_does_not_hide_missing_error_message(self):
+        from subprocess import CompletedProcess
+        noise = ('#< CLIXML\n'
+                 '<Objs xmlns="http://schemas.microsoft.com/powershell/2004/04">'
+                 '<Obj S="progress"><MS><PR><AV>Preparing modules for first use.</AV></PR></MS></Obj>'
+                 '</Objs>')
+        with patch.object(lan.subprocess, "run", return_value=CompletedProcess(
+                args=["powershell.exe"], returncode=1, stdout="", stderr=noise)):
+            with self.assertRaisesRegex(lan.LanError, "only progress metadata"):
+                lan._powershell("throw 'should not hide error'", context="Inspect firewall")
+
     def test_empty_command_diagnostic_is_actionable(self):
         from subprocess import CompletedProcess
         with patch.object(lan.subprocess, "run", return_value=CompletedProcess(

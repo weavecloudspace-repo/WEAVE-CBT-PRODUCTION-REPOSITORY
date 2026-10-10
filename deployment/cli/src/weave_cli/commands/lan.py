@@ -59,7 +59,33 @@ def _run(args: list[str], *, timeout: int = 30, context: str = "") -> str:
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise LanError(f"{context or 'Windows network command'} could not complete: {exc}") from exc
     if result.returncode:
-        detail = (result.stderr or result.stdout).strip()[:1000]
+        raw_error = (result.stderr or "").strip()
+        if raw_error.startswith("#< CLIXML"):
+            # Windows PowerShell redirects progress records as XML. Distinguish
+            # harmless first-use module progress from a real error record.
+            import xml.etree.ElementTree as ET
+
+            diagnostic = ""
+            try:
+                root = ET.fromstring(raw_error[raw_error.index("<Objs"):])
+                records = [
+                    " ".join(element.itertext()).strip()
+                    for element in root.iter()
+                    if element.attrib.get("S", "").lower() == "error"
+                ]
+                diagnostic = "; ".join(record for record in records if record)
+            except (ValueError, ET.ParseError):
+                pass
+            detail = diagnostic or (result.stdout or "").strip()
+            if not detail:
+                detail = (
+                    "PowerShell exited without an error message; only progress "
+                    "metadata was returned. Run the underlying check in an "
+                    "elevated PowerShell window to diagnose it."
+                )
+        else:
+            detail = raw_error or (result.stdout or "").strip()
+        detail = detail[:1500]
         if not detail:
             detail = (
                 "Windows returned no diagnostic text. Inspect Windows Security, "
@@ -79,7 +105,12 @@ def _powershell(script: str, *, context: str = "Windows LAN check") -> str:
     strings. Terminating and nonterminating errors are written to stderr.
     """
     payload = (
+        "$ProgressPreference = 'SilentlyContinue'; "
         "$ErrorActionPreference = 'Stop'; try { " + script
+        # An absent firewall rule is an expected result. An explicit exit 0
+        # prevents an unsuccessful SilentlyContinue query from leaking an
+        # implicit nonzero process status through -EncodedCommand.
+        + "; exit 0"
         + " } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }"
     )
     encoded = base64.b64encode(payload.encode("utf-16le")).decode("ascii")
