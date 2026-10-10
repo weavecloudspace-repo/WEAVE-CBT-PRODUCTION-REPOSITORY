@@ -37,7 +37,8 @@ function Invoke-WeaveWslCommand {
         if ($script:Mode -eq 'inbox') {
             return [PSCustomObject]@{ExitCode = 1; Output = @()}
         }
-        $nullSeparated = "WSL version: 2.4.5.0".ToCharArray() -join [char]0
+        $reportedVersion = if ($script:Mode -eq 'latest') { '3.0.1.0' } else { '2.4.5.0' }
+        $nullSeparated = ("WSL version: " + $reportedVersion).ToCharArray() -join [char]0
         return [PSCustomObject]@{ExitCode = 0; Output = @($nullSeparated)}
     }
     if ($command -eq '--update --web-download') {
@@ -69,7 +70,10 @@ $script:Mode = 'modern'
 $script:LatestVersion = [Version]'3.0.1.0'
 $script:UsedMsiFallback = $false
 Remove-Item Function:\Install-LatestMicrosoftWslMsi
-function Install-LatestMicrosoftWslMsi { $script:UsedMsiFallback = $true }
+function Install-LatestMicrosoftWslMsi {
+    $script:UsedMsiFallback = $true
+    $script:Mode = 'latest'
+}
 Ensure-WslSystemdSupport
 if (-not $script:UsedMsiFallback) {
     throw 'Expected automatic MSI upgrade if WSL was left below the latest stable version.'
