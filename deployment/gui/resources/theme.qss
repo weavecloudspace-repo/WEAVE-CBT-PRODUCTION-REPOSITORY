@@ -1,0 +1,19 @@
+QWidget#shell { background: #f8fafc; color: #0f172a; }
+QFrame#sidebar { background: white; border-right: 1px solid #e2e8f0; }
+QFrame#card { background: white; border: 1px solid #e2e8f0; border-radius: 14px; }
+QLabel { color: #334155; }
+QLabel#subtitle { color: #64748b; font-size: 13px; }
+QLabel#eyebrow { color: #94a3b8; font-size: 10px; font-weight: 700; letter-spacing: 1.4px; }
+QLabel#statusTag { border-radius: 12px; padding: 6px 14px; color: #92400e; background: #fef3c7; font-weight: 700; }
+QLabel#statusTag[healthy="true"] { color: #047857; background: #d1fae5; }
+QPushButton { background: white; color: #1e40af; border: 1px solid #cbd5e1; border-radius: 9px; font-weight: 650; padding: 7px 13px; }
+QPushButton:hover { background: #eff6ff; border-color: #60a5fa; }
+QPushButton:disabled { color: #94a3b8; background: #f1f5f9; border-color: #e2e8f0; }
+QPushButton[kind="primary"] { background: #1d4ed8; border-color: #1d4ed8; color: white; }
+QPushButton[kind="primary"]:hover { background: #1e40af; }
+QPushButton[kind="danger"] { background: #fff1f2; color: #be123c; border-color: #fecdd3; }
+QPushButton[kind="nav"] { color: #475569; background: transparent; border: none; text-align: left; padding-left: 16px; min-height: 42px; }
+QPushButton[kind="nav"]:checked { background: #dbeafe; color: #1d4ed8; font-weight: 750; }
+QPlainTextEdit { background: #0f172a; color: #dbeafe; border: 1px solid #1e293b; border-radius: 9px; padding: 12px; font-family: Consolas, "DejaVu Sans Mono", monospace; font-size: 12px; }
+QProgressBar { border: none; border-radius: 5px; background: #dbeafe; height: 10px; }
+QProgressBar::chunk { background: #2563eb; border-radius: 5px; }
