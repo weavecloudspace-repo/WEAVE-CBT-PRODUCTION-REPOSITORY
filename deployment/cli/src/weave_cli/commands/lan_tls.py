@@ -16,7 +16,7 @@ TLS_PORT = "443"
 def _destination(address: str) -> str | None:
     value = lan._powershell(
         "$name = '" + address + "/443'; "
-        "$path = 'HKLM:\SYSTEM\CurrentControlSet\Services\PortProxy\v4tov4\tcp'; "
+        "$path = 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\PortProxy\\v4tov4\\tcp'; "
         "$item = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue; "
         "if ($item) { $entry = $item.PSObject.Properties[$name]; "
         "if ($entry) { [Console]::Out.Write($entry.Value) } }",
