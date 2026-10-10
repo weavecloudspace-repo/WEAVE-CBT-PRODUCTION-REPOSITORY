@@ -465,7 +465,7 @@ function Invoke-WeaveWslScript {
     $normalizedScript = $Script -replace "`r`n", "`n"
     $normalizedScript = $normalizedScript -replace "`r", "`n"
 
-    $result = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--distribution",
         $script:DistroName,
         "--user",
@@ -473,7 +473,8 @@ function Invoke-WeaveWslScript {
         "--",
         "/bin/bash",
         "-s"
-    ) -InputText $normalizedScript
+    ) -InputText $normalizedScript)
+    $result = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Run command inside WSL"
 
     if ($result.ExitCode -ne 0) {
         throw "$FailureMessage WSL exited with code $($result.ExitCode)."
@@ -481,10 +482,11 @@ function Invoke-WeaveWslScript {
 }
 
 function Get-InstalledWslDistributions {
-    $result = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--list",
         "--quiet"
-    ) -CaptureOutput
+    ) -CaptureOutput)
+    $result = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "List installed WSL distributions"
 
     if ($result.ExitCode -ne 0) {
         throw "Failed to list installed WSL distributions."
@@ -506,7 +508,7 @@ function Get-InstalledWslDistributions {
 function Assert-WeaveDistroIsUbuntu {
     Write-WeaveCheck "Checking Linux distribution inside '$script:DistroName'."
 
-    $result = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--distribution",
         $script:DistroName,
         "--user",
@@ -514,7 +516,8 @@ function Assert-WeaveDistroIsUbuntu {
         "--",
         "cat",
         "/etc/os-release"
-    ) -CaptureOutput
+    ) -CaptureOutput)
+    $result = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Verify Ubuntu distribution"
 
     if ($result.ExitCode -ne 0) {
         throw "Failed to read /etc/os-release inside '$script:DistroName'."
@@ -944,14 +947,15 @@ function Ensure-WeaveDistro {
     }
     Write-WeaveAction "Importing dedicated '$script:DistroName' WSL2 distribution into '$script:DistroInstallDirectory'."
 
-    $importResult = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--import",
         $script:DistroName,
         $script:DistroInstallDirectory,
         $resolvedRootfs,
         "--version",
         "2"
-    ) -TimeoutSeconds 1800
+    ) -TimeoutSeconds 1800)
+    $importResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Import WEAVE Ubuntu WSL distribution"
 
     if ($importResult.ExitCode -ne 0) {
         throw "Failed to import the '$script:DistroName' WSL distribution."
@@ -977,10 +981,11 @@ function Ensure-WeaveDistro {
 function Ensure-WeaveDistroUsesWsl2 {
     Write-WeaveCheck "Checking WSL version for '$script:DistroName'."
 
-    $listResult = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--list",
         "--verbose"
-    ) -CaptureOutput
+    ) -CaptureOutput)
+    $listResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Check or set WSL2 distribution version"
 
     $verboseOutput = @(
         $listResult.Output |
@@ -1011,11 +1016,12 @@ function Ensure-WeaveDistroUsesWsl2 {
 
     Write-WeaveAction "Converting '$script:DistroName' to WSL2."
 
-    $setVersionResult = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--set-version",
         $script:DistroName,
         "2"
-    )
+    ))
+    $setVersionResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Check or set WSL2 distribution version"
 
     if ($setVersionResult.ExitCode -ne 0) {
         throw "Failed to convert '$script:DistroName' to WSL2."
@@ -1040,10 +1046,11 @@ EOF
     Invoke-WeaveWslScript -Script $systemdConfiguration -FailureMessage "Failed to configure systemd inside '$script:DistroName'."
 
     Write-WeaveAction "Restarting '$script:DistroName' so the systemd configuration takes effect."
-    $terminateResult = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--terminate",
         $script:DistroName
-    ) -Quiet
+    ) -Quiet)
+    $terminateResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Restart or check WSL systemd"
 
     if ($terminateResult.ExitCode -ne 0) {
         throw "Failed to restart the '$script:DistroName' WSL distribution."
@@ -1052,7 +1059,7 @@ EOF
     $systemdReady = $false
 
     for ($attempt = 1; $attempt -le 10; $attempt++) {
-        $pidResult = Invoke-WeaveWslCommand -Arguments @(
+        $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
             "--distribution",
             $script:DistroName,
             "--user",
@@ -1060,7 +1067,8 @@ EOF
             "--",
             "cat",
             "/proc/1/comm"
-        ) -CaptureOutput
+        ) -CaptureOutput)
+        $pidResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Restart or check WSL systemd"
 
         if ($pidResult.ExitCode -eq 0) {
             $pidOne = (($pidResult.Output -join "").Trim())
@@ -1090,7 +1098,7 @@ EOF
 function Repair-RootSystemdUserSession {
     Write-WeaveCheck "Checking root systemd user session inside '$script:DistroName'."
 
-    $checkResult = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--distribution",
         $script:DistroName,
         "--user",
@@ -1099,7 +1107,8 @@ function Repair-RootSystemdUserSession {
         "systemctl",
         "is-active",
         "user@0.service"
-    ) -CaptureOutput
+    ) -CaptureOutput)
+    $checkResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Check root systemd user service"
 
     if ($checkResult.ExitCode -eq 0 -and (($checkResult.Output -join "").Trim()) -eq "active") {
         Write-WeaveSkip "root systemd user session is already healthy."
@@ -1415,7 +1424,7 @@ function Assert-DockerRuntimeHealthy {
     $dockerReady = $false
 
     for ($attempt = 1; $attempt -le 15; $attempt++) {
-        $dockerResult = Invoke-WeaveWslCommand -Arguments @(
+        $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
             "--distribution",
             $script:DistroName,
             "--user",
@@ -1423,7 +1432,8 @@ function Assert-DockerRuntimeHealthy {
             "--",
             "docker",
             "info"
-        ) -Quiet
+        ) -Quiet)
+        $dockerResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Verify Docker and Compose in WSL"
 
         if ($dockerResult.ExitCode -eq 0) {
             $dockerReady = $true
@@ -1441,7 +1451,7 @@ function Assert-DockerRuntimeHealthy {
     Write-WeaveSuccess "Docker Engine is reachable."
 
     Write-WeaveCheck "Verifying Docker Compose plugin."
-    $composeResult = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--distribution",
         $script:DistroName,
         "--user",
@@ -1450,7 +1460,8 @@ function Assert-DockerRuntimeHealthy {
         "docker",
         "compose",
         "version"
-    ) -CaptureOutput
+    ) -CaptureOutput)
+    $composeResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Verify Docker and Compose in WSL"
 
     if ($composeResult.ExitCode -ne 0) {
         throw "Docker Compose plugin is not available inside '$script:DistroName'."
