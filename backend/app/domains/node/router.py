@@ -42,11 +42,17 @@ async def refresh_installation_hostname() -> InstallationStatus:
     try:
         return await node_service.refresh_hostname()
     except WeaveUnavailableError as exc:
-        raise HTTPException(status_code=503, detail="WEAVE Cloud is unreachable") from exc
+        raise HTTPException(
+            status_code=503, detail="WEAVE Cloud is unreachable"
+        ) from exc
     except WeaveRequestRejectedError as exc:
-        raise HTTPException(status_code=502, detail="WEAVE rejected the hostname request") from exc
+        raise HTTPException(
+            status_code=502, detail="WEAVE rejected the hostname request"
+        ) from exc
     except WeaveContractError as exc:
-        raise HTTPException(status_code=502, detail="Invalid WEAVE hostname response") from exc
+        raise HTTPException(
+            status_code=502, detail="Invalid WEAVE hostname response"
+        ) from exc
 
 
 @router.post(

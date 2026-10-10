@@ -203,14 +203,18 @@ class NodeIdentityStore:
         payload = updated.model_dump(mode="json", exclude={"server_credential"})
         payload["server_credential"] = updated.server_credential.get_secret_value()
         serialized = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
-        temporary_path = self.storage_path / f".hostname--{os.getpid()}--{secrets.token_hex(8)}.tmp"
+        temporary_path = (
+            self.storage_path / f".hostname--{os.getpid()}--{secrets.token_hex(8)}.tmp"
+        )
         try:
             self._write_temporary_file(temporary_path, serialized)
             os.replace(temporary_path, self.identity_path)
             self._restrict_file_permissions(self.identity_path)
             self._sync_storage_directory()
         except OSError as exc:
-            raise NodeIdentityStorageError("Unable to securely persist CBT hostname") from exc
+            raise NodeIdentityStorageError(
+                "Unable to securely persist CBT hostname"
+            ) from exc
         finally:
             try:
                 temporary_path.unlink(missing_ok=True)

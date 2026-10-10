@@ -50,7 +50,9 @@ class WeaveCertificateGateway:
         try:
             response = MachineHostname.model_validate(data)
         except ValidationError:
-            raise WeaveContractError("Invalid CBT hostname response from WEAVE") from None
+            raise WeaveContractError(
+                "Invalid CBT hostname response from WEAVE"
+            ) from None
         if response.server_id != server_id:
             raise WeaveContractError("CBT hostname identity mismatch")
         return verify_hostname(response.hostname)
@@ -70,8 +72,13 @@ class WeaveCertificateGateway:
         try:
             response = MachineDNSChallenge.model_validate(data)
         except ValidationError:
-            raise WeaveContractError("Invalid DNS challenge response from WEAVE") from None
-        if response.hostname != hostname or response.fqdn != "_acme-challenge." + hostname:
+            raise WeaveContractError(
+                "Invalid DNS challenge response from WEAVE"
+            ) from None
+        if (
+            response.hostname != hostname
+            or response.fqdn != "_acme-challenge." + hostname
+        ):
             raise WeaveContractError("DNS challenge hostname mismatch")
         return response
 
