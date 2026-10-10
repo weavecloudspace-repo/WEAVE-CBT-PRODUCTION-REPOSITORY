@@ -6,7 +6,7 @@ import sys
 import shutil
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QProcess, QTimer, QSize
+from PySide6.QtCore import Qt, QProcess, QTimer, QSize, QSettings
 from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from bridge import discover, elevate_gui, is_admin
+from setup_wizard import SetupWizard
 
 ROOT = Path(__file__).resolve().parent
 BLUE = "#1d4ed8"
@@ -369,6 +370,15 @@ def main():
         ui.close()
         return
     ui.show()
+    # Show onboarding only once on a fresh machine. This is the same first-use
+    # journey on Windows and Linux; the OS installer already placed the CLI.
+    if "--smoke-test" not in sys.argv and "--auto-command" not in sys.argv:
+        settings = QSettings("WEAVE", "CBTDesktop")
+        if not ui.desktop.server_installed and not settings.value("onboarding_complete", False, type=bool):
+            onboarding = SetupWizard(ui, resource("theme.qss").parent)
+            if onboarding.exec() == SetupWizard.Accepted:
+                settings.setValue("onboarding_complete", True)
+                ui.navigate(1)
     if "--auto-command" in sys.argv:
         index = sys.argv.index("--auto-command") + 1
         if index < len(sys.argv):
