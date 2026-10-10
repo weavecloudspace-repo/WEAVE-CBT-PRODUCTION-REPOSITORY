@@ -87,14 +87,42 @@ services:
 
   nginx:
     image: nginx:stable-alpine
-    ports: ["80:80"]
+    ports: ["80:80", "443:443"]
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/reload-watch.sh:/opt/weave/reload-watch.sh:ro
+      - tls_certificates:/etc/letsencrypt:ro
+      - tls_snippets:/etc/nginx/weave-conf:ro
+    command: ["/bin/sh", "/opt/weave/reload-watch.sh"]
     depends_on:
       api:
         condition: service_started
     restart: unless-stopped
 
+  certbot:
+    image: certbot/certbot:v4.2.0
+    profiles: ["tls"]
+    entrypoint: ["python3", "/opt/weave/hooks.py"]
+    command: ["issue"]
+    environment:
+      WEAVE_API_BASE_URL: ${WEAVE_API_BASE_URL:?WEAVE_API_BASE_URL is required}
+    volumes:
+      - tls_certificates:/etc/letsencrypt
+      - tls_snippets:/var/lib/weave-cbt/tls-snippets
+      - ./certificates/hooks.py:/opt/weave/hooks.py:ro
+      - type: volume
+        source: weave_data
+        target: /var/lib/weave-cbt/identity
+        read_only: true
+        volume:
+          subpath: identity
+    depends_on:
+      api:
+        condition: service_started
+    restart: "no"
+
 volumes:
   postgres_data:
   weave_data:
+  tls_certificates:
+  tls_snippets:
