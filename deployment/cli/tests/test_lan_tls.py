@@ -76,14 +76,14 @@ class TLSLanTests(unittest.TestCase):
             with self.assertRaisesRegex(OSError, "disk full"):
                 lan_tls.reconcile(self.data)
         operations = [call.args[0] for call in mocks[7].call_args_list]
-        self.assertEqual([operation[4] for operation in operations], [
+        self.assertEqual([operation[5] for operation in operations], [
             "listenport=443", "listenport=443", "listenport=443", "listenport=443"
         ])
         self.assertEqual([operation[3] for operation in operations], [
             "delete", "add", "delete", "add"
         ])
         self.assertIn(f"connectaddress={self.old}", operations[-1])
-        mocks[5].assert_not_called()  # persisted mapping already owned the firewall
+        mocks[5].assert_called_once_with(self.address, self.subnet)  # newly created firewall is compensated
 
     def test_refuses_an_unowned_existing_https_mapping(self):
         mocks = self._scoped()
