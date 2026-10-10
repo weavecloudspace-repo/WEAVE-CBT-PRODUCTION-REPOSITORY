@@ -106,7 +106,16 @@ def auth() -> None:
     if result.get("hostname") != domain or result.get("fqdn") != "_acme-challenge." + domain:
         raise RuntimeError("WEAVE challenge response does not match the paired hostname")
     challenge_id = str(uuid.UUID(result["id"]))
-    _await_dns(result["fqdn"], validation)
+    try:
+        _await_dns(result["fqdn"], validation)
+    except Exception:
+        # The cleanup hook cannot run when authorization exits before it prints
+        # CERTBOT_AUTH_OUTPUT. Release the record here; cloud expiry is a fallback.
+        try:
+            _call("DELETE", f"/api/v1/cbt/certificates/dns-challenges/{challenge_id}")
+        except Exception:
+            pass
+        raise
     # Certbot forwards stdout to CERTBOT_AUTH_OUTPUT for the cleanup hook.
     print(challenge_id)
 
