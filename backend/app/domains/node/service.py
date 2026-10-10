@@ -25,6 +25,7 @@ from app.integrations.weave.installation import (
     weave_installation_gateway,
 )
 from app.integrations.weave.schemas import WeavePairingRequest
+from app.integrations.weave.certificates import weave_certificate_gateway
 
 
 class NodeService:
@@ -67,6 +68,20 @@ class NodeService:
             tenant_name=identity.tenant_name,
             paired_at=identity.paired_at,
         )
+
+    async def refresh_hostname(self) -> InstallationStatus:
+        """Recover or refresh the machine's official DNS hostname without re-pairing."""
+        async with self.identity_store.pairing_lock():
+            identity = self.identity_store.load()
+            hostname = await weave_certificate_gateway.hostname(
+                credential=identity.server_credential, server_id=identity.server_id
+            )
+            await asyncio.to_thread(
+                self.identity_store.update_hostname,
+                server_id=identity.server_id,
+                hostname=hostname,
+            )
+        return self.get_installation_status()
 
     async def pair_installation(
         self,

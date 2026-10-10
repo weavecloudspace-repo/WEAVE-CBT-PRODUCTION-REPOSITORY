@@ -36,6 +36,19 @@ def get_installation_status() -> InstallationStatus:
     return node_service.get_installation_status()
 
 
+@router.post("/hostname/refresh", response_model=InstallationStatus)
+async def refresh_installation_hostname() -> InstallationStatus:
+    """Refresh the public DNS name using this installation's machine credential."""
+    try:
+        return await node_service.refresh_hostname()
+    except WeaveUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="WEAVE Cloud is unreachable") from exc
+    except WeaveRequestRejectedError as exc:
+        raise HTTPException(status_code=502, detail="WEAVE rejected the hostname request") from exc
+    except WeaveContractError as exc:
+        raise HTTPException(status_code=502, detail="Invalid WEAVE hostname response") from exc
+
+
 @router.post(
     "/pair",
     response_model=PairInstallationResponse,
