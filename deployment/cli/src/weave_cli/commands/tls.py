@@ -22,8 +22,20 @@ def tls(
     """Issue and maintain a browser-trusted certificate for this paired machine."""
     banner("HTTPS certificates")
     try:
+        if dry_run and renew:
+            raise RuntimeError("--dry-run cannot be combined with --renew")
         stack = get_stack()
         guard_pending_update(stack.installation.data_directory)
+        if stack.installation.runtime_type == "wsl2" and not (dry_run or renew):
+            if not stack.platform.is_admin():
+                raise RuntimeError(
+                    "Enable HTTPS from an elevated Administrator session so WEAVE "
+                    "can configure the restricted Windows TCP/443 listener."
+                )
+            if not (stack.installation.data_directory / "lan.json").is_file():
+                raise RuntimeError(
+                    "Configure the trusted school LAN with 'weave lan' before enabling HTTPS."
+                )
         if not stack.runtime.docker_engine_running():
             stack.platform.start_docker_engine()
         if not stack.runtime.docker_engine_running():
@@ -36,11 +48,9 @@ def tls(
             command.extend(["-e", "WEAVE_ACME_DRY_RUN=true"])
         command.append("certbot")
         if renew:
-            if dry_run:
-                raise RuntimeError("--dry-run cannot be combined with --renew")
             command.append("renew")
         info("Contacting WEAVE Cloud to verify this school's assigned hostname...")
-        stack.compose._run_compose_command(command=command, stream=True, timeout=None)
+        stack.compose._run_compose_command(command=command, stream=True, timeout=None, stall_timeout=600)
         if dry_run:
             success("Certificate dry run passed; no trusted certificate installed.")
             return
@@ -70,7 +80,7 @@ def tls(
         stack.compose._run_compose_command(
             command=["exec", "-T", "nginx", "nginx", "-s", "reload"]
         )
-        if stack.installation.runtime_type == "wsl2":
+        if stack.installation.runtime_type == "wsl2" and not renew:
             from weave_cli.commands.lan_tls import reconcile
 
             reconcile(stack.installation.data_directory)
