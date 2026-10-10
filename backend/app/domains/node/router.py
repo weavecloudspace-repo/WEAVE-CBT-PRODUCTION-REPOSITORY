@@ -38,7 +38,9 @@ def get_installation_status() -> InstallationStatus:
 
 
 @router.post("/hostname/refresh", response_model=InstallationStatus)
-async def refresh_installation_hostname(_admin: CurrentLocalAdmin) -> InstallationStatus:
+async def refresh_installation_hostname(
+    _admin: CurrentLocalAdmin,
+) -> InstallationStatus:
     """Refresh the public DNS name using this installation's machine credential."""
     try:
         return await node_service.refresh_hostname()
