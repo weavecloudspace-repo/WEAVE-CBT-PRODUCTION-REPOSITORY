@@ -5,6 +5,7 @@
 from fastapi import APIRouter, HTTPException, Response, status
 
 from app.core.database import DbSession
+from app.domains.auth.dependencies import CurrentLocalAdmin
 from app.domains.branding.service import branding_service
 from app.domains.node.exceptions import (
     InstallationAlreadyPairedError,
@@ -37,7 +38,7 @@ def get_installation_status() -> InstallationStatus:
 
 
 @router.post("/hostname/refresh", response_model=InstallationStatus)
-async def refresh_installation_hostname() -> InstallationStatus:
+async def refresh_installation_hostname(_admin: CurrentLocalAdmin) -> InstallationStatus:
     """Refresh the public DNS name using this installation's machine credential."""
     try:
         return await node_service.refresh_hostname()
