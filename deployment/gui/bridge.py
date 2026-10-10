@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -53,6 +54,20 @@ def candidates(*, windows: bool | None = None, packaged: Path | None = None) -> 
     return list(dict.fromkeys(roots))
 
 
+@lru_cache(maxsize=32)
+def _verified_cli(path: str, modified_ns: int, *, windows: bool) -> bool:
+    try:
+        check = subprocess.run(
+            [path, "release"], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", check=False, timeout=12,
+            **({"creationflags": subprocess.CREATE_NO_WINDOW}
+               if windows and sys.platform == "win32" else {}),
+        )
+        return check.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def discover(*, windows: bool | None = None, packaged: Path | None = None) -> Discovery:
     cli = None
     issue = ""
@@ -60,19 +75,15 @@ def discover(*, windows: bool | None = None, packaged: Path | None = None) -> Di
         if not candidate.is_file():
             continue
         try:
-            completed = subprocess.run(
-                [str(candidate), "release"], capture_output=True, text=True,
-                encoding="utf-8", errors="replace", check=False, timeout=15,
-                **({"creationflags": subprocess.CREATE_NO_WINDOW}
-                   if (windows if windows is not None else sys.platform == "win32")
-                   and sys.platform == "win32" else {}),
-            )
-            if completed.returncode == 0:
+            valid = _verified_cli(
+                str(candidate), candidate.stat().st_mtime_ns,
+                windows=windows if windows is not None else sys.platform == "win32")
+            if valid:
                 cli = candidate
                 break
             issue = f"Found CLI at {candidate}, but its release check failed."
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            issue = f"CLI verification failed: {exc}"
+        except OSError as exc:
+            issue = f"CLI metadata is unreadable: {exc}"
     path = state_path(windows=windows)
     installation = None
     if path.exists():
