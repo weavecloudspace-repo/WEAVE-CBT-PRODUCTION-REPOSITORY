@@ -267,8 +267,12 @@ psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
         for attempt in range(1, 4):
             print(f"[WEAVE][ACTION] Pulling {', '.join(services)} (attempt {attempt}/3)", flush=True)
             try:
+                # Progress drawn for a Linux terminal is not safe to relay
+                # verbatim through WSL into Windows PowerShell. Force stable,
+                # newline-delimited output without cursor-moving ANSI codes.
+                # These flags precede the 'pull' subcommand (Compose globals).
                 return self._run_compose_command(
-                    command=["pull", *services],
+                    command=["--ansi", "never", "--progress", "plain", "pull", *services],
                     stream=True,
                     timeout=1200,
                     stall_timeout=180,
