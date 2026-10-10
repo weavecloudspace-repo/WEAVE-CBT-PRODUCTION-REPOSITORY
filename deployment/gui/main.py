@@ -6,7 +6,7 @@ import sys
 import shutil
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QProcess, QTimer, QSize
+from PySide6.QtCore import Qt, QProcess, QTimer, QSize, QSettings
 from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from bridge import discover, elevate_gui, is_admin
+from setup_wizard import SetupWizard
 
 ROOT = Path(__file__).resolve().parent
 BLUE = "#1d4ed8"
@@ -333,6 +334,18 @@ class Desktop(QMainWindow):
             if widget.document().blockCount() > 1500:
                 widget.setPlainText("\n".join(widget.toPlainText().splitlines()[-900:]))
 
+    def closeEvent(self, event):
+        # Do not destroy QProcess halfway through a privileged installation,
+        # database update or reboot-preparation step.
+        if self.busy:
+            QMessageBox.warning(
+                self, "Operation in progress",
+                "WEAVE is still performing a management operation. Please wait "
+                "for it to finish before closing the Desktop Manager.")
+            event.ignore()
+            return
+        super().closeEvent(event)
+
     def process_error(self, error):
         self.log_widget.appendPlainText(f"Process error: {self.process.errorString()}")
 
@@ -365,10 +378,23 @@ def main():
     app.setFont(QFont("Segoe UI", 10))
     ui = Desktop()
     if "--smoke-test" in sys.argv:
-        print("WEAVE GUI ready", flush=True)
+        wizard = SetupWizard(ui, resource("theme.qss").parent)
+        if len(wizard.pageIds()) != 3:
+            raise RuntimeError("WEAVE first-launch setup wizard is incomplete")
+        wizard.close()
+        print("WEAVE GUI and setup wizard ready", flush=True)
         ui.close()
         return
     ui.show()
+    # Show onboarding only once on a fresh machine. This is the same first-use
+    # journey on Windows and Linux; the OS installer already placed the CLI.
+    if "--smoke-test" not in sys.argv and "--auto-command" not in sys.argv:
+        settings = QSettings("WEAVE", "CBTDesktop")
+        if not ui.desktop.server_installed and not settings.value("onboarding_complete", False, type=bool):
+            onboarding = SetupWizard(ui, resource("theme.qss").parent)
+            if onboarding.exec() == SetupWizard.Accepted:
+                settings.setValue("onboarding_complete", True)
+                ui.navigate(1)
     if "--auto-command" in sys.argv:
         index = sys.argv.index("--auto-command") + 1
         if index < len(sys.argv):

@@ -69,7 +69,6 @@ jobs:
               - 'deployment/compose.yaml'
               - 'deployment/nginx/**'
               - 'deployment/ci-mirrors.yaml'
-              - '.github/workflows/ci-cd.yml'
             workflow:
               - '.github/workflows/**'
             release:
@@ -385,7 +384,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/gui
-          key: cbt-gui-v3-${{ runner.os }}-${{ hashFiles('deployment/gui/**', 'deployment/packaging/**') }}
+          key: cbt-gui-v4-${{ runner.os }}-${{ hashFiles('deployment/gui/**') }}
       - name: Install desktop build dependencies
         if: steps.cache-gui.outputs.cache-hit != 'true'
         run: python -m pip install 'PySide6>=6.7,<7' nuitka zstandard
@@ -428,6 +427,11 @@ jobs:
   package:
     name: Package manager for ${{ matrix.os }}
     needs: [image, compile-cli, compile-gui]
+    if: >-
+      always() &&
+      needs.image.result == 'success' &&
+      needs.compile-cli.result == 'success' &&
+      needs.compile-gui.result == 'success'
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest]
@@ -471,18 +475,74 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Windows setup build failed." }
           & (Join-Path (Resolve-Path dist).Path $name) --verify-payload
           if ($LASTEXITCODE -ne 0) { throw "Compiled Windows setup payload verification failed." }
-      - name: Windows graphical desktop setup
+      - name: Create WEAVE icon from exact branded logo geometry
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Copy-Item build\gui\WEAVE-CBT-Desktop.exe build\payload\WEAVE-CBT-Desktop.exe
-          Compress-Archive -Path build\payload\* -DestinationPath build\desktop-payload.zip -Force
-          $name = if ('${{ github.ref_name }}' -eq 'staging') { 'WEAVE-CBT-Staging-Desktop-Setup.exe' } else { 'WEAVE-CBT-Desktop-Setup.exe' }
-          python -m nuitka --mode=onefile --windows-console-mode=disable --assume-yes-for-downloads --include-data-files=build/desktop-payload.zip=payload.zip --output-dir=build/desktop-installer --output-filename=$name deployment/packaging/windows/desktop_setup.py
-          if ($LASTEXITCODE -ne 0) { throw 'GUI setup compilation failed' }
-          Copy-Item (Join-Path build\desktop-installer $name) dist\
-          & (Join-Path (Resolve-Path dist).Path $name) --verify-payload
-          if ($LASTEXITCODE -ne 0) { throw 'GUI setup payload verification failed' }
+          python -m pip install 'Pillow>=11,<13'
+          @'
+          from PIL import Image
+          from pathlib import Path
+          original = Image.open("deployment/gui/resources/weave-logo-blue.png").convert("RGBA")
+          original.thumbnail((218, 160), Image.Resampling.LANCZOS)
+          canvas = Image.new("RGBA", (256, 256))
+          canvas.alpha_composite(original, ((256-original.width)//2, (256-original.height)//2))
+          Path("build/desktop-installer").mkdir(parents=True, exist_ok=True)
+          canvas.save("build/desktop-installer/weave.ico", sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to create the supplied WEAVE icon' }
+      - name: Install Inno Setup for native Windows wizard
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress --yes
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          }
+          if (-not (Test-Path $iscc)) { throw 'Inno Setup compiler was not found' }
+      - name: Build one-file Windows graphical setup wizard
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          $payload = (Resolve-Path build/payload).Path
+          $desktop = (Resolve-Path build/gui/WEAVE-CBT-Desktop.exe).Path
+          $icon = (Resolve-Path build/desktop-installer/weave.ico).Path
+          $version = "1.0.$env:GITHUB_RUN_NUMBER"
+          & $iscc "/DChannel=$env:CHANNEL" "/DVersionString=$version" "/DPayloadDir=$payload" "/DDesktopExe=$desktop" "/DBrandIcon=$icon" "deployment/packaging/windows/desktop.iss"
+          if ($LASTEXITCODE -ne 0) { throw 'Native Windows wizard compilation failed' }
+          $name = if ($env:CHANNEL -eq 'staging') { 'WEAVE-CBT-Staging-Desktop-Setup.exe' } else { 'WEAVE-CBT-Desktop-Setup.exe' }
+          if (-not (Test-Path (Join-Path dist $name))) { throw 'Standalone Windows setup executable is missing' }
+      - name: Smoke test Windows wizard installation and bundled manager
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}
+        run: |
+          $name = if ($env:CHANNEL -eq 'staging') { 'WEAVE-CBT-Staging-Desktop-Setup.exe' } else { 'WEAVE-CBT-Desktop-Setup.exe' }
+          $setup = (Resolve-Path (Join-Path dist $name)).Path
+          $log = Join-Path $env:RUNNER_TEMP 'weave-desktop-setup.log'
+          & $setup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/LOG=$log"
+          if ($LASTEXITCODE -ne 0) {
+            if (Test-Path $log) { Get-Content $log -Tail 60 }
+            throw 'Windows setup wizard failed to install'
+          }
+          $programFiles = [Environment]::GetFolderPath('ProgramFiles')
+          $folder = Join-Path $programFiles 'WeaveCBT'
+          $manager = Join-Path $folder 'weave.exe'
+          $desktop = Join-Path $folder 'WEAVE-CBT-Desktop.exe'
+          if (-not (Test-Path $manager) -or -not (Test-Path $desktop)) { throw 'Desktop and matching CLI were not installed together' }
+          & $manager release
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled WEAVE CLI cannot load release information' }
+          & $desktop --smoke-test
+          if ($LASTEXITCODE -ne 0) { throw 'Installed GUI cannot start' }
+          $manifest = Get-Content (Join-Path $folder 'assets/release-manifest.json') -Raw | ConvertFrom-Json
+          if ($manifest.channel -ne $env:CHANNEL) { throw 'Desktop installer channel mismatch' }
+          if ($manifest.cbt_image -notmatch '@sha256:[0-9a-f]{64}$') { throw 'Desktop installer image is not digest pinned' }
       - name: Linux terminal package
         if: runner.os == 'Linux'
         shell: bash
@@ -515,6 +575,12 @@ jobs:
           set -Eeuo pipefail
           bash deployment/packaging/linux/build-deb.sh build/cli/weave build/gui/weave-cbt-desktop "$CHANNEL" "1.0.$GITHUB_RUN_NUMBER" "$CBT_IMAGE" build/debroot
           dpkg-deb --info "dist/weave-cbt-desktop-$CHANNEL-linux-amd64.deb"
+          dpkg-deb --contents "dist/weave-cbt-desktop-$CHANNEL-linux-amd64.deb" | grep -F './usr/bin/weave-cbt-desktop'
+          dpkg-deb --contents "dist/weave-cbt-desktop-$CHANNEL-linux-amd64.deb" | grep -F './usr/bin/weave'
+          sudo apt-get install -y "./dist/weave-cbt-desktop-$CHANNEL-linux-amd64.deb"
+          QT_QPA_PLATFORM=offscreen /usr/bin/weave-cbt-desktop --smoke-test
+          /usr/bin/weave release
+          test -f /usr/share/weave-cbt/assets/release-manifest.json
       # Nuitka also creates .build/.dist directories in dist/. Ship only
       # the verified executable, never its intermediate working directories.
       - uses: actions/upload-artifact@v4
@@ -536,11 +602,14 @@ jobs:
     name: Publish versioned manager release
     # A merge into master never publishes a customer installer automatically.
     # Select "Run workflow" on master with approve_production=true to promote.
-    if: >-
-      (github.ref == 'refs/heads/staging' && github.event_name == 'push') ||
-      (github.ref == 'refs/heads/master' && github.event_name == 'workflow_dispatch' &&
-       inputs.approve_production == true)
     needs: [image, package]
+    if: >-
+      always() &&
+      needs.image.result == 'success' &&
+      needs.package.result == 'success' &&
+      ((github.ref == 'refs/heads/staging' && github.event_name == 'push') ||
+       (github.ref == 'refs/heads/master' && github.event_name == 'workflow_dispatch' &&
+        inputs.approve_production == true))
     runs-on: ubuntu-latest
     permissions:
       contents: write

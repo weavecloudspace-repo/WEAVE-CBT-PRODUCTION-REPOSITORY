@@ -29,7 +29,7 @@ class ReleaseWorkflowContractTests(unittest.TestCase):
     def test_master_maps_to_production_for_installers_and_release(self):
         # make_manifest accepts 'staging' or 'production', never 'master'.
         mapping = "CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}"
-        self.assertEqual(self.workflow.count(mapping), 4)
+        self.assertEqual(self.workflow.count(mapping), 6)
         self.assertNotIn("CHANNEL: ${{ github.ref_name }}", self.workflow.split("  package:", 1)[1])
 
     def test_packaging_does_not_upload_nuitka_build_directories(self):
@@ -44,6 +44,20 @@ class ReleaseWorkflowContractTests(unittest.TestCase):
         self.assertNotIn('sha256sum * > SHA256SUMS', self.workflow)
         self.assertIn('if [ ! -f "$entry" ]', self.workflow)
         self.assertIn('gh release create "$TAG" "${windows[@]}" "${linux[@]}" "${debs[@]}" dist/SHA256SUMS', self.workflow)
+
+    def test_packaging_and_publication_execute_after_only_their_real_dependencies(self):
+        self.assertIn("needs.image.result == 'success'", self.workflow)
+        self.assertIn("needs.compile-cli.result == 'success'", self.workflow)
+        self.assertIn("needs.compile-gui.result == 'success'", self.workflow)
+        self.assertIn("needs.package.result == 'success'", self.workflow)
+        self.assertIn("always() &&", self.workflow)
+
+    def test_windows_wizard_and_linux_package_have_real_install_smoke_tests(self):
+        self.assertIn("deployment/packaging/windows/desktop.iss", self.workflow)
+        self.assertIn("Build one-file Windows graphical setup wizard", self.workflow)
+        self.assertIn("Smoke test Windows wizard installation and bundled manager", self.workflow)
+        self.assertIn("sudo apt-get install -y", self.workflow)
+        self.assertIn("QT_QPA_PLATFORM=offscreen /usr/bin/weave-cbt-desktop --smoke-test", self.workflow)
 
     def test_anonymous_image_check_before_installer_release(self):
         self.assertIn('DOCKER_CONFIG="$anonymous_config" docker manifest inspect', self.workflow)
