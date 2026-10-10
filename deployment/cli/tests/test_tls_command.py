@@ -52,6 +52,56 @@ class TLSTests(unittest.TestCase):
             self.assertFalse((data / "tls.enabled").exists())
             stack.compose._run_compose_command.assert_called_once()
 
+    def test_windows_activation_requires_admin_before_contacting_certbot(self):
+        import typer
+
+        with tempfile.TemporaryDirectory() as folder:
+            data = Path(folder)
+            (data / "lan.json").write_text("{}")
+            stack = SimpleNamespace(
+                installation=SimpleNamespace(data_directory=data, runtime_type="wsl2"),
+                platform=SimpleNamespace(is_admin=lambda: False),
+                runtime=SimpleNamespace(docker_engine_running=lambda: True),
+                compose=Mock(),
+            )
+            with (
+                patch.object(tls, "get_stack", return_value=stack),
+                patch.object(tls, "guard_pending_update"),
+                patch.object(tls, "banner"),
+            ):
+                with self.assertRaises(typer.Exit):
+                    tls.tls(dry_run=False, renew=False)
+            stack.compose._run_compose_command.assert_not_called()
+            self.assertFalse((data / "tls.enabled").exists())
+
+    def test_windows_activation_requires_existing_scoped_lan_listener(self):
+        import typer
+
+        with tempfile.TemporaryDirectory() as folder:
+            data = Path(folder)
+            stack = SimpleNamespace(
+                installation=SimpleNamespace(data_directory=data, runtime_type="wsl2"),
+                platform=SimpleNamespace(is_admin=lambda: True),
+                runtime=SimpleNamespace(docker_engine_running=lambda: True),
+                compose=Mock(),
+            )
+            with (
+                patch.object(tls, "get_stack", return_value=stack),
+                patch.object(tls, "guard_pending_update"),
+                patch.object(tls, "banner"),
+            ):
+                with self.assertRaises(typer.Exit):
+                    tls.tls(dry_run=False, renew=False)
+            stack.compose._run_compose_command.assert_not_called()
+
+    def test_conflicting_flags_are_rejected_before_docker_start(self):
+        import typer
+
+        with patch.object(tls, "get_stack") as get_stack, patch.object(tls, "banner"):
+            with self.assertRaises(typer.Exit):
+                tls.tls(dry_run=True, renew=True)
+            get_stack.assert_not_called()
+
     def test_issuance_profile_is_separate_from_autostart_renewer(self):
         compose_text = (
             Path(__file__).resolve().parents[2] / "compose.yaml"
