@@ -18,12 +18,15 @@ def tls(
     renew: bool = typer.Option(
         False, "--renew", help="Run certificate renewal now (normally automatic)."
     ),
+    activate: bool = typer.Option(
+        False, "--activate", help="Activate an already issued certificate without contacting ACME again."
+    ),
 ) -> None:
     """Issue and maintain a browser-trusted certificate for this paired machine."""
     banner("HTTPS certificates")
     try:
-        if dry_run and renew:
-            raise RuntimeError("--dry-run cannot be combined with --renew")
+        if int(dry_run) + int(renew) + int(activate) > 1:
+            raise RuntimeError("--dry-run, --renew, and --activate cannot be combined")
         stack = get_stack()
         guard_pending_update(stack.installation.data_directory)
         if stack.installation.runtime_type == "wsl2" and not (dry_run or renew):
@@ -43,17 +46,20 @@ def tls(
         marker = stack.installation.data_directory / "tls.enabled"
         if renew and not marker.is_file():
             raise RuntimeError("HTTPS has not been enabled. Run 'weave tls' first.")
-        command = ["--profile", "tls-issue", "run", "--rm", "--no-deps"]
-        if dry_run:
-            command.extend(["-e", "WEAVE_ACME_DRY_RUN=true"])
-        command.append("certbot")
-        if renew:
-            command.append("renew")
-        info("Contacting WEAVE Cloud to verify this school's assigned hostname...")
-        stack.compose._run_compose_command(command=command, stream=True, timeout=None, stall_timeout=600)
-        if dry_run:
-            success("Certificate dry run passed; no trusted certificate installed.")
-            return
+        if not activate:
+            command = ["--profile", "tls-issue", "run", "--rm", "--no-deps"]
+            if dry_run:
+                command.extend(["-e", "WEAVE_ACME_DRY_RUN=true"])
+            command.append("certbot")
+            if renew:
+                command.append("renew")
+            info("Contacting WEAVE Cloud to verify this school's assigned hostname...")
+            stack.compose._run_compose_command(command=command, stream=True, timeout=None, stall_timeout=600)
+            if dry_run:
+                success("Certificate dry run passed; no trusted certificate installed.")
+                return
+        else:
+            info("Validating the existing certificate and Nginx configuration; no reissuance.")
         if not renew:
             # Validate candidate HTTPS configuration in an ephemeral Nginx
             # container before changing the running stack or enabling renewal.

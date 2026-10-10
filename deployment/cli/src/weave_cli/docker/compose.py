@@ -102,6 +102,10 @@ class DockerCompose:
             stall_timeout=stall_timeout,
         )
 
+        # Ctrl+C intentionally ends live log follow; Compose/WSL may exit 130.
+        # Do not mask errors for any command other than 'logs --follow'.
+        if result.return_code == 130 and command[:2] == ["logs", "-f"]:
+            return CommandResult(0, result.stdout, result.stderr)
         if not result.successful:
             raise DockerComposeError(
                 f"Failed to execute the Compose command (exit {result.return_code}): "

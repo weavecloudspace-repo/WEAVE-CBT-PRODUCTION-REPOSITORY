@@ -4,6 +4,7 @@ import typer
 
 from weave_cli.commands.update_recovery import guard_pending_update
 from weave_cli.commands.lan import refresh_if_configured, LanError
+from weave_cli.commands.status import _snapshot
 
 from weave_cli.commands._shared import (
     COMMAND_ERRORS, banner, fail, get_stack, info, success,
@@ -16,6 +17,11 @@ def start() -> None:
     try:
         stack = get_stack()
         guard_pending_update(stack.installation.data_directory)
+        state = _snapshot()
+        if state.get("running"):
+            refresh_if_configured(stack.installation.data_directory, runtime_type=stack.installation.runtime_type)
+            success("WEAVE CBT is already running and healthy; no containers restarted.")
+            return
         info("Ensuring persistent runtime startup...")
         stack.platform.ensure_runtime_persistence()
         if not stack.runtime.docker_engine_running():
