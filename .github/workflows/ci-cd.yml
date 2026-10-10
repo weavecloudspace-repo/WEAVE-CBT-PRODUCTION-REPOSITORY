@@ -416,7 +416,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/gui
-          key: cbt-gui-v4-${{ runner.os }}-${{ hashFiles('deployment/gui/**') }}
+          key: cbt-gui-v5-${{ runner.os }}-${{ hashFiles('deployment/gui/**') }}
       - name: Install desktop build dependencies
         if: steps.cache-gui.outputs.cache-hit != 'true'
         run: python -m pip install 'PySide6>=6.7,<7' nuitka zstandard
@@ -424,7 +424,21 @@ jobs:
         if: runner.os == 'Windows' && steps.cache-gui.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          python -m nuitka --mode=onefile --enable-plugin=pyside6 --windows-console-mode=disable --assume-yes-for-downloads --include-data-dir=deployment/gui/resources=resources --output-dir=build/gui --output-filename=WEAVE-CBT-Desktop.exe deployment/gui/main.py
+          # Embed the official WEAVE logo into the EXE, so Windows taskbar,
+          # Alt+Tab and file properties match the installed shortcut icon.
+          python -m pip install 'Pillow>=11,<13'
+          @'
+          from pathlib import Path
+          from PIL import Image
+          logo = Image.open("deployment/gui/resources/weave-logo-blue.png").convert("RGBA")
+          logo.thumbnail((222, 154), Image.Resampling.LANCZOS)
+          canvas = Image.new("RGBA", (256, 256))
+          canvas.alpha_composite(logo, ((256-logo.width)//2, (256-logo.height)//2))
+          Path("build/gui").mkdir(parents=True, exist_ok=True)
+          canvas.save("build/gui/weave.ico", sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Official WEAVE taskbar icon generation failed' }
+          python -m nuitka --mode=onefile --enable-plugin=pyside6 --windows-icon-from-ico=build/gui/weave.ico --windows-console-mode=disable --assume-yes-for-downloads --include-data-dir=deployment/gui/resources=resources --output-dir=build/gui --output-filename=WEAVE-CBT-Desktop.exe deployment/gui/main.py
           if ($LASTEXITCODE -ne 0) { throw 'Windows GUI compilation failed' }
       - name: Install Linux Qt runtime libraries
         # Even a cached standalone GUI needs the host's Qt/EGL libraries.

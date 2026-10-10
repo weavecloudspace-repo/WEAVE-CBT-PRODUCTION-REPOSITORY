@@ -105,6 +105,7 @@ def restore_previous(stack, record: UpdateRecovery) -> None:
 
 
 def update(
+    yes: bool = typer.Option(False, "--yes", help="Proceed without terminal prompt; caller must obtain explicit administrator confirmation."),
     image: str | None = typer.Option(
         None, "--image",
         help="Optional pinned image override; normally resolved from the packaged manager release.",
@@ -146,7 +147,7 @@ def update(
             warning("The requested image is already configured.")
             return
 
-        if not typer.confirm(
+        if not yes and not typer.confirm(
             "Update WEAVE CBT? Services will pause, and a database snapshot "
             "will be kept for image/schema rollback (extra disk space required).",
             default=False,
