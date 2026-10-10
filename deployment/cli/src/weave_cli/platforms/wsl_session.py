@@ -45,9 +45,8 @@ if ($task) {{
 if ($task) {
     Stop-ScheduledTask -TaskName $taskName
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
-    $helperPath = Join-Path $env:ProgramData 'WeaveCBT\weave-wsl-keeper.vbs'
-    Remove-Item -LiteralPath $helperPath -Force -ErrorAction SilentlyContinue
 }
+exit 0
 """
     keeper = rf"""
 $ErrorActionPreference = 'Stop'
