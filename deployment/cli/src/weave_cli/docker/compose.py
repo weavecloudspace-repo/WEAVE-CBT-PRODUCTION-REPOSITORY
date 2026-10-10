@@ -104,7 +104,7 @@ class DockerCompose:
 
         # Ctrl+C intentionally ends live log follow; Compose/WSL may exit 130.
         # Do not mask errors for any command other than 'logs --follow'.
-        if result.return_code == 130 and command[:2] == ["logs", "-f"]:
+        if command[:2] == ["logs", "-f"] and getattr(result, "return_code", None) == 130:
             return CommandResult(0, result.stdout, result.stderr)
         if not result.successful:
             raise DockerComposeError(

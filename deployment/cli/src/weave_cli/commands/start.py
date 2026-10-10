@@ -17,13 +17,15 @@ def start() -> None:
     try:
         stack = get_stack()
         guard_pending_update(stack.installation.data_directory)
+        # Task health and container health are distinct: repair the WSL startup
+        # task even when Docker containers do not need a restart.
+        info("Ensuring persistent runtime startup...")
+        stack.platform.ensure_runtime_persistence()
         state = _snapshot()
         if state.get("running"):
             refresh_if_configured(stack.installation.data_directory, runtime_type=stack.installation.runtime_type)
             success("WEAVE CBT is already running and healthy; no containers restarted.")
             return
-        info("Ensuring persistent runtime startup...")
-        stack.platform.ensure_runtime_persistence()
         if not stack.runtime.docker_engine_running():
             info("Starting Docker Engine...")
             stack.platform.start_docker_engine()

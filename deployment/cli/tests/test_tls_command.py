@@ -61,6 +61,10 @@ class TLSTests(unittest.TestCase):
                 ["--profile", "tls-issue", "run", "--rm", "--no-deps", "certbot"],
                 calls,
             )
+            self.assertTrue(any(
+                "test -s /etc/letsencrypt/live/weave-cbt-node/fullchain.pem" in " ".join(call)
+                for call in calls if call
+            ))
             self.assertIn(["run", "--rm", "--no-deps", "nginx", "nginx", "-t"], calls)
             self.assertTrue((data / "tls.enabled").exists())
             stack.compose.start.assert_called_once()

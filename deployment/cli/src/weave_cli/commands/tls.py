@@ -62,6 +62,14 @@ def tls(
                 return
         else:
             info("Validating the existing certificate and Nginx configuration; no reissuance.")
+            # Nginx -t alone would also pass with no certificate and no TLS
+            # server block. Verify both files and the generated vhost first.
+            stack.compose._run_compose_command(command=[
+                "run", "--rm", "--no-deps", "nginx", "sh", "-eu", "-c",
+                "test -s /etc/letsencrypt/live/weave-cbt-node/fullchain.pem "
+                "&& test -s /etc/letsencrypt/live/weave-cbt-node/privkey.pem "
+                "&& test -s /etc/nginx/weave-conf/node.conf",
+            ])
         if not renew:
             # Validate candidate HTTPS configuration in an ephemeral Nginx
             # container before changing the running stack or enabling renewal.
