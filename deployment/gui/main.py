@@ -334,6 +334,18 @@ class Desktop(QMainWindow):
             if widget.document().blockCount() > 1500:
                 widget.setPlainText("\n".join(widget.toPlainText().splitlines()[-900:]))
 
+    def closeEvent(self, event):
+        # Do not destroy QProcess halfway through a privileged installation,
+        # database update or reboot-preparation step.
+        if self.busy:
+            QMessageBox.warning(
+                self, "Operation in progress",
+                "WEAVE is still performing a management operation. Please wait "
+                "for it to finish before closing the Desktop Manager.")
+            event.ignore()
+            return
+        super().closeEvent(event)
+
     def process_error(self, error):
         self.log_widget.appendPlainText(f"Process error: {self.process.errorString()}")
 
