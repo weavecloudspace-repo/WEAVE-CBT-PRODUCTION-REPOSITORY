@@ -56,6 +56,63 @@ class CertificateHookTests(unittest.TestCase):
         self.assertEqual(len(calls[0][2]), 2)
         public_dns.assert_called_once_with("_acme-challenge." + self.hostname, "A" * 43)
 
+    def test_failed_dns_propagation_releases_owned_cloud_challenge(self):
+        challenge_id = uuid4()
+        operations = []
+
+        def call(method, path, *, payload=None):
+            operations.append((method, path))
+            if method == "POST":
+                return {
+                    "id": str(challenge_id),
+                    "hostname": self.hostname,
+                    "fqdn": "_acme-challenge." + self.hostname,
+                }
+            return {}
+
+        with (
+            patch.dict(os.environ, {
+                "CERTBOT_DOMAIN": self.hostname,
+                "CERTBOT_VALIDATION": "A" * 43,
+            }),
+            patch.object(hooks, "_identity", return_value=self.identity),
+            patch.object(hooks, "_call", side_effect=call),
+            patch.object(hooks, "_await_dns", side_effect=RuntimeError("DNS timeout")),
+            contextlib.redirect_stdout(io.StringIO()) as output,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "DNS timeout"):
+                hooks.auth()
+
+        self.assertEqual(output.getvalue(), "")
+        self.assertEqual(operations, [
+            ("POST", "/api/v1/cbt/certificates/dns-challenges"),
+            ("DELETE", f"/api/v1/cbt/certificates/dns-challenges/{challenge_id}"),
+        ])
+
+    def test_dns_error_survives_cleanup_failure(self):
+        challenge_id = uuid4()
+
+        def call(method, path, *, payload=None):
+            if method == "DELETE":
+                raise RuntimeError("Cloud cleanup unavailable")
+            return {
+                "id": str(challenge_id),
+                "hostname": self.hostname,
+                "fqdn": "_acme-challenge." + self.hostname,
+            }
+
+        with (
+            patch.dict(os.environ, {
+                "CERTBOT_DOMAIN": self.hostname,
+                "CERTBOT_VALIDATION": "B" * 43,
+            }),
+            patch.object(hooks, "_identity", return_value=self.identity),
+            patch.object(hooks, "_call", side_effect=call),
+            patch.object(hooks, "_await_dns", side_effect=RuntimeError("DNS timeout")),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "DNS timeout"):
+                hooks.auth()
+
     def test_auth_rejects_other_domains_before_provider_call(self):
         with (
             patch.dict(os.environ, {"CERTBOT_DOMAIN": "api.weavecloudspace.com", "CERTBOT_VALIDATION": "A" * 43}),
