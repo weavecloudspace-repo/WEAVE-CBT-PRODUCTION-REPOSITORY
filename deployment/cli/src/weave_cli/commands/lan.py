@@ -293,6 +293,10 @@ def configure(data: Path, *, listen_address: str | None = None,
         firewall = _firewall_exists()
         if firewall:
             _verify_firewall(old_ip, stored["client_subnet"])
+        if (data / "tls-lan.json").exists():
+            from weave_cli.commands.lan_tls import reconcile
+
+            reconcile(data, remove=True)
         if destination is not None:
             _run(["netsh.exe", "interface", "portproxy", "delete", "v4tov4",
                   "listenport=80", f"listenaddress={old_ip}"])

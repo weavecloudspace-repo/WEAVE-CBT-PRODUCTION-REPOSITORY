@@ -60,3 +60,10 @@ class TLSTests(unittest.TestCase):
         renewal = compose_text.split("\n  certbot-renew:\n", 1)[1].split("\n  certbot:\n", 1)[0]
         self.assertIn('profiles: ["tls-issue"]', issuer)
         self.assertIn('profiles: ["tls"]', renewal)
+
+    def test_remove_lan_tears_down_owned_https_forwarding(self):
+        source = (
+            Path(__file__).resolve().parents[1] / "src" / "weave_cli"
+            / "commands" / "lan.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('reconcile(data, remove=True)', source)
