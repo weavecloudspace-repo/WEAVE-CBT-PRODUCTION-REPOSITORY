@@ -27,11 +27,11 @@ def _windows_console_lines(chunk: bytes, previous_ended_cr: bool = False) -> tup
     WriteConsole via sys.stdout.buffer bypasses universal text newline
     conversion. Bare LF therefore leaves the next line in the wrong column.
     """
-    if previous_ended_cr and chunk.startswith(b"\\n"):
+    if previous_ended_cr and chunk.startswith(b"\n"):
         chunk = chunk[1:]
-    ended_cr = chunk.endswith(b"\\r")
+    ended_cr = chunk.endswith(b"\r")
     return (
-        chunk.replace(b"\\r\\n", b"\\n").replace(b"\\r", b"\\n").replace(b"\\n", b"\\r\\n"),
+        chunk.replace(b"\r\n", b"\n").replace(b"\r", b"\n").replace(b"\n", b"\r\n"),
         ended_cr,
     )
 
