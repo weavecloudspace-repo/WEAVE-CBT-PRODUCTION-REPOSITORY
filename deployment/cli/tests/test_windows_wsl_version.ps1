@@ -11,8 +11,11 @@ function Write-WeaveCheck { param([string]$Message) }
 function Write-WeaveAction { param([string]$Message) }
 function Write-WeaveSuccess { param([string]$Message) }
 function Write-WeaveWarning { param([string]$Message) }
+$script:LatestVersion = [Version]'2.4.5.0'
+$script:LatestWslMsiAsset = $null
 function Get-LatestMicrosoftWslMsiAsset {
-    return [PSCustomObject]@{Version = [Version]'2.4.5.0'}
+    $script:LatestWslMsiAsset = [PSCustomObject]@{Version = $script:LatestVersion}
+    return $script:LatestWslMsiAsset
 }
 function Install-LatestMicrosoftWslMsi {
     throw 'MSI should not be necessary for this mocked successful WSL update'
@@ -63,10 +66,7 @@ if ($script:WslCalls.Count -ne 1) {
 # An already-working but outdated WSL must be upgraded automatically.
 $script:WslCalls.Clear()
 $script:Mode = 'modern'
-Remove-Item Function:\Get-LatestMicrosoftWslMsiAsset
-function Get-LatestMicrosoftWslMsiAsset {
-    return [PSCustomObject]@{Version = [Version]'3.0.1.0'}
-}
+$script:LatestVersion = [Version]'3.0.1.0'
 $script:UsedMsiFallback = $false
 Remove-Item Function:\Install-LatestMicrosoftWslMsi
 function Install-LatestMicrosoftWslMsi { $script:UsedMsiFallback = $true }
