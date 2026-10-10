@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 $scriptPath = Join-Path $PSScriptRoot '..\..\bootstrap\windows\bootstrap.ps1'
 $content = Get-Content -LiteralPath $scriptPath -Raw
-foreach ($name in @('Ensure-WslWindowsFeatures', 'Ensure-WslAvailable')) {
+foreach ($name in @('Ensure-WslWindowsFeatures', 'Get-WeaveWslStatusExitCode', 'Ensure-WslAvailable')) {
     $pattern = '(?ms)^function ' + [regex]::Escape($name) + ' \{.*?^\}'
     $match = [regex]::Match($content, $pattern)
     if (-not $match.Success) {
@@ -16,6 +16,7 @@ function Write-WeaveSkip { param($Message) }
 function Write-WeaveWait { param($Message) }
 function Write-WeaveSuccess { param($Message) }
 function Write-WeaveStep { param($Message) }
+function Write-WeaveWarning { param($Message) }
 
 $script:FeatureStates = @{
     'Microsoft-Windows-Subsystem-Linux' = 'Disabled'
@@ -108,6 +109,7 @@ function Invoke-WeaveWslCommand {
     if ($command -eq '--status') {
         $script:WslStatusCount++
         if ($script:WslStatusCount -eq 1) {
+            Write-Output "The Windows Subsystem for Linux is not installed."
             return [PSCustomObject]@{ExitCode = 1}
         }
     }
