@@ -11,6 +11,12 @@ function Write-WeaveCheck { param([string]$Message) }
 function Write-WeaveAction { param([string]$Message) }
 function Write-WeaveSuccess { param([string]$Message) }
 function Write-WeaveWarning { param([string]$Message) }
+function Get-LatestMicrosoftWslMsiAsset {
+    return [PSCustomObject]@{Version = [Version]'2.4.5.0'}
+}
+function Install-LatestMicrosoftWslMsi {
+    throw 'MSI should not be necessary for this mocked successful WSL update'
+}
 function Exit-RebootRequired { param([string]$Message) throw "UNEXPECTED_RESTART" }
 $script:RebootRequiredExitCode = 3010
 $script:WslCalls = New-Object 'System.Collections.Generic.List[string]'
@@ -53,5 +59,19 @@ $script:WslCalls.Clear()
 Ensure-WslSystemdSupport
 if ($script:WslCalls.Count -ne 1) {
     throw 'Expected a healthy installed WSL to skip updates despite extra version diagnostic output.'
+}
+# An already-working but outdated WSL must be upgraded automatically.
+$script:WslCalls.Clear()
+$script:Mode = 'modern'
+Remove-Item Function:\Get-LatestMicrosoftWslMsiAsset
+function Get-LatestMicrosoftWslMsiAsset {
+    return [PSCustomObject]@{Version = [Version]'3.0.1.0'}
+}
+$script:UsedMsiFallback = $false
+Remove-Item Function:\Install-LatestMicrosoftWslMsi
+function Install-LatestMicrosoftWslMsi { $script:UsedMsiFallback = $true }
+Ensure-WslSystemdSupport
+if (-not $script:UsedMsiFallback) {
+    throw 'Expected automatic MSI upgrade if WSL was left below the latest stable version.'
 }
 Write-Output 'Windows PowerShell WSL systemd version/update simulation passed.'
