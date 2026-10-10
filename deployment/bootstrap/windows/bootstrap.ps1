@@ -1024,7 +1024,9 @@ function Ensure-UbuntuRootfs {
 function Ensure-WeaveDistro {
     Write-WeaveCheck "Checking for dedicated WSL distribution '$script:DistroName'."
 
-    $installedDistros = Get-InstalledWslDistributions
+    # PowerShell unrolls function output: zero distributions become $null and
+    # one becomes a scalar. Force an array for reliable Count under StrictMode.
+    $installedDistros = @(Get-InstalledWslDistributions)
 
     if ($installedDistros.Count -gt 0) {
         Write-WeaveStep ("Installed WSL distributions: " + ($installedDistros -join ", "))

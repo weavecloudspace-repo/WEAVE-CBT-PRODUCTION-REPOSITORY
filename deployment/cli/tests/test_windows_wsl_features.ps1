@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 $scriptPath = Join-Path $PSScriptRoot '..\..\bootstrap\windows\bootstrap.ps1'
 $content = Get-Content -LiteralPath $scriptPath -Raw
-foreach ($name in @('Ensure-WslWindowsFeatures', 'Get-WeaveWslCommandResult', 'Get-WeaveWslStatusExitCode', 'Ensure-WslAvailable', 'Get-InstalledWslDistributions')) {
+foreach ($name in @('Ensure-WslWindowsFeatures', 'Get-WeaveWslCommandResult', 'Get-WeaveWslStatusExitCode', 'Ensure-WslAvailable', 'Get-InstalledWslDistributions', 'Ensure-WeaveDistro')) {
     $pattern = '(?ms)^function ' + [regex]::Escape($name) + ' \{.*?^\}'
     $match = [regex]::Match($content, $pattern)
     if (-not $match.Success) {
@@ -200,4 +200,53 @@ catch {
         throw
     }
 }
+# Exercise the actual production Ensure-WeaveDistro code with empty,
+# single-entry, and multi-entry lists. PowerShell 5.1 with StrictMode
+# must not attempt to access Count on a scalar or null.
+Set-StrictMode -Version Latest
+$script:DistroName = 'WeaveCBT'
+$script:MockInstalledNames = @()
+$script:RootfsRequests = 0
+$script:UbuntuChecks = 0
+
+function Get-InstalledWslDistributions {
+    return $script:MockInstalledNames
+}
+function Ensure-UbuntuRootfs {
+    $script:RootfsRequests++
+    throw 'WEAVE_TEST_ROOTFS_REQUESTED'
+}
+function Assert-WeaveDistroIsUbuntu {
+    $script:UbuntuChecks++
+}
+
+foreach ($names in @(
+    [PSCustomObject]@{Names = @(); Rootfs = $true},
+    [PSCustomObject]@{Names = @('Ubuntu'); Rootfs = $true},
+    [PSCustomObject]@{Names = @('Ubuntu', 'Debian'); Rootfs = $true},
+    [PSCustomObject]@{Names = @('WeaveCBT'); Rootfs = $false}
+)) {
+    $script:MockInstalledNames = @($names.Names)
+    if ($names.Rootfs) {
+        try {
+            Ensure-WeaveDistro
+            throw 'Expected Ubuntu download request.'
+        }
+        catch {
+            if ($_.Exception.Message -ne 'WEAVE_TEST_ROOTFS_REQUESTED') {
+                throw
+            }
+        }
+    }
+    else {
+        Ensure-WeaveDistro
+    }
+}
+if ($script:RootfsRequests -ne 3) {
+    throw "Expected 3 Ubuntu download attempts, got $($script:RootfsRequests)."
+}
+if ($script:UbuntuChecks -ne 1) {
+    throw "Expected to verify existing WeaveCBT distro once, got $($script:UbuntuChecks)."
+}
+
 Write-Output "Windows feature enable/reboot/resume simulation passed."
