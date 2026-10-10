@@ -72,6 +72,17 @@ class ReleaseWorkflowContractTests(unittest.TestCase):
         self.assertIn("PrivilegesRequiredOverridesAllowed=commandline", installer)
         self.assertIn("if not IsAdminInstallMode then", installer)
 
+    def test_qt_libraries_installed_regardless_of_cached_gui(self):
+        self.assertIn("Install Linux Qt runtime libraries", self.workflow)
+        self.assertIn("if: runner.os == 'Linux'\n        run: |\n          sudo apt-get update", self.workflow)
+
+    def test_windows_malware_gate_precedes_cached_cli_and_gui_smoke(self):
+        self.assertIn("--onefile-no-compression", self.workflow)
+        self.assertIn("Start-MpScan -ScanType CustomScan -ScanPath $candidate", self.workflow)
+        self.assertIn("Start-MpScan -ScanType CustomScan -ScanPath $binary", self.workflow)
+        self.assertIn("Defender detected the Windows CLI", self.workflow)
+        self.assertIn("Defender detected Windows Desktop GUI", self.workflow)
+
     def test_anonymous_image_check_before_installer_release(self):
         self.assertIn('DOCKER_CONFIG="$anonymous_config" docker manifest inspect', self.workflow)
 

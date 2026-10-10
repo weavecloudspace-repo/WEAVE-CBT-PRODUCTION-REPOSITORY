@@ -327,7 +327,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/cli
-          key: cbt-cli-v2-${{ runner.os }}-${{ hashFiles('deployment/cli/**/*.py', 'deployment/pyproject.toml', 'deployment/uv.lock') }}
+          key: cbt-cli-v3-${{ runner.os }}-${{ hashFiles('deployment/cli/**/*.py', 'deployment/pyproject.toml', 'deployment/uv.lock') }}
       - name: Install manager compiler
         if: steps.cli-cache.outputs.cache-hit != 'true'
         run: python -m pip install -e ./deployment nuitka zstandard
@@ -335,8 +335,23 @@ jobs:
         if: runner.os == 'Windows' && steps.cli-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          python -m nuitka --mode=onefile --assume-yes-for-downloads --output-dir=build/cli --output-filename=weave.exe deployment/cli/entrypoint.py
+          python -m nuitka --mode=onefile --onefile-no-compression --assume-yes-for-downloads --output-dir=build/cli --output-filename=weave.exe deployment/cli/entrypoint.py
           if ($LASTEXITCODE -ne 0) { throw 'Windows CLI compilation failed.' }
+          # Scanner gate: no newly compiled Windows binary executes or ships
+          # before Microsoft Defender has scanned it. A blocked/missing file
+          # is a hard failure; never add exclusions or bypass detections.
+          $candidate = (Resolve-Path build/cli/weave.exe).Path
+          $scan = Get-Command Start-MpScan -ErrorAction SilentlyContinue
+          if (-not $scan) { throw 'Microsoft Defender scanner is unavailable; cannot certify Windows CLI.' }
+          Start-MpScan -ScanType CustomScan -ScanPath $candidate -ErrorAction Stop
+          if (-not (Test-Path $candidate)) { throw 'Windows CLI missing after Defender scan; release blocked.' }
+          $findings = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object {
+            @($_.Resources) -match [regex]::Escape($candidate)
+          })
+          if ($findings.Count -gt 0) {
+            $findings | Format-List InitialDetectionTime,ThreatID,Resources,ActionSuccess | Out-String | Write-Host
+            throw 'Microsoft Defender detected the compiled Windows CLI; release blocked pending analysis.'
+          }
           & (Resolve-Path build/cli/weave.exe).Path --help
           if ($LASTEXITCODE -ne 0) { throw 'Compiled Windows CLI did not start.' }
       - name: Compile Linux CLI
@@ -346,6 +361,23 @@ jobs:
           set -Eeuo pipefail
           python -m nuitka --mode=onefile --assume-yes-for-downloads --output-dir=build/cli --output-filename=weave deployment/cli/entrypoint.py
           build/cli/weave --help
+      - name: Scan Windows CLI (including restored cache)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidate = (Resolve-Path build/cli/weave.exe).Path
+          if (-not (Get-Command Start-MpScan -ErrorAction SilentlyContinue)) {
+            throw 'Microsoft Defender unavailable; refusing to publish unscanned Windows CLI.'
+          }
+          Start-MpScan -ScanType CustomScan -ScanPath $candidate -ErrorAction Stop
+          if (-not (Test-Path $candidate)) { throw 'Defender blocked the Windows CLI.' }
+          $detections = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object {
+            @($_.Resources) -match [regex]::Escape($candidate)
+          })
+          if ($detections.Count -gt 0) {
+            $detections | Format-List InitialDetectionTime,ThreatID,Resources | Out-String | Write-Host
+            throw 'Defender detected the Windows CLI. Do not release it or suppress security protection.'
+          }
       - name: Validate cached or freshly compiled CLI
         shell: bash
         run: |
@@ -394,8 +426,10 @@ jobs:
         run: |
           python -m nuitka --mode=onefile --enable-plugin=pyside6 --windows-console-mode=disable --assume-yes-for-downloads --include-data-dir=deployment/gui/resources=resources --output-dir=build/gui --output-filename=WEAVE-CBT-Desktop.exe deployment/gui/main.py
           if ($LASTEXITCODE -ne 0) { throw 'Windows GUI compilation failed' }
-      - name: Install Linux Qt build libraries
-        if: runner.os == 'Linux' && steps.cache-gui.outputs.cache-hit != 'true'
+      - name: Install Linux Qt runtime libraries
+        # Even a cached standalone GUI needs the host's Qt/EGL libraries.
+        # The GitHub runner is ephemeral; these system packages are never cached.
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-xinerama0 libxcb-xfixes0
@@ -405,6 +439,23 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m nuitka --mode=onefile --enable-plugin=pyside6 --assume-yes-for-downloads --include-data-dir=deployment/gui/resources=resources --output-dir=build/gui --output-filename=weave-cbt-desktop deployment/gui/main.py
+      - name: Scan Windows GUI binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $binary = (Resolve-Path build/gui/WEAVE-CBT-Desktop.exe).Path
+          if (-not (Get-Command Start-MpScan -ErrorAction SilentlyContinue)) {
+            throw 'Microsoft Defender unavailable; refusing to publish unscanned Windows GUI.'
+          }
+          Start-MpScan -ScanType CustomScan -ScanPath $binary -ErrorAction Stop
+          if (-not (Test-Path $binary)) { throw 'Defender blocked Windows Desktop GUI.' }
+          $detections = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object {
+            @($_.Resources) -match [regex]::Escape($binary)
+          })
+          if ($detections.Count -gt 0) {
+            $detections | Format-List InitialDetectionTime,ThreatID,Resources | Out-String | Write-Host
+            throw 'Defender detected Windows Desktop GUI. Release blocked.'
+          }
       - name: Smoke test compiled GUI
         shell: bash
         env:
