@@ -43,7 +43,7 @@ def candidates(*, windows: bool | None = None, packaged: Path | None = None) -> 
     name = "weave.exe" if windows else "weave"
     roots = (
         [Path(os.getenv("ProgramFiles", r"C:\Program Files")) / "WeaveCBT" / name]
-        if windows else [Path("/usr/local/bin/weave")]
+        if windows else [Path("/usr/bin/weave"), Path("/usr/local/bin/weave")]
     )
     on_path = shutil.which(name)
     if on_path:
