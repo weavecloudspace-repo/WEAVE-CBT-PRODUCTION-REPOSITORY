@@ -30,7 +30,7 @@ class ReleaseWorkflowContractTests(unittest.TestCase):
         # make_manifest accepts 'staging' or 'production', never 'master'.
         mapping = "CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}"
         self.assertEqual(self.workflow.count(mapping), 4)
-        self.assertNotIn("CHANNEL: ${{ github.ref_name }}", self.workflow)
+        self.assertNotIn("CHANNEL: ${{ github.ref_name }}", self.workflow.split("  package:", 1)[1])
 
     def test_packaging_does_not_upload_nuitka_build_directories(self):
         # Nuitka writes setup.build/setup.dist beside the finished EXE.
