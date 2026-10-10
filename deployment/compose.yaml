@@ -99,6 +99,27 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  certbot-renew:
+    image: certbot/certbot:v4.2.0
+    profiles: ["tls"]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["while :; do python3 /opt/weave/hooks.py renew || true; sleep 43200; done"]
+    environment:
+      WEAVE_API_BASE_URL: ${WEAVE_API_BASE_URL:?WEAVE_API_BASE_URL is required}
+    volumes:
+      - tls_certificates:/etc/letsencrypt
+      - ./certificates/hooks.py:/opt/weave/hooks.py:ro
+      - type: volume
+        source: weave_data
+        target: /var/lib/weave-cbt/identity
+        read_only: true
+        volume:
+          subpath: identity
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
   certbot:
     image: certbot/certbot:v4.2.0
     profiles: ["tls"]

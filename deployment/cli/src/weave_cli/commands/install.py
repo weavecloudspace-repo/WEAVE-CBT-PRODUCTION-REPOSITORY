@@ -295,6 +295,8 @@ def _verify_assets(assets: Path) -> None:
     for relative in (
         "compose.yaml",
         "nginx/nginx.conf",
+        "nginx/reload-watch.sh",
+        "certificates/hooks.py",
         "bootstrap/windows/bootstrap.ps1",
         "bootstrap/linux/bootstrap.sh",
     ):
@@ -587,6 +589,8 @@ def _perform_install(
     desired_files = (
         (assets / "compose.yaml", install_directory / "compose.yaml"),
         (assets / "nginx/nginx.conf", install_directory / "nginx/nginx.conf"),
+        (assets / "nginx/reload-watch.sh", install_directory / "nginx/reload-watch.sh"),
+        (assets / "certificates/hooks.py", install_directory / "certificates/hooks.py"),
         (env_file, data_directory / "runtime.env"),
     )
     for source, target in desired_files:
