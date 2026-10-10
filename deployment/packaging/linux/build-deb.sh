@@ -5,7 +5,7 @@ mkdir -p "$ROOT/DEBIAN" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/us
 install -m 0755 "$CLI" "$ROOT/usr/bin/weave"
 install -m 0755 "$GUI" "$ROOT/usr/bin/weave-cbt-desktop"
 cp deployment/compose.yaml "$ROOT/usr/share/weave-cbt/assets/compose.yaml"
-cp -a deployment/nginx deployment/bootstrap "$ROOT/usr/share/weave-cbt/assets/"
+cp -a deployment/nginx deployment/bootstrap deployment/certificates "$ROOT/usr/share/weave-cbt/assets/"
 python deployment/distribution/make_manifest.py --channel "$CHANNEL" --image "$IMAGE" --version "$VERSION" --destination "$ROOT/usr/share/weave-cbt/assets/release-manifest.json"
 install -m 0644 deployment/gui/resources/weave-logo-blue.png "$ROOT/usr/share/icons/hicolor/112x71/apps/weave-cbt-desktop.png"
 cat > "$ROOT/usr/share/applications/weave-cbt-desktop.desktop" <<'EOF'
