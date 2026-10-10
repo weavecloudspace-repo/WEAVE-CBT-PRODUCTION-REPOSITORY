@@ -666,6 +666,34 @@ function Ensure-WslWindowsFeatures {
 }
 
 
+function Get-WeaveWslCommandResult {
+    param(
+        [AllowNull()]
+        [object[]]$Records,
+
+        [Parameter(Mandatory)]
+        [string]$Operation
+    )
+
+    # A WSL invocation may emit additional pipeline records in Windows
+    # PowerShell. Treat only records with an ExitCode as command results.
+    $results = @($Records | Where-Object {
+        $null -ne $_ -and $null -ne $_.PSObject.Properties["ExitCode"]
+    })
+
+    if ($results.Count -eq 0) {
+        Write-WeaveWarning "$Operation returned no structured exit code; treating it as failed."
+        return [PSCustomObject]@{ ExitCode = -1 }
+    }
+
+    if ($results.Count -ne 1) {
+        throw "$Operation returned multiple structured exit codes."
+    }
+
+    return $results[0]
+}
+
+
 function Get-WeaveWslStatusExitCode {
     # Only structured status results belong to the success pipeline. Some
     # Windows PowerShell hosts also emit diagnostic records for an unavailable
@@ -720,7 +748,8 @@ function Ensure-WslAvailable {
     # have been enabled and the host restarted.
     Write-WeaveAction "Installing Microsoft WSL without a default Linux distribution."
     try {
-        $installResult = Invoke-WeaveWslCommand -Arguments @("--install", "--no-distribution") -TimeoutSeconds 600
+        $installRecords = @(Invoke-WeaveWslCommand -Arguments @("--install", "--no-distribution") -TimeoutSeconds 600)
+        $installResult = Get-WeaveWslCommandResult -Records $installRecords -Operation "Normal WSL installation"
     }
     catch {
         Write-WeaveWarning "Normal WSL installation timed out: $($_.Exception.Message). Trying official web-download fallback."
@@ -728,7 +757,8 @@ function Ensure-WslAvailable {
     }
     if ($installResult.ExitCode -ne 0 -and $installResult.ExitCode -ne $script:RebootRequiredExitCode) {
         Write-WeaveWarning "Default WSL installation failed; retrying official web-download method."
-        $installResult = Invoke-WeaveWslCommand -Arguments @("--install", "--no-distribution", "--web-download") -TimeoutSeconds 600
+        $installRecords = @(Invoke-WeaveWslCommand -Arguments @("--install", "--no-distribution", "--web-download") -TimeoutSeconds 600)
+        $installResult = Get-WeaveWslCommandResult -Records $installRecords -Operation "WSL web-download installation"
     }
     if ($installResult.ExitCode -eq $script:RebootRequiredExitCode) {
         Exit-RebootRequired -Message "Windows needs a restart to finish Microsoft WSL installation."
@@ -772,7 +802,8 @@ function Ensure-WslSystemdSupport {
 
     Write-WeaveAction "Updating the official Microsoft WSL runtime for systemd support."
     try {
-        $updated = Invoke-WeaveWslCommand -Arguments @("--update", "--web-download") -TimeoutSeconds 600
+        $updateRecords = @(Invoke-WeaveWslCommand -Arguments @("--update", "--web-download") -TimeoutSeconds 600)
+        $updated = Get-WeaveWslCommandResult -Records $updateRecords -Operation "WSL web-download update"
     }
     catch {
         Write-WeaveWarning "WSL web-download update timed out or failed: $($_.Exception.Message)"
@@ -780,7 +811,8 @@ function Ensure-WslSystemdSupport {
     }
     if ($updated.ExitCode -ne 0 -and $updated.ExitCode -ne $script:RebootRequiredExitCode) {
         Write-WeaveWarning "WSL web-download update was not successful; trying standard Microsoft update."
-        $updated = Invoke-WeaveWslCommand -Arguments @("--update") -TimeoutSeconds 600
+        $updateRecords = @(Invoke-WeaveWslCommand -Arguments @("--update") -TimeoutSeconds 600)
+        $updated = Get-WeaveWslCommandResult -Records $updateRecords -Operation "Standard WSL update"
     }
     if ($updated.ExitCode -eq $script:RebootRequiredExitCode) {
         Exit-RebootRequired -Message "Microsoft WSL update needs a Windows restart before Docker provisioning."
