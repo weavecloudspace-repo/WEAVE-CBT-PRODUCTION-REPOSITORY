@@ -31,7 +31,7 @@ def tls(
         marker = stack.installation.data_directory / "tls.enabled"
         if renew and not marker.is_file():
             raise RuntimeError("HTTPS has not been enabled. Run 'weave tls' first.")
-        command = ["--profile", "tls", "run", "--rm"]
+        command = ["--profile", "tls-issue", "run", "--rm"]
         if dry_run:
             command.extend(["-e", "WEAVE_ACME_DRY_RUN=true"])
         command.append("certbot")

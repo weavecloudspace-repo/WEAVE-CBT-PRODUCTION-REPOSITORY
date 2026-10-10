@@ -122,7 +122,7 @@ services:
 
   certbot:
     image: certbot/certbot:v4.2.0
-    profiles: ["tls"]
+    profiles: ["tls-issue"]
     entrypoint: ["python3", "/opt/weave/hooks.py"]
     command: ["issue"]
     environment:

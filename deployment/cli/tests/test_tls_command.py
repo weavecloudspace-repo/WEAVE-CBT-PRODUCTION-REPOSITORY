@@ -51,3 +51,12 @@ class TLSTests(unittest.TestCase):
                 tls.tls(dry_run=True, renew=False)
             self.assertFalse((data / "tls.enabled").exists())
             stack.compose._run_compose_command.assert_called_once()
+
+    def test_issuance_profile_is_separate_from_autostart_renewer(self):
+        compose_text = (
+            Path(__file__).resolve().parents[2] / "compose.yaml"
+        ).read_text(encoding="utf-8")
+        issuer = compose_text.split("\n  certbot:\n", 1)[1]
+        renewal = compose_text.split("\n  certbot-renew:\n", 1)[1].split("\n  certbot:\n", 1)[0]
+        self.assertIn('profiles: ["tls-issue"]', issuer)
+        self.assertIn('profiles: ["tls"]', renewal)
