@@ -523,16 +523,34 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $name = if ($env:CHANNEL -eq 'staging') { 'WEAVE-CBT-Staging-Desktop-Setup.exe' } else { 'WEAVE-CBT-Desktop-Setup.exe' }
           $setup = (Resolve-Path (Join-Path dist $name)).Path
           $log = Join-Path $env:RUNNER_TEMP 'weave-desktop-setup.log'
-          & $setup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/LOG=$log"
-          if ($LASTEXITCODE -ne 0) {
-            if (Test-Path $log) { Get-Content $log -Tail 60 }
-            throw 'Windows setup wizard failed to install'
+          # Inno Setup is a Windows GUI-subsystem executable: invoking it via
+          # the PowerShell call operator may return before installation ends.
+          # Use an explicit wait and the child's actual exit code, never a
+          # stale $LASTEXITCODE left by a previous console command.
+          # CI has no interactive UAC session, so install to isolated per-user
+          # storage. The shipped wizard defaults to Administrator installation.
+          $folder = Join-Path $env:RUNNER_TEMP 'weave-desktop-acceptance'
+          $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', "/DIR=$folder", "/LOG=$log")
+          $process = Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru
+          Write-Host "Windows desktop setup exit code: $($process.ExitCode)"
+          if ($process.ExitCode -ne 0) {
+            if (Test-Path $log) {
+              Write-Host 'Last 100 lines of Inno Setup installation log:'
+              Get-Content -LiteralPath $log -Tail 100
+            } else {
+              Write-Warning 'Installer exited before creating the requested log.'
+            }
+            # Diagnostic evidence only: never disable antivirus, ignore a
+            # detection or mark a blocked executable as successfully installed.
+            if (Get-Command Get-MpThreatDetection -ErrorAction SilentlyContinue) {
+              Get-MpThreatDetection | Select-Object -First 8 InitialDetectionTime, ThreatID, Resources, ActionSuccess | Format-List | Out-String | Write-Host
+            }
+            throw "Windows setup wizard failed to install (exit code $($process.ExitCode))."
           }
-          $programFiles = [Environment]::GetFolderPath('ProgramFiles')
-          $folder = Join-Path $programFiles 'WeaveCBT'
           $manager = Join-Path $folder 'weave.exe'
           $desktop = Join-Path $folder 'WEAVE-CBT-Desktop.exe'
           if (-not (Test-Path $manager) -or -not (Test-Path $desktop)) { throw 'Desktop and matching CLI were not installed together' }

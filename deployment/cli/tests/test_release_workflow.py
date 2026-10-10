@@ -59,6 +59,19 @@ class ReleaseWorkflowContractTests(unittest.TestCase):
         self.assertIn("sudo apt-get install -y", self.workflow)
         self.assertIn("QT_QPA_PLATFORM=offscreen /usr/bin/weave-cbt-desktop --smoke-test", self.workflow)
 
+    def test_windows_gui_installer_is_awaited_and_exit_code_is_checked(self):
+        self.assertIn("Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru", self.workflow)
+        self.assertIn("$process.ExitCode -ne 0", self.workflow)
+        self.assertIn("'/CURRENTUSER'", self.workflow)
+        self.assertIn("Get-MpThreatDetection", self.workflow)
+        self.assertNotIn("& $setup /VERYSILENT", self.workflow)
+
+    def test_windows_installer_preserves_admin_default_and_per_user_ci_override(self):
+        installer = (WORKFLOW.parents[2] / "deployment" / "packaging" / "windows" / "desktop.iss").read_text(encoding="utf-8")
+        self.assertIn("PrivilegesRequired=admin", installer)
+        self.assertIn("PrivilegesRequiredOverridesAllowed=commandline", installer)
+        self.assertIn("if not IsAdminInstallMode then", installer)
+
     def test_anonymous_image_check_before_installer_release(self):
         self.assertIn('DOCKER_CONFIG="$anonymous_config" docker manifest inspect', self.workflow)
 

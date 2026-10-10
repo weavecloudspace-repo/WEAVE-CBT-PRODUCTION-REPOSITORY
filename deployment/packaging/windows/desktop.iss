@@ -38,6 +38,9 @@ DefaultGroupName=WEAVE CBT
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
+; Permit explicit per-user installs for unattended CI smoke testing only.
+; The normal graphical installer still requests Administrator elevation.
+PrivilegesRequiredOverridesAllowed=commandline
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#SourcePath}\..\..\..\dist
@@ -94,6 +97,12 @@ var
   ExistingPath: String;
   Needle: String;
 begin
+  // A per-user installation must never attempt to modify HKLM PATH.
+  if not IsAdminInstallMode then
+  begin
+    Result := False;
+    Exit;
+  end;
   if not RegQueryStringValue(HKLM, 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', 'Path', ExistingPath) then
   begin
     Result := True;
