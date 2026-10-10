@@ -12,6 +12,61 @@ from weave_cli.commands import lan
 from weave_cli.main import app
 
 
+class FirewallNormalizationTests(unittest.TestCase):
+    def _rule(self, remote="192.168.1.0/255.255.255.0", **overrides):
+        data = {
+            "Direction": "Inbound", "Action": "Allow", "Enabled": "True",
+            "Profile": "Private, Domain", "Protocol": "TCP",
+            "LocalPort": ["80"], "LocalAddress": ["192.168.1.24"],
+            "RemoteAddress": [remote],
+        }
+        data.update(overrides)
+        return json.dumps(data)
+
+    def test_accepts_windows_netmask_format_and_equivalent_cidr(self):
+        for remote in ("192.168.1.0/255.255.255.0", "192.168.1.0/24"):
+            with self.subTest(remote=remote), patch.object(lan, "_powershell", return_value=self._rule(remote)):
+                lan._verify_firewall("192.168.1.24", "192.168.1.0/24")
+
+    def test_refuses_wider_rule_extra_addresses_or_public_profile(self):
+        cases = (
+            self._rule("192.168.0.0/16"),
+            self._rule(RemoteAddress=["192.168.1.0/24", "192.168.2.0/24"]),
+            self._rule(Profile="Any"),
+            self._rule(LocalAddress=["Any"]),
+            self._rule(Action="Block"),
+            self._rule(Enabled="False"),
+        )
+        for data in cases:
+            with self.subTest(rule=data), patch.object(lan, "_powershell", return_value=data):
+                with self.assertRaisesRegex(lan.LanError, "differs"):
+                    lan._verify_firewall("192.168.1.24", "192.168.1.0/24")
+
+    def test_create_refresh_and_remove_verify_normalized_scope(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            with (
+                patch.object(lan, "_assert_private_interface"),
+                patch.object(lan, "_mapped_destination", side_effect=[None, "172.29.1.7/80", "172.29.1.7/80"]),
+                patch.object(lan, "_firewall_exists", side_effect=[False, True, True]),
+                patch.object(lan, "_wsl_address", return_value="172.29.1.7"),
+                patch.object(lan, "_powershell", return_value=self._rule()) as ps,
+                patch.object(lan, "_run"),
+            ):
+                self.assertTrue(lan.configure(directory, listen_address="192.168.1.24", client_subnet="192.168.1.0/24"))
+                self.assertTrue((directory / "lan.json").exists())
+                self.assertTrue(lan.configure(directory, refresh=True))
+                self.assertTrue(lan.configure(directory, remove=True))
+                self.assertFalse((directory / "lan.json").exists())
+                self.assertGreaterEqual(ps.call_count, 3)
+
+    def test_empty_command_diagnostic_is_actionable(self):
+        from subprocess import CompletedProcess
+        with patch.object(lan.subprocess, "run", return_value=CompletedProcess(
+                args=["netsh.exe"], returncode=1, stdout="", stderr="")):
+            with self.assertRaisesRegex(lan.LanError, "returned no diagnostic text"):
+                lan._run(["netsh.exe", "interface", "portproxy"])
+
 class LanTests(unittest.TestCase):
     def test_cli_command_registered(self):
         result = CliRunner().invoke(app, ["--help"])

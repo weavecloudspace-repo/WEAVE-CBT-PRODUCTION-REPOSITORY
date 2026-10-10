@@ -90,6 +90,7 @@ def _assets_root(assets_dir: Path | None) -> Path:
         Path(sys.argv[0]).resolve().parent / "assets",
         Path(sys.executable).resolve().parent / "assets",
         Path("/usr/local/share/weave-cbt/assets"),
+        Path("/usr/share/weave-cbt/assets"),
         Path(__file__).resolve().parents[4],
     )
     for candidate in candidates:

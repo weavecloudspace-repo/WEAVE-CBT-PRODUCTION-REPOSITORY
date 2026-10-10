@@ -2,9 +2,9 @@ name: WEAVE CBT image
 
 on:
   push:
-    branches: ["**"]
+    branches: [staging, master]
   pull_request:
-    branches: ["**"]
+    branches: [staging, master]
   workflow_dispatch:
     inputs:
       approve_production:
@@ -21,13 +21,120 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Identify affected components
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      cli: ${{ steps.filter.outputs.cli }}
+      gui: ${{ steps.filter.outputs.gui }}
+      image: ${{ steps.filter.outputs.image }}
+      release: ${{ steps.filter.outputs.release }}
+      workflow: ${{ steps.filter.outputs.workflow }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'deployment/docker/**'
+              - '.github/workflows/backend-validation.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/frontend-validation.yml'
+            cli:
+              - 'deployment/cli/**'
+              - 'deployment/bootstrap/**'
+              - 'deployment/distribution/**'
+              - 'deployment/pyproject.toml'
+              - 'deployment/uv.lock'
+              - '.github/workflows/deployment-*'
+            gui:
+              - 'deployment/gui/**'
+              - 'deployment/packaging/**'
+              - '.github/workflows/ci-cd.yml'
+            image:
+              - 'backend/**'
+              - 'frontend/**'
+              - 'deployment/docker/**'
+              - 'deployment/compose.yaml'
+              - 'deployment/nginx/**'
+              - 'deployment/ci-mirrors.yaml'
+              - '.github/workflows/ci-cd.yml'
+            workflow:
+              - '.github/workflows/**'
+            release:
+              - 'backend/**'
+              - 'frontend/**'
+              - 'deployment/**'
+              - '.github/workflows/ci-cd.yml'
+              - '.github/workflows/deployment-**'
+      - name: Validate YAML structure and duplicate keys
+        if: steps.filter.outputs.workflow == 'true'
+        shell: bash
+        run: |
+          python -m pip install 'ruamel.yaml>=0.18,<0.19'
+          python - <<'PY'
+          from pathlib import Path
+          from ruamel.yaml import YAML
+          yaml = YAML(typ='safe')
+          for workflow in Path('.github/workflows').glob('*.yml'):
+              with workflow.open(encoding='utf-8') as stream:
+                  yaml.load(stream)
+              print(f'Validated YAML: {workflow}')
+          PY
+
   backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/backend-validation.yml
 
   frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/frontend-validation.yml
 
+  gui-validation:
+    name: Desktop unit and headless smoke tests
+    needs: changes
+    if: >-
+      (github.event_name == 'push' && needs.changes.outputs.gui == 'true') ||
+      github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate desktop manager discovery
+        run: python -m unittest discover -s deployment/gui/tests -v
+      - name: Install Linux Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-xinerama0 libxcb-xfixes0
+      - name: Install Qt desktop runtime
+        run: python -m pip install 'PySide6>=6.7,<7'
+      - name: Check native GUI creation without display
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python deployment/gui/main.py --smoke-test
+
   bootstrap:
+    needs: changes
+    if: >-
+      (github.event_name == 'push' && needs.changes.outputs.cli == 'true') ||
+      github.event_name == 'workflow_dispatch'
     name: CLI and bootstrap validation
     strategy:
       matrix:
@@ -61,12 +168,14 @@ jobs:
 
   image:
     name: Resolve and verify application image
+    needs: [changes, backend, frontend, bootstrap, gui-validation]
     if: >-
-      (github.event_name == 'push' &&
-       (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')) ||
-      (github.event_name == 'workflow_dispatch' &&
-       github.ref == 'refs/heads/master' && inputs.approve_production == true)
-    needs: [backend, frontend, bootstrap]
+      always() &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master') &&
+      (github.event_name != 'workflow_dispatch' || inputs.approve_production == true) &&
+      (needs.changes.outputs.release == 'true' || github.event_name == 'workflow_dispatch') &&
+      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     outputs:
       image: ${{ steps.digest.outputs.image || steps.reuse.outputs.image }}
     runs-on: ubuntu-latest
@@ -82,7 +191,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
-        if: github.ref != 'refs/heads/staging'
+        if: needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch'
         with:
           driver-opts: |
             image=mirror.gcr.io/moby/buildkit:buildx-stable-1
@@ -90,7 +199,7 @@ jobs:
             [registry."docker.io"]
               mirrors = ["mirror.gcr.io"]
       - name: Build current application image
-        if: github.ref != 'refs/heads/staging'
+        if: (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -106,7 +215,7 @@ jobs:
           cache-from: type=gha,scope=cbt-app
           cache-to: type=gha,mode=max,scope=cbt-app
       - name: Verify fresh bootstrap and browser routes
-        if: github.ref != 'refs/heads/staging'
+        if: (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         env:
           IMAGE: ${{ steps.repository.outputs.name }}:sha-${{ github.sha }}
         run: |
@@ -129,26 +238,26 @@ jobs:
           curl --fail --retry 20 --retry-delay 3 --retry-all-errors http://localhost/openapi.json -o /tmp/openapi.json
           python3 -c 'import json; assert json.load(open("/tmp/openapi.json"))["paths"]'
       - name: Container diagnostics
-        if: failure() && github.ref != 'refs/heads/staging'
+        if: failure() && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         run: |
           if [ -f deployment/ci.env ]; then
             docker compose -p weave-cbt-ci -f deployment/compose.yaml --env-file deployment/ci.env logs --no-color --tail 100
           fi
       - name: Stop smoke-test services
-        if: always() && github.ref != 'refs/heads/staging'
+        if: always() && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         run: |
           if [ -f deployment/ci.env ]; then
             docker compose -p weave-cbt-ci -f deployment/compose.yaml --env-file deployment/ci.env down --volumes
           fi
       - name: Log in to GitHub Container Registry
-        if: github.ref != 'refs/heads/staging'
+        if: (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish verified image
-        if: github.ref != 'refs/heads/staging'
+        if: (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         env:
           IMAGE: ${{ steps.repository.outputs.name }}
         run: |
@@ -159,24 +268,27 @@ jobs:
 
       - name: Resolve published Docker image digest
         id: digest
-        if: github.ref != 'refs/heads/staging'
+        if: (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         env:
           IMAGE: ${{ steps.repository.outputs.name }}
         run: |
           DIGEST=$(docker buildx imagetools inspect "$IMAGE:sha-$GITHUB_SHA" --format '{{.Manifest.Digest}}')
           test -n "$DIGEST"
           echo "image=$IMAGE@$DIGEST" >> "$GITHUB_OUTPUT"
-      # TEMPORARY STAGING-ONLY BYPASS: only Windows bootstrap and test files
-      # changed since image build c9d96c465c3f. Pin its verified immutable digest.
-      # Remove this bypass after publishing the refreshed installer.
-      - name: Reuse last verified staging application image
+      - name: Resolve existing verified channel image when application is unchanged
         id: reuse
-        if: github.ref == 'refs/heads/staging'
+        if: needs.changes.outputs.image != 'true' && github.event_name != 'workflow_dispatch'
         env:
-          PINNED_IMAGE: ghcr.io/weavecloudspace-repo/weave-cbt-production-repository@sha256:8596487e40356badf73abfce0b1e0e074ef98d12a35c157b4e83880434514c41
+          IMAGE: ${{ steps.repository.outputs.name }}
+          CHANNEL: ${{ github.ref_name }}
         run: |
-          echo "image=$PINNED_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "Installer reuses existing published application image: $PINNED_IMAGE" >> "$GITHUB_STEP_SUMMARY"
+          set -Eeuo pipefail
+          # A previously published channel image is used only if no application
+          # paths changed; never rely on an embedded emergency/stale digest.
+          digest=$(docker buildx imagetools inspect "$IMAGE:$CHANNEL" --format '{{.Manifest.Digest}}')
+          test -n "$digest"
+          echo "image=$IMAGE@$digest" >> "$GITHUB_OUTPUT"
+          echo "Reused validated image for unchanged application: $IMAGE@$digest" >> "$GITHUB_STEP_SUMMARY"
       - name: Require anonymous GHCR access for zero-login manager installations
         env:
           PUBLISHED_IMAGE: ${{ steps.digest.outputs.image || steps.reuse.outputs.image }}
@@ -193,11 +305,11 @@ jobs:
   compile-cli:
     name: Compile standalone CLI (${{ matrix.os }})
     if: >-
-      (github.event_name == 'push' &&
+      (github.event_name == 'push' && needs.changes.outputs.release == 'true' &&
        (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')) ||
       (github.event_name == 'workflow_dispatch' &&
        github.ref == 'refs/heads/master' && inputs.approve_production == true)
-    needs: [backend, frontend, bootstrap]
+    needs: [changes]
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest]
@@ -208,10 +320,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Reuse verified compiled CLI when sources are unchanged
+        id: cli-cache
+        uses: actions/cache@v4
+        with:
+          path: build/cli
+          key: cbt-cli-v2-${{ runner.os }}-${{ hashFiles('deployment/cli/**/*.py', 'deployment/pyproject.toml', 'deployment/uv.lock') }}
       - name: Install manager compiler
+        if: steps.cli-cache.outputs.cache-hit != 'true'
         run: python -m pip install -e ./deployment nuitka zstandard
       - name: Compile Windows CLI
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.cli-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           python -m nuitka --mode=onefile --assume-yes-for-downloads --output-dir=build/cli --output-filename=weave.exe deployment/cli/entrypoint.py
@@ -219,21 +338,93 @@ jobs:
           & (Resolve-Path build/cli/weave.exe).Path --help
           if ($LASTEXITCODE -ne 0) { throw 'Compiled Windows CLI did not start.' }
       - name: Compile Linux CLI
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.cli-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
           python -m nuitka --mode=onefile --assume-yes-for-downloads --output-dir=build/cli --output-filename=weave deployment/cli/entrypoint.py
           build/cli/weave --help
+      - name: Validate cached or freshly compiled CLI
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            build/cli/weave.exe --help
+          else
+            chmod +x build/cli/weave
+            build/cli/weave --help
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: compiled-cli-${{ runner.os }}
           path: build/cli/weave*
           if-no-files-found: error
 
+  compile-gui:
+    name: Compile desktop GUI (${{ matrix.os }})
+    needs: [changes]
+    if: >-
+      (github.event_name == 'push' && needs.changes.outputs.release == 'true' &&
+       (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/master' && inputs.approve_production == true)
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Cache compiled desktop executable
+        id: cache-gui
+        uses: actions/cache@v4
+        with:
+          path: build/gui
+          key: cbt-gui-v3-${{ runner.os }}-${{ hashFiles('deployment/gui/**', 'deployment/packaging/**') }}
+      - name: Install desktop build dependencies
+        if: steps.cache-gui.outputs.cache-hit != 'true'
+        run: python -m pip install 'PySide6>=6.7,<7' nuitka zstandard
+      - name: Compile Windows GUI
+        if: runner.os == 'Windows' && steps.cache-gui.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          python -m nuitka --mode=onefile --enable-plugin=pyside6 --windows-console-mode=disable --assume-yes-for-downloads --include-data-dir=deployment/gui/resources=resources --output-dir=build/gui --output-filename=WEAVE-CBT-Desktop.exe deployment/gui/main.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows GUI compilation failed' }
+      - name: Install Linux Qt build libraries
+        if: runner.os == 'Linux' && steps.cache-gui.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-xinerama0 libxcb-xfixes0
+      - name: Compile Linux GUI
+        if: runner.os == 'Linux' && steps.cache-gui.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m nuitka --mode=onefile --enable-plugin=pyside6 --assume-yes-for-downloads --include-data-dir=deployment/gui/resources=resources --output-dir=build/gui --output-filename=weave-cbt-desktop deployment/gui/main.py
+      - name: Smoke test compiled GUI
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            build/gui/WEAVE-CBT-Desktop.exe --smoke-test
+          else
+            chmod +x build/gui/weave-cbt-desktop
+            build/gui/weave-cbt-desktop --smoke-test
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compiled-gui-${{ runner.os }}
+          path: |
+            build/gui/WEAVE-CBT-Desktop.exe
+            build/gui/weave-cbt-desktop
+          if-no-files-found: error
+
   package:
     name: Package manager for ${{ matrix.os }}
-    needs: [image, compile-cli]
+    needs: [image, compile-cli, compile-gui]
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest]
@@ -248,6 +439,10 @@ jobs:
         with:
           name: compiled-cli-${{ runner.os }}
           path: build/cli
+      - uses: actions/download-artifact@v4
+        with:
+          name: compiled-gui-${{ runner.os }}
+          path: build/gui
       - name: Install Windows setup compiler
         if: runner.os == 'Windows'
         run: python -m pip install -e ./deployment nuitka zstandard
@@ -273,6 +468,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Windows setup build failed." }
           & (Join-Path (Resolve-Path dist).Path $name) --verify-payload
           if ($LASTEXITCODE -ne 0) { throw "Compiled Windows setup payload verification failed." }
+      - name: Windows graphical desktop setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item build\gui\WEAVE-CBT-Desktop.exe build\payload\WEAVE-CBT-Desktop.exe
+          Compress-Archive -Path build\payload\* -DestinationPath build\desktop-payload.zip -Force
+          $name = if ('${{ github.ref_name }}' -eq 'staging') { 'WEAVE-CBT-Staging-Desktop-Setup.exe' } else { 'WEAVE-CBT-Desktop-Setup.exe' }
+          python -m nuitka --mode=onefile --windows-console-mode=disable --assume-yes-for-downloads --include-data-files=build/desktop-payload.zip=payload.zip --output-dir=build/desktop-installer --output-filename=$name deployment/packaging/windows/desktop_setup.py
+          if ($LASTEXITCODE -ne 0) { throw 'GUI setup compilation failed' }
+          Copy-Item (Join-Path build\desktop-installer $name) dist\
+          & (Join-Path (Resolve-Path dist).Path $name) --verify-payload
+          if ($LASTEXITCODE -ne 0) { throw 'GUI setup payload verification failed' }
       - name: Linux terminal package
         if: runner.os == 'Linux'
         shell: bash
@@ -295,6 +502,16 @@ jobs:
           build/smoke/weave-cbt/weave --help
           build/smoke/weave-cbt/weave release
           test -f build/smoke/weave-cbt/assets/release-manifest.json
+      - name: Linux graphical desktop package
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          CBT_IMAGE: ${{ needs.image.outputs.image }}
+          CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}
+        run: |
+          set -Eeuo pipefail
+          bash deployment/packaging/linux/build-deb.sh build/cli/weave build/gui/weave-cbt-desktop "$CHANNEL" "1.0.$GITHUB_RUN_NUMBER" "$CBT_IMAGE" build/debroot
+          dpkg-deb --info "dist/weave-cbt-desktop-$CHANNEL-linux-amd64.deb"
       # Nuitka also creates .build/.dist directories in dist/. Ship only
       # the verified executable, never its intermediate working directories.
       - uses: actions/upload-artifact@v4
@@ -307,7 +524,9 @@ jobs:
         if: runner.os == 'Linux'
         with:
           name: manager-${{ runner.os }}
-          path: dist/*.tar.gz
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
           if-no-files-found: error
 
   release:
@@ -335,13 +554,13 @@ jobs:
           CBT_IMAGE: ${{ needs.image.outputs.image }}
         run: |
           set -Eeuo pipefail
-          # Require exactly the two compiled manager packages. Prevent
-          # Nuitka intermediate directories or unexpected files leaking to releases.
+          # Exactly two Windows executables, one Linux CLI tar and one native DEB.
           shopt -s nullglob
           windows=(dist/*.exe)
           linux=(dist/*.tar.gz)
-          if [ "${#windows[@]}" -ne 1 ] || [ "${#linux[@]}" -ne 1 ]; then
-            echo "::error::Expected exactly one Windows .exe and one Linux .tar.gz in dist/."
+          debs=(dist/*.deb)
+          if [ "${#windows[@]}" -ne 2 ] || [ "${#linux[@]}" -ne 1 ] || [ "${#debs[@]}" -ne 1 ]; then
+            echo "::error::Expected 2 Windows EXEs, 1 Linux CLI tarball and 1 Linux DEB."
             exit 1
           fi
           for entry in dist/*; do
@@ -350,7 +569,7 @@ jobs:
               exit 1
             fi
           done
-          (cd dist && sha256sum -- *.exe *.tar.gz > SHA256SUMS)
+          (cd dist && sha256sum -- *.exe *.tar.gz *.deb > SHA256SUMS)
           if [ "$CHANNEL" = staging ]; then
             TAG="staging-1.0.$GITHUB_RUN_NUMBER"
             PRERELEASE=--prerelease
@@ -359,8 +578,8 @@ jobs:
             PRERELEASE=
           fi
           if [ "$CHANNEL" = staging ]; then
-            NOTES="Manager from commit $GITHUB_SHA; reuses previously validated CBT application image $CBT_IMAGE without rebuilding it. Install CLI manager, then run weave install."
+            NOTES="GUI and CLI from commit $GITHUB_SHA; application image $CBT_IMAGE. Install the desktop package or use the standalone CLI."
           else
-            NOTES="Matched CBT image from commit $GITHUB_SHA. Install CLI manager, then run weave install."
+            NOTES="GUI and CLI from commit $GITHUB_SHA; pinned application image $CBT_IMAGE."
           fi
-          gh release create "$TAG" "${windows[@]}" "${linux[@]}" dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "WEAVE CBT $TAG" $PRERELEASE --notes "$NOTES"
+          gh release create "$TAG" "${windows[@]}" "${linux[@]}" "${debs[@]}" dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "WEAVE CBT $TAG" $PRERELEASE --notes "$NOTES"
