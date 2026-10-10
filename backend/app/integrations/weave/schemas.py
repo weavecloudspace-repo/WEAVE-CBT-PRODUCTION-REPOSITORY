@@ -33,6 +33,7 @@ class WeavePairingResult(BaseModel):
     server_id: UUID
     server_credential: SecretStr
     server_name: str
+    hostname: str | None = None
     tenant: WeaveTenantInfo
     paired_at: datetime
 

@@ -92,6 +92,8 @@ class WeaveClient:
                 retry_after=self._extract_retry_after(response),
                 payload=self._extract_error_payload(response),
             )
+        if response.status_code == 204:
+            return {}
         return self._parse_json_object(response)
 
     async def post_public(

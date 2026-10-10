@@ -62,6 +62,7 @@ class NodeService:
             configured=True,
             server_id=identity.server_id,
             server_name=identity.server_name,
+            hostname=identity.hostname,
             tenant_id=identity.tenant_id,
             tenant_name=identity.tenant_name,
             paired_at=identity.paired_at,
@@ -109,6 +110,7 @@ class NodeService:
             identity = StoredNodeIdentity(
                 server_id=weave_result.server_id,
                 server_name=weave_result.server_name,
+                hostname=weave_result.hostname,
                 server_credential=weave_result.server_credential,
                 tenant_id=weave_result.tenant.id,
                 tenant_name=weave_result.tenant.name,
@@ -124,6 +126,7 @@ class NodeService:
                 configured=True,
                 server_id=identity.server_id,
                 server_name=identity.server_name,
+                hostname=identity.hostname,
                 tenant_id=identity.tenant_id,
                 tenant_name=identity.tenant_name,
                 paired_at=identity.paired_at,
