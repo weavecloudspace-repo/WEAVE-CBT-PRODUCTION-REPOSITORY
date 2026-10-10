@@ -25,6 +25,8 @@ $BootstrapStateSchemaVersion = 1
 $RebootRequiredExitCode = 3010
 
 
+$script:LatestWslMsiAsset = $null
+
 function Write-WeaveStep {
     param(
         [Parameter(Mandatory)]
@@ -465,7 +467,7 @@ function Invoke-WeaveWslScript {
     $normalizedScript = $Script -replace "`r`n", "`n"
     $normalizedScript = $normalizedScript -replace "`r", "`n"
 
-    $result = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--distribution",
         $script:DistroName,
         "--user",
@@ -473,7 +475,8 @@ function Invoke-WeaveWslScript {
         "--",
         "/bin/bash",
         "-s"
-    ) -InputText $normalizedScript
+    ) -InputText $normalizedScript)
+    $result = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Run command inside WSL"
 
     if ($result.ExitCode -ne 0) {
         throw "$FailureMessage WSL exited with code $($result.ExitCode)."
@@ -481,10 +484,11 @@ function Invoke-WeaveWslScript {
 }
 
 function Get-InstalledWslDistributions {
-    $result = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--list",
         "--quiet"
-    ) -CaptureOutput
+    ) -CaptureOutput)
+    $result = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "List installed WSL distributions"
 
     if ($result.ExitCode -ne 0) {
         throw "Failed to list installed WSL distributions."
@@ -506,7 +510,7 @@ function Get-InstalledWslDistributions {
 function Assert-WeaveDistroIsUbuntu {
     Write-WeaveCheck "Checking Linux distribution inside '$script:DistroName'."
 
-    $result = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--distribution",
         $script:DistroName,
         "--user",
@@ -514,7 +518,8 @@ function Assert-WeaveDistroIsUbuntu {
         "--",
         "cat",
         "/etc/os-release"
-    ) -CaptureOutput
+    ) -CaptureOutput)
+    $result = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Verify Ubuntu distribution"
 
     if ($result.ExitCode -ne 0) {
         throw "Failed to read /etc/os-release inside '$script:DistroName'."
@@ -713,6 +718,103 @@ function Get-WeaveWslStatusExitCode {
 }
 
 
+function Get-LatestMicrosoftWslMsiAsset {
+    if ($null -ne $script:LatestWslMsiAsset) {
+        return $script:LatestWslMsiAsset
+    }
+
+    Write-WeaveCheck "Checking latest stable Microsoft WSL release."
+    try {
+        $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/microsoft/WSL/releases/latest' -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
+    }
+    catch {
+        throw "Cannot retrieve latest Microsoft WSL version: $($_.Exception.Message)"
+    }
+
+    if ($release.draft -or $release.prerelease) {
+        throw "Microsoft WSL latest release is not stable."
+    }
+    $assets = @($release.assets | Where-Object {
+        $_.name -match '^wsl\.(\d+\.\d+\.\d+(?:\.\d+)?)\.x64\.msi$' -and
+        $_.browser_download_url -like 'https://github.com/microsoft/WSL/releases/download/*'
+    })
+    if ($assets.Count -ne 1) {
+        throw "Expected a single official x64 WSL MSI; found $($assets.Count)."
+    }
+    $asset = $assets[0]
+    if ($null -eq $asset.PSObject.Properties['digest'] -or
+        $asset.digest -notmatch '^sha256:[a-fA-F0-9]{64}$') {
+        throw "Latest official WSL MSI lacks an integrity digest."
+    }
+    $versionText = [regex]::Match($asset.name, '^wsl\.(\d+\.\d+\.\d+)').Groups[1].Value
+    $script:LatestWslMsiAsset = [PSCustomObject]@{
+        Version = [Version]$versionText
+        Filename = [string]$asset.name
+        Url = [string]$asset.browser_download_url
+        Sha256 = ([string]$asset.digest).Substring(7).ToLowerInvariant()
+    }
+    Write-WeaveSuccess "Latest stable WSL version: $($script:LatestWslMsiAsset.Version)."
+    return $script:LatestWslMsiAsset
+}
+
+
+function Install-LatestMicrosoftWslMsi {
+    $asset = Get-LatestMicrosoftWslMsiAsset
+    $directory = Join-Path ([IO.Path]::GetTempPath()) ("weave-wsl-" + [Guid]::NewGuid().ToString('N'))
+    New-Item -Path $directory -ItemType Directory -Force -ErrorAction Stop | Out-Null
+
+    try {
+        $msi = Join-Path $directory $asset.Filename
+        Write-WeaveAction "Downloading official Microsoft WSL $($asset.Version) installer."
+        Invoke-WebRequest -Uri $asset.Url -OutFile $msi -UseBasicParsing -TimeoutSec 1800 -ErrorAction Stop
+
+        $sha256 = (Get-FileHash -LiteralPath $msi -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+        if ($sha256 -ne $asset.Sha256) {
+            throw "Microsoft WSL MSI SHA-256 does not match the official release."
+        }
+        $signature = Get-AuthenticodeSignature -LiteralPath $msi -ErrorAction Stop
+        if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate -or
+            $signature.SignerCertificate.Subject -notmatch 'CN=Microsoft Corporation') {
+            throw "Downloaded WSL MSI is not validly signed by Microsoft Corporation."
+        }
+
+        Write-WeaveAction "Installing Microsoft WSL silently."
+        $start = New-Object Diagnostics.ProcessStartInfo
+        $start.FileName = Join-Path $env:SystemRoot 'System32\msiexec.exe'
+        $start.Arguments = '/i "' + $msi + '" /qn /norestart'
+        $start.UseShellExecute = $false
+        $start.CreateNoWindow = $true
+        $process = New-Object Diagnostics.Process
+        $process.StartInfo = $start
+        try {
+            if (-not $process.Start()) {
+                throw "Failed to start Microsoft WSL MSI installation."
+            }
+            if (-not $process.WaitForExit(1200000)) {
+                $process.Kill()
+                $process.WaitForExit()
+                throw "Microsoft WSL MSI installation timed out."
+            }
+            $exitCode = $process.ExitCode
+        }
+        finally {
+            $process.Dispose()
+        }
+
+        if ($exitCode -eq $script:RebootRequiredExitCode) {
+            Exit-RebootRequired -Message "Microsoft WSL MSI installed; restart Windows to activate the runtime."
+        }
+        if ($exitCode -ne 0) {
+            throw "Microsoft WSL MSI failed with Windows Installer exit code $exitCode."
+        }
+        Write-WeaveSuccess "Microsoft WSL MSI installation completed."
+    }
+    finally {
+        Remove-Item -LiteralPath $directory -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+
 function Ensure-WslAvailable {
     Write-WeaveStep "Checking Windows Subsystem for Linux."
 
@@ -764,11 +866,8 @@ function Ensure-WslAvailable {
         Exit-RebootRequired -Message "Windows needs a restart to finish Microsoft WSL installation."
     }
     if ($installResult.ExitCode -ne 0) {
-        throw (
-            "Microsoft WSL installation failed (exit code $($installResult.ExitCode)). " +
-            "Check Windows build, Windows Update/network access, and hardware virtualization. " +
-            "If this Windows host is a virtual machine, verify nested virtualization is enabled."
-        )
+        Write-WeaveWarning "Both built-in WSL installers failed; using Microsoft's official MSI."
+        Install-LatestMicrosoftWslMsi
     }
     $statusExitCode = Get-WeaveWslStatusExitCode
     if ($statusExitCode -ne 0) {
@@ -797,8 +896,20 @@ function Ensure-WslSystemdSupport {
         }
     }
     if ($null -ne $wslVersion -and $wslVersion -ge [Version]::new(0, 67, 6)) {
-        Write-WeaveSuccess "WSL version $wslVersion supports systemd."
-        return
+        # Check for a newer stable WSL, but preserve a working installation
+        # if release discovery is unavailable.
+        try {
+            $latest = Get-LatestMicrosoftWslMsiAsset
+            if ($wslVersion -ge $latest.Version) {
+                Write-WeaveSuccess "WSL $wslVersion is current and supports systemd."
+                return
+            }
+            Write-WeaveAction "Updating WSL $wslVersion to stable $($latest.Version)."
+        }
+        catch {
+            Write-WeaveWarning "WSL latest-release check unavailable: $($_.Exception.Message). Retaining WSL $wslVersion."
+            return
+        }
     }
 
     Write-WeaveAction "Updating the official Microsoft WSL runtime for systemd support."
@@ -819,7 +930,8 @@ function Ensure-WslSystemdSupport {
         Exit-RebootRequired -Message "Microsoft WSL update needs a Windows restart before Docker provisioning."
     }
     if ($updated.ExitCode -ne 0) {
-        throw "Unable to update Microsoft WSL (exit $($updated.ExitCode)). WSL 0.67.6+ is required for systemd. Check Windows build, HTTPS access and Microsoft WSL availability."
+        Write-WeaveWarning "Both built-in WSL updates failed; using Microsoft's official MSI."
+        Install-LatestMicrosoftWslMsi
     }
 
     $versionRecords = @(Invoke-WeaveWslCommand -Arguments @("--version") -CaptureOutput -TimeoutSeconds 90)
@@ -837,6 +949,17 @@ function Ensure-WslSystemdSupport {
     )
     if ($actual -lt [Version]::new(0, 67, 6)) {
         throw "WSL version $actual does not support systemd. Update to WSL 0.67.6 or newer."
+    }
+    if ($null -ne $script:LatestWslMsiAsset -and $actual -lt $script:LatestWslMsiAsset.Version) {
+        Write-WeaveWarning "Built-in WSL update is still below latest stable. Installing Microsoft WSL MSI."
+        Install-LatestMicrosoftWslMsi
+        $checkRecords = @(Invoke-WeaveWslCommand -Arguments @("--version") -CaptureOutput -TimeoutSeconds 90)
+        $check = Get-WeaveWslCommandResult -Records $checkRecords -Operation "WSL MSI version validation"
+        $match = [regex]::Match((($check.Output -join ' ') -replace [char]0, ''), '(\d+)\.(\d+)\.(\d+)')
+        if ($check.ExitCode -ne 0 -or -not $match.Success -or [Version]$match.Value -lt $script:LatestWslMsiAsset.Version) {
+            Exit-RebootRequired -Message "Latest WSL installed; restart Windows and rerun weave install."
+        }
+        $actual = [Version]$match.Value
     }
     Write-WeaveSuccess "Microsoft WSL updated to $actual with systemd support."
 }
@@ -944,14 +1067,15 @@ function Ensure-WeaveDistro {
     }
     Write-WeaveAction "Importing dedicated '$script:DistroName' WSL2 distribution into '$script:DistroInstallDirectory'."
 
-    $importResult = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--import",
         $script:DistroName,
         $script:DistroInstallDirectory,
         $resolvedRootfs,
         "--version",
         "2"
-    ) -TimeoutSeconds 1800
+    ) -TimeoutSeconds 1800)
+    $importResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Import WEAVE Ubuntu WSL distribution"
 
     if ($importResult.ExitCode -ne 0) {
         throw "Failed to import the '$script:DistroName' WSL distribution."
@@ -977,10 +1101,11 @@ function Ensure-WeaveDistro {
 function Ensure-WeaveDistroUsesWsl2 {
     Write-WeaveCheck "Checking WSL version for '$script:DistroName'."
 
-    $listResult = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--list",
         "--verbose"
-    ) -CaptureOutput
+    ) -CaptureOutput)
+    $listResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Check or set WSL2 distribution version"
 
     $verboseOutput = @(
         $listResult.Output |
@@ -1011,11 +1136,12 @@ function Ensure-WeaveDistroUsesWsl2 {
 
     Write-WeaveAction "Converting '$script:DistroName' to WSL2."
 
-    $setVersionResult = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--set-version",
         $script:DistroName,
         "2"
-    )
+    ))
+    $setVersionResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Check or set WSL2 distribution version"
 
     if ($setVersionResult.ExitCode -ne 0) {
         throw "Failed to convert '$script:DistroName' to WSL2."
@@ -1040,10 +1166,11 @@ EOF
     Invoke-WeaveWslScript -Script $systemdConfiguration -FailureMessage "Failed to configure systemd inside '$script:DistroName'."
 
     Write-WeaveAction "Restarting '$script:DistroName' so the systemd configuration takes effect."
-    $terminateResult = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--terminate",
         $script:DistroName
-    ) -Quiet
+    ) -Quiet)
+    $terminateResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Restart or check WSL systemd"
 
     if ($terminateResult.ExitCode -ne 0) {
         throw "Failed to restart the '$script:DistroName' WSL distribution."
@@ -1052,7 +1179,7 @@ EOF
     $systemdReady = $false
 
     for ($attempt = 1; $attempt -le 10; $attempt++) {
-        $pidResult = Invoke-WeaveWslCommand -Arguments @(
+        $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
             "--distribution",
             $script:DistroName,
             "--user",
@@ -1060,7 +1187,8 @@ EOF
             "--",
             "cat",
             "/proc/1/comm"
-        ) -CaptureOutput
+        ) -CaptureOutput)
+        $pidResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Restart or check WSL systemd"
 
         if ($pidResult.ExitCode -eq 0) {
             $pidOne = (($pidResult.Output -join "").Trim())
@@ -1090,7 +1218,7 @@ EOF
 function Repair-RootSystemdUserSession {
     Write-WeaveCheck "Checking root systemd user session inside '$script:DistroName'."
 
-    $checkResult = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--distribution",
         $script:DistroName,
         "--user",
@@ -1099,7 +1227,8 @@ function Repair-RootSystemdUserSession {
         "systemctl",
         "is-active",
         "user@0.service"
-    ) -CaptureOutput
+    ) -CaptureOutput)
+    $checkResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Check root systemd user service"
 
     if ($checkResult.ExitCode -eq 0 -and (($checkResult.Output -join "").Trim()) -eq "active") {
         Write-WeaveSkip "root systemd user session is already healthy."
@@ -1415,7 +1544,7 @@ function Assert-DockerRuntimeHealthy {
     $dockerReady = $false
 
     for ($attempt = 1; $attempt -le 15; $attempt++) {
-        $dockerResult = Invoke-WeaveWslCommand -Arguments @(
+        $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
             "--distribution",
             $script:DistroName,
             "--user",
@@ -1423,7 +1552,8 @@ function Assert-DockerRuntimeHealthy {
             "--",
             "docker",
             "info"
-        ) -Quiet
+        ) -Quiet)
+        $dockerResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Verify Docker and Compose in WSL"
 
         if ($dockerResult.ExitCode -eq 0) {
             $dockerReady = $true
@@ -1441,7 +1571,7 @@ function Assert-DockerRuntimeHealthy {
     Write-WeaveSuccess "Docker Engine is reachable."
 
     Write-WeaveCheck "Verifying Docker Compose plugin."
-    $composeResult = Invoke-WeaveWslCommand -Arguments @(
+    $weaveCallRecords = @(Invoke-WeaveWslCommand -Arguments @(
         "--distribution",
         $script:DistroName,
         "--user",
@@ -1450,7 +1580,8 @@ function Assert-DockerRuntimeHealthy {
         "docker",
         "compose",
         "version"
-    ) -CaptureOutput
+    ) -CaptureOutput)
+    $composeResult = Get-WeaveWslCommandResult -Records $weaveCallRecords -Operation "Verify Docker and Compose in WSL"
 
     if ($composeResult.ExitCode -ne 0) {
         throw "Docker Compose plugin is not available inside '$script:DistroName'."

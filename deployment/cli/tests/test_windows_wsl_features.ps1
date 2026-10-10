@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 $scriptPath = Join-Path $PSScriptRoot '..\..\bootstrap\windows\bootstrap.ps1'
 $content = Get-Content -LiteralPath $scriptPath -Raw
-foreach ($name in @('Ensure-WslWindowsFeatures', 'Get-WeaveWslCommandResult', 'Get-WeaveWslStatusExitCode', 'Ensure-WslAvailable')) {
+foreach ($name in @('Ensure-WslWindowsFeatures', 'Get-WeaveWslCommandResult', 'Get-WeaveWslStatusExitCode', 'Ensure-WslAvailable', 'Get-InstalledWslDistributions')) {
     $pattern = '(?ms)^function ' + [regex]::Escape($name) + ' \{.*?^\}'
     $match = [regex]::Match($content, $pattern)
     if (-not $match.Success) {
@@ -107,6 +107,11 @@ function Invoke-WeaveWslCommand {
     param([string[]]$Arguments, [switch]$Quiet)
     $command = $Arguments -join ' '
     $script:WslCalls.Add($command)
+    if ($command -eq '--list --quiet') {
+        Write-Output 'diagnostic line not carrying an exit code'
+        if ($script:ListHasNoResult) { return }
+        return [PSCustomObject]@{ ExitCode = 0; Output = @('Ubuntu', 'WeaveCBT') }
+    }
     if ($command -eq '--status') {
         $script:WslStatusCount++
         if ($script:WslStatusCount -eq 1) {
@@ -116,6 +121,9 @@ function Invoke-WeaveWslCommand {
     }
     if ($command -eq '--install --no-distribution') {
         Write-Output 'WSL installer emitted additional native output.'
+        if ($script:InstallMode -eq 'native-fails') {
+            return [PSCustomObject]@{ExitCode = 1}
+        }
         if ($script:InstallMode -eq 'missing-record') {
             # The exact failure seen on Windows: no usable ExitCode record.
             return
@@ -124,6 +132,9 @@ function Invoke-WeaveWslCommand {
     }
     if ($command -eq '--install --no-distribution --web-download') {
         Write-Output 'Official WSL web-download is finishing.'
+        if ($script:InstallMode -eq 'native-fails') {
+            return [PSCustomObject]@{ExitCode = 1}
+        }
         return [PSCustomObject]@{ExitCode = 0}
     }
     return [PSCustomObject]@{ExitCode = 0}
@@ -158,4 +169,35 @@ if ($script:WslStatusCount -ne 2) {
     throw 'Expected WSL status to be verified after web-download fallback.'
 }
 
+# If the native WSL installer refuses both normal methods, the official
+# Microsoft MSI must be installed without requiring user intervention.
+$script:WslCalls.Clear()
+$script:WslStatusCount = 0
+$script:SavedState = $null
+$script:InstallMode = 'native-fails'
+$script:MsiInstallCount = 0
+function Install-LatestMicrosoftWslMsi { $script:MsiInstallCount++ }
+Ensure-WslAvailable
+if ($script:MsiInstallCount -ne 1) {
+    throw 'Expected automatic Microsoft WSL MSI fallback when native commands fail.'
+}
+if ($script:WslCalls -notcontains '--install --no-distribution --web-download') {
+    throw 'Expected both built-in WSL commands before MSI fallback.'
+}
+
+$script:ListHasNoResult = $false
+$distributions = @(Get-InstalledWslDistributions)
+if ($distributions.Count -ne 2 -or $distributions -notcontains 'WeaveCBT') {
+    throw "WSL distribution enumeration ignored a valid structured result."
+}
+$script:ListHasNoResult = $true
+try {
+    Get-InstalledWslDistributions | Out-Null
+    throw 'Expected missing structured WSL distribution list to fail.'
+}
+catch {
+    if ($_.Exception.Message -notlike '*Failed to list installed WSL distributions*') {
+        throw
+    }
+}
 Write-Output "Windows feature enable/reboot/resume simulation passed."
