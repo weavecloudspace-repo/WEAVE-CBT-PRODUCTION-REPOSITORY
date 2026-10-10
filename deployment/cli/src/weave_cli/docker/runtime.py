@@ -21,6 +21,21 @@ from weave_cli.docker.provider import (
 DEFAULT_TIMEOUT = 30
 
 
+def _windows_console_lines(chunk: bytes, previous_ended_cr: bool = False) -> tuple[bytes, bool]:
+    """Render redirected WSL text using CRLF for the Windows console.
+
+    WriteConsole via sys.stdout.buffer bypasses universal text newline
+    conversion. Bare LF therefore leaves the next line in the wrong column.
+    """
+    if previous_ended_cr and chunk.startswith(b"\n"):
+        chunk = chunk[1:]
+    ended_cr = chunk.endswith(b"\r")
+    return (
+        chunk.replace(b"\r\n", b"\n").replace(b"\r", b"\n").replace(b"\n", b"\r\n"),
+        ended_cr,
+    )
+
+
 @dataclass(frozen=True)
 class CommandResult:
     return_code: int
@@ -105,11 +120,14 @@ class DockerRuntime:
 
                         def relay() -> None:
                             assert process.stdout is not None
+                            previous_cr = False
                             while True:
                                 chunk = os.read(process.stdout.fileno(), 4096)
                                 if not chunk:
                                     break
                                 last_progress[0] = time.monotonic()
+                                if os.name == "nt":
+                                    chunk, previous_cr = _windows_console_lines(chunk, previous_cr)
                                 try:
                                     sys.stdout.buffer.write(chunk)
                                     sys.stdout.buffer.flush()

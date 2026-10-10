@@ -394,11 +394,12 @@ class ControlCenter(QMainWindow):
         manager.addWidget(self.manager_version)
         manager.addWidget(label(
             "The desktop executable cannot safely overwrite itself while running. "
-            "Use the official, version-matched desktop installer; no automatic self-update is claimed.",
+            "Manager updates are channel matched and verified before installation. The CBT server is not restarted.",
             "muted", True))
         manager.addLayout(self.row(
-            action("View official releases", lambda: self.open_url(RELEASES_URL), "primary"),
-            action("Show local release", lambda: self.run("release")),
+            action("Check manager updates", lambda: self.run("self-update", ["--check"]), "primary"),
+            action("Install manager update", lambda: self.run("self-update", ["--yes"])),
+            action("View official releases", lambda: self.open_url(RELEASES_URL)),
         ))
         body.addWidget(manager_box)
         body.addStretch()
@@ -816,7 +817,7 @@ class ControlCenter(QMainWindow):
 
     def run(self, command, arguments=None):
         args = list(arguments or [])
-        if command not in MUTATIONS | {"status", "doctor", "logs", "release"} or self.busy:
+        if command not in MUTATIONS | {"status", "doctor", "logs", "release", "self-update"} or self.busy:
             return
         # Restrict the user-controlled GUI to known CLI arguments. All LAN
         # values are independently validated again by the CLI.
@@ -824,6 +825,8 @@ class ControlCenter(QMainWindow):
             if len(args) != 4 or args[:1] != ["--listen-address"] or args[2] != "--client-subnet":
                 return
         if command == "update" and args != ["--yes"]:
+            return
+        if command == "self-update" and args not in (["--yes"], ["--check"]):
             return
         if command == "tls" and args not in ([], ["--dry-run"], ["--renew"]):
             return
@@ -836,7 +839,7 @@ class ControlCenter(QMainWindow):
         if command == "install" and self.desktop.server_installed:
             self._message("Already installed", "This CBT server is already registered. An installation will not overwrite examination data.")
             return
-        privileged = command in MUTATIONS or (sys.platform.startswith("linux") and command in {"doctor", "status", "logs"})
+        privileged = command in MUTATIONS or (command == "self-update" and args == ["--yes"]) or (sys.platform.startswith("linux") and command in {"doctor", "status", "logs"})
         if privileged and not is_admin() and sys.platform == "win32":
             if self.confirm("Administrator permission", "This operation requires Administrator privileges. Relaunch the manager elevated?"):
                 if elevate_gui(command, args):
@@ -916,6 +919,8 @@ class ControlCenter(QMainWindow):
         elif code == 0:
             if name in {"install", "update", "lan"}:
                 self._message("Operation successful", f"WEAVE {name} completed. Check Diagnostics and test the CBT endpoints before an examination.")
+        elif name == "self-update" and code == 0:
+            self._message("Manager update", "The official manager installer has been launched, or this release is already current. Complete the installer if prompted.")
         else:
             self._message(
                 "Operation failed",
@@ -968,7 +973,7 @@ def main():
         if position < len(sys.argv):
             command = sys.argv[position]
             args = sys.argv[position + 1:]
-            if command in {"install", "start", "stop", "restart", "lan", "update", "tls"}:
+            if command in {"install", "start", "stop", "restart", "lan", "update", "tls", "self-update"}:
                 QTimer.singleShot(0, lambda: ui.run(command, args))
     sys.exit(app.exec())
 

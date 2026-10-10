@@ -3,7 +3,7 @@
 import typer
 
 from weave_cli.commands._shared import (
-    COMMAND_ERRORS, SERVICES, banner, error, fail, get_stack, info,
+    COMMAND_ERRORS, SERVICES, banner, error, fail, get_stack, info, success,
 )
 
 
@@ -23,6 +23,8 @@ def logs(
         stack = get_stack()
         info("Press Ctrl+C to stop following." if follow else "Retrieving logs...")
         result = stack.compose.logs(service=service, follow=follow)
+        if follow:
+            success("Stopped following logs.")
         if not follow:
             typer.echo(result.stdout or "No logs available.")
             if result.stderr:
@@ -30,7 +32,7 @@ def logs(
     except COMMAND_ERRORS as exc:
         fail(exc)
     except KeyboardInterrupt:
-        typer.echo()
+        success("Stopped following logs.")
 
 
 def register(app: typer.Typer) -> None:

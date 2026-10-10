@@ -82,6 +82,8 @@ class WslSessionTests(unittest.TestCase):
         self.assertIn("lan --refresh", keeper)
         self.assertIn("exec sleep infinity", keeper)
         self.assertIn("-AtLogOn", generated)
+        self.assertIn("wscript.exe", generated)
+        self.assertIn("icacls.exe", generated)
 
     def test_timeout_is_reported(self):
         with (
