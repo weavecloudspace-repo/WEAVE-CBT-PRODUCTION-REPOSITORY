@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+import shutil
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QProcess, QTimer, QSize
