@@ -27,7 +27,7 @@ from setup_wizard import SetupWizard
 ROOT = Path(__file__).resolve().parent
 RELEASES_URL = "https://github.com/weavecloudspace-repo/WEAVE-CBT-PRODUCTION-REPOSITORY/releases"
 PAGES = ["Overview", "Server", "Network", "Updates", "Diagnostics", "Logs", "Settings"]
-MUTATIONS = {"install", "start", "stop", "restart", "update", "lan"}
+MUTATIONS = {"install", "start", "stop", "restart", "update", "lan", "tls"}
 SERVICES = ("api", "worker", "postgres", "redis", "nginx", "bootstrap")
 
 
@@ -352,6 +352,22 @@ class ControlCenter(QMainWindow):
         self.lan_remove = action("Remove WEAVE rule", self.remove_lan, "danger")
         form.addLayout(self.row(self.lan_configure, self.lan_refresh, self.lan_remove))
         body.addWidget(settings)
+
+        certificate, tls_options = panel()
+        tls_options.addWidget(heading("Secure HTTPS access", 17))
+        self.https_details = label("Checking certificate configuration...", "muted", True)
+        tls_options.addWidget(self.https_details)
+        tls_options.addWidget(label(
+            "A trusted certificate requires an assigned WEAVE hostname, initial internet "
+            "access, and local DNS pointing that hostname to this server. "
+            "An exam already running over HTTPS does not need internet.",
+            "muted", True
+        ))
+        self.tls_dry_run = action("Test certificate", lambda: self.run("tls", ["--dry-run"]))
+        self.tls_enable = action("Enable HTTPS", self.enable_https, "primary")
+        self.tls_renew = action("Renew now", lambda: self.run("tls", ["--renew"]))
+        tls_options.addLayout(self.row(self.tls_dry_run, self.tls_enable, self.tls_renew))
+        body.addWidget(certificate)
         body.addStretch()
         return page
 
@@ -550,6 +566,21 @@ class ControlCenter(QMainWindow):
         self.lan_configure.setEnabled(is_windows and present and not self.busy)
         self.lan_refresh.setEnabled(is_windows and present and bool(lan) and not self.busy)
         self.lan_remove.setEnabled(is_windows and present and bool(lan) and not self.busy)
+        tls_marker = (
+            Path(self.desktop.installation["data_directory"]) / "tls.enabled"
+            if present else None
+        )
+        tls_enabled = bool(tls_marker and tls_marker.is_file())
+        self.https_details.setText(
+            "Certificate activation recorded. Verify HTTPS from a school device; "
+            "automatic renewal requires internet before expiry."
+            if tls_enabled else
+            "No trusted certificate has been activated. Pair the server and "
+            "configure school LAN DNS before enabling HTTPS."
+        )
+        self.tls_dry_run.setEnabled(present and manager and not self.busy)
+        self.tls_enable.setEnabled(present and manager and not self.busy)
+        self.tls_renew.setEnabled(present and manager and tls_enabled and not self.busy)
 
         existing = self._installed_image()
         desired = str(self.manifest.get("cbt_image", ""))
@@ -734,6 +765,15 @@ class ControlCenter(QMainWindow):
         if self.confirm("Configure school LAN", f"Allow school subnet {subnet} to reach {ip}:80 via the WEAVE-managed Windows firewall rule?"):
             self.run("lan", ["--listen-address", ip, "--client-subnet", subnet])
 
+    def enable_https(self):
+        if self.confirm(
+            "Enable school HTTPS",
+            "Request a trusted Let's Encrypt certificate for this paired CBT server? "
+            "The school must have internet for issuance, and local DNS must resolve "
+            "the WEAVE hostname to this server before students use HTTPS.",
+        ):
+            self.run("tls")
+
     def remove_lan(self):
         if self.confirm("Remove WEAVE LAN forwarding", "Remove only the LAN forwarding and firewall rule owned by WEAVE CBT? This interrupts student LAN access."):
             self.run("lan", ["--remove"])
@@ -785,6 +825,8 @@ class ControlCenter(QMainWindow):
                 return
         if command == "update" and args != ["--yes"]:
             return
+        if command == "tls" and args not in ([], ["--dry-run"], ["--renew"]):
+            return
         if command == "install" and args and args != ["--env-file", str(state_path().parent / "runtime.env")]:
             return
         self.desktop = discover(packaged=ROOT)
@@ -811,6 +853,9 @@ class ControlCenter(QMainWindow):
         self.lan_configure.setEnabled(False)
         self.lan_refresh.setEnabled(False)
         self.lan_remove.setEnabled(False)
+        self.tls_dry_run.setEnabled(False)
+        self.tls_enable.setEnabled(False)
+        self.tls_renew.setEnabled(False)
         self.poll.stop()
         self.activity_console.appendPlainText(f"\n> weave {command} {' '.join(args)}")
         self.log_view.appendPlainText(f"\n> weave {command} {' '.join(args)}")
@@ -923,7 +968,7 @@ def main():
         if position < len(sys.argv):
             command = sys.argv[position]
             args = sys.argv[position + 1:]
-            if command in {"install", "start", "stop", "restart", "lan", "update"}:
+            if command in {"install", "start", "stop", "restart", "lan", "update", "tls"}:
                 QTimer.singleShot(0, lambda: ui.run(command, args))
     sys.exit(app.exec())
 
