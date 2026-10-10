@@ -40,6 +40,9 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # On a long-lived staging branch, compare only the latest push,
+          # not the full accumulated difference against the default branch.
+          base: ${{ github.event_name == 'push' && github.ref_name || github.event.repository.default_branch }}
           filters: |
             backend:
               - 'backend/**'
