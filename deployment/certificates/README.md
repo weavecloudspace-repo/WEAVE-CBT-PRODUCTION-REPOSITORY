@@ -14,10 +14,13 @@ remain exclusively on WEAVE Cloud.
    unnecessary; DNS-01 uses public TXT records managed by WEAVE Cloud.
 4. Install the version-matched CBT release with its certificate assets.
 5. For already-paired legacy servers without a hostname, call the local installation
-   hostname-refresh endpoint from the administrator's trusted setup session.
+   hostname-refresh endpoint using a logged-in local administrator access token.
    A fresh pairing includes the hostname automatically.
 6. Run: weave tls --dry-run
 7. When the dry run succeeds, run: weave tls
+   On Windows/WSL2, configure the trusted LAN with `weave lan` first and run
+   activation from an elevated Administrator session. Certificate testing with
+   `--dry-run` does not require elevation.
 8. Test HTTPS and hostname resolution from a separate student computer.
    Inspect all interface exposure and restrict public access on Linux hosts.
 
@@ -38,3 +41,17 @@ certificate. Internet access is needed again before the certificate expires.
 TLS enrollment is opt-in for existing installations and cannot automatically
 issue a certificate until the CBT machine is paired and local DNS is configured.
 Never store certificates, machine credentials or private keys in GitHub or logs.
+
+## Validation before release
+
+The automated checks validate Python contracts, CLI orchestration, Windows/Linux
+packaging and desktop integration. They do **not** prove live certificate issuance.
+Before promoting this feature to staging/production, exercise a paired school node
+against the WEAVE staging API and Let's Encrypt staging CA, verifying public TXT
+propagation and deletion, the strict Windows TCP/443 LAN firewall/portproxy,
+Nginx serving the assigned hostname, restart/reboot restoration, and the renewal
+path. Confirm that TLS continues serving during a temporary WEAVE outage.
+
+Cloud Bunny credentials must be rotated after any previous exposure, kept only
+in the WEAVE API/worker environment and never placed on the school server.
+Do not promote the CBT or WEAVE Cloud master branch based solely on green CI.
