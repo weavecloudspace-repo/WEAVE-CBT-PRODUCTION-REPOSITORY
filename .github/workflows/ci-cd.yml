@@ -489,8 +489,11 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           $binary = (Resolve-Path build/gui/WEAVE-CBT-Desktop.exe).Path
-          & $binary --smoke-test
-          if ($LASTEXITCODE -ne 0) { throw "Compiled Windows GUI smoke test failed (exit code $LASTEXITCODE)." }
+          # PowerShell does not reliably wait for GUI-subsystem EXEs invoked with &,
+          # and $LASTEXITCODE can be null. Wait for the real process exit instead.
+          $result = Start-Process -FilePath $binary -ArgumentList '--smoke-test' -Wait -PassThru -ErrorAction Stop
+          Write-Host "Compiled Windows GUI smoke test exit code: $($result.ExitCode)"
+          if ($result.ExitCode -ne 0) { throw "Compiled Windows GUI smoke test failed (exit code $($result.ExitCode))." }
       - name: Smoke test compiled Linux GUI
         if: runner.os == 'Linux'
         shell: bash
