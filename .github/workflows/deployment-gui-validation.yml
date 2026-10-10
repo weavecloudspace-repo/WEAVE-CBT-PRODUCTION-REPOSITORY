@@ -7,12 +7,6 @@ on:
       - 'deployment/gui/**'
       - 'deployment/packaging/**'
       - '.github/workflows/deployment-gui-validation.yml'
-  push:
-    branches: [staging, master]
-    paths:
-      - 'deployment/gui/**'
-      - 'deployment/packaging/**'
-      - '.github/workflows/deployment-gui-validation.yml'
 
 permissions:
   contents: read
