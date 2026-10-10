@@ -428,6 +428,11 @@ jobs:
   package:
     name: Package manager for ${{ matrix.os }}
     needs: [image, compile-cli, compile-gui]
+    if: >-
+      always() &&
+      needs.image.result == 'success' &&
+      needs.compile-cli.result == 'success' &&
+      needs.compile-gui.result == 'success'
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest]
@@ -536,11 +541,14 @@ jobs:
     name: Publish versioned manager release
     # A merge into master never publishes a customer installer automatically.
     # Select "Run workflow" on master with approve_production=true to promote.
-    if: >-
-      (github.ref == 'refs/heads/staging' && github.event_name == 'push') ||
-      (github.ref == 'refs/heads/master' && github.event_name == 'workflow_dispatch' &&
-       inputs.approve_production == true)
     needs: [image, package]
+    if: >-
+      always() &&
+      needs.image.result == 'success' &&
+      needs.package.result == 'success' &&
+      ((github.ref == 'refs/heads/staging' && github.event_name == 'push') ||
+       (github.ref == 'refs/heads/master' && github.event_name == 'workflow_dispatch' &&
+        inputs.approve_production == true))
     runs-on: ubuntu-latest
     permissions:
       contents: write
