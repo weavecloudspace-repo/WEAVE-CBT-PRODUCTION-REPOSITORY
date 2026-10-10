@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from weave_cli.docker.provider import DockerCommandProvider
-from weave_cli.docker.runtime import DockerRuntime, DockerRuntimeError
+from weave_cli.docker.runtime import DockerRuntime, DockerRuntimeError, _windows_console_lines
 
 
 class PythonCommandProvider(DockerCommandProvider):
@@ -21,6 +21,17 @@ class PythonCommandProvider(DockerCommandProvider):
 class DockerRuntimeTests(unittest.TestCase):
     def setUp(self):
         self.runtime = DockerRuntime(PythonCommandProvider())
+
+    def test_windows_stream_resets_console_column_on_each_line(self):
+        rendered, ended = _windows_console_lines(b"one\\ntwo\\rthree\\r\\n")
+        self.assertEqual(rendered, b"one\\r\\ntwo\\r\\nthree\\r\\n")
+        self.assertFalse(ended)
+        part, ended = _windows_console_lines(b"four\\r")
+        self.assertEqual(part, b"four\\r\\n")
+        self.assertTrue(ended)
+        part, ended = _windows_console_lines(b"\\nfive\\n", ended)
+        self.assertEqual(part, b"five\\r\\n")
+        self.assertFalse(ended)
 
     def test_captures_output_and_nonzero_exit(self):
         result = self.runtime.run_docker_command(
