@@ -127,9 +127,9 @@ def _write_nginx(hostname: str) -> None:
     # Certificate files are in a volume shared read-only with Nginx.
     content = f"""# Generated for the WEAVE-paired CBT hostname.
 server {{
-    listen 80;
+    listen 80 default_server;
     server_name {hostname};
-    return 308 https://$host$request_uri;
+    return 308 https://{hostname}$request_uri;
 }}
 
 server {{
