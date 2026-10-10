@@ -666,6 +666,25 @@ function Ensure-WslWindowsFeatures {
 }
 
 
+function Get-WeaveWslStatusExitCode {
+    # Only structured status results belong to the success pipeline. Some
+    # Windows PowerShell hosts also emit diagnostic records for an unavailable
+    # WSL runtime; these must not prevent initial WSL installation.
+    $records = @(Invoke-WeaveWslCommand -Arguments @("--status") -Quiet -TimeoutSeconds 90)
+    $results = @($records | Where-Object {
+        $null -ne $_ -and $null -ne $_.PSObject.Properties["ExitCode"]
+    })
+    if ($results.Count -eq 0) {
+        Write-WeaveWarning "WSL status produced no exit-code record; treating WSL as unavailable."
+        return 1
+    }
+    if ($results.Count -ne 1) {
+        throw "WSL status returned multiple conflicting exit-code records."
+    }
+    return [int]$results[0].ExitCode
+}
+
+
 function Ensure-WslAvailable {
     Write-WeaveStep "Checking Windows Subsystem for Linux."
 
@@ -688,8 +707,8 @@ function Ensure-WslAvailable {
 
     # A successful wsl --status alone does not prove servicing has completed.
     Ensure-WslWindowsFeatures
-    $statusResult = Invoke-WeaveWslCommand -Arguments @("--status") -Quiet -TimeoutSeconds 90
-    if ($statusResult.ExitCode -eq 0) {
+    $statusExitCode = Get-WeaveWslStatusExitCode
+    if ($statusExitCode -eq 0) {
         Remove-BootstrapState
         Write-WeaveSuccess "WSL runtime is available."
         return
@@ -721,8 +740,8 @@ function Ensure-WslAvailable {
             "If this Windows host is a virtual machine, verify nested virtualization is enabled."
         )
     }
-    $statusResult = Invoke-WeaveWslCommand -Arguments @("--status") -Quiet -TimeoutSeconds 90
-    if ($statusResult.ExitCode -ne 0) {
+    $statusExitCode = Get-WeaveWslStatusExitCode
+    if ($statusExitCode -ne 0) {
         Exit-RebootRequired -Message "Microsoft WSL installation finished but is not ready; restart Windows and rerun weave install."
     }
     Remove-BootstrapState
