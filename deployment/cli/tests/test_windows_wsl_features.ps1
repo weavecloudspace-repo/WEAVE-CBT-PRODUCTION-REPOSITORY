@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 $scriptPath = Join-Path $PSScriptRoot '..\..\bootstrap\windows\bootstrap.ps1'
 $content = Get-Content -LiteralPath $scriptPath -Raw
-foreach ($name in @('Ensure-WslWindowsFeatures', 'Get-WeaveWslCommandResult', 'Get-WeaveWslStatusExitCode', 'Ensure-WslAvailable, 'Get-InstalledWslDistributions'))) {
+foreach ($name in @('Ensure-WslWindowsFeatures', 'Get-WeaveWslCommandResult', 'Get-WeaveWslStatusExitCode', 'Ensure-WslAvailable', 'Get-InstalledWslDistributions'))) {
     $pattern = '(?ms)^function ' + [regex]::Escape($name) + ' \{.*?^\}'
     $match = [regex]::Match($content, $pattern)
     if (-not $match.Success) {
