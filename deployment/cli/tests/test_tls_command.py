@@ -33,6 +33,38 @@ class TLSTests(unittest.TestCase):
             self.assertIn("--profile", args)
             self.assertIn("tls", args)
 
+    def test_nginx_supports_long_assigned_hostnames(self):
+        nginx = (Path(__file__).resolve().parents[2] / "nginx" / "nginx.conf").read_text()
+        self.assertIn("server_names_hash_bucket_size 128;", nginx)
+
+    def test_existing_certificate_can_be_activated_without_reissuing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            data = Path(folder)
+            stack = SimpleNamespace(
+                installation=SimpleNamespace(data_directory=data, runtime_type="native"),
+                runtime=SimpleNamespace(docker_engine_running=lambda: True),
+                compose=Mock(),
+            )
+            with (
+                patch.object(tls, "get_stack", return_value=stack),
+                patch.object(tls, "guard_pending_update"),
+                patch.object(tls, "banner"),
+                patch.object(tls, "info"),
+                patch.object(tls, "success"),
+            ):
+                tls.tls(dry_run=False, renew=False, activate=True)
+            calls = [
+                c.kwargs.get("command")
+                for c in stack.compose._run_compose_command.call_args_list
+            ]
+            self.assertNotIn(
+                ["--profile", "tls-issue", "run", "--rm", "--no-deps", "certbot"],
+                calls,
+            )
+            self.assertIn(["run", "--rm", "--no-deps", "nginx", "nginx", "-t"], calls)
+            self.assertTrue((data / "tls.enabled").exists())
+            stack.compose.start.assert_called_once()
+
     def test_dry_run_does_not_enable_real_certificate(self):
         with tempfile.TemporaryDirectory() as folder:
             data = Path(folder)

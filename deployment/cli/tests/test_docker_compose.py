@@ -62,6 +62,28 @@ class DockerComposeTests(unittest.TestCase):
             expected_timeout=1200,
         )
 
+    def test_pull_has_plain_ansi_free_progress(self):
+        with patch.object(
+            self.runtime, "run_docker_command",
+            return_value=CommandResult(0, "", ""),
+        ) as run:
+            self.compose.pull_weave_image()
+        args = run.call_args.kwargs["arguments"]
+        self.assertEqual(args[-4:], ["pull", "bootstrap", "api", "worker"])
+        self.assertIn(["--ansi", "never", "--progress", "plain"],
+                      [args[i:i + 4] for i in range(len(args) - 3)])
+        self.assertEqual(run.call_args.kwargs["stall_timeout"], 180)
+
+    def test_log_follow_ctrl_c_is_not_reported_as_failure(self):
+        with patch.object(
+            self.runtime, "run_docker_command",
+            return_value=CommandResult(130, "", ""),
+        ):
+            result = self.compose.logs(service="api", follow=True)
+            self.assertEqual(result.return_code, 0)
+            with self.assertRaises(DockerComposeError):
+                self.compose.start()
+
     def test_pull_infrastructure_images_are_scoped(self):
         self._assert_command(
             "pull_postgres_image",
