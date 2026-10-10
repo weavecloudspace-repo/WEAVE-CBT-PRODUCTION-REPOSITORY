@@ -28,19 +28,23 @@ class HostnameRefreshSecurityTests(unittest.TestCase):
     def test_anonymous_candidate_cannot_trigger_cloud_hostname_request(self):
         with (
             TestClient(self.app) as client,
-            patch.object(node_service, "refresh_hostname", new_callable=AsyncMock) as cloud,
+            patch.object(
+                node_service, "refresh_hostname", new_callable=AsyncMock
+            ) as cloud,
         ):
             response = client.post("/installation/hostname/refresh")
             self.assertEqual(response.status_code, 401)
             cloud.assert_not_awaited()
 
     def test_teacher_cannot_trigger_cloud_hostname_request(self):
-        self.app.dependency_overrides[get_current_local_actor] = (
-            lambda: SimpleNamespace(role="teacher")
+        self.app.dependency_overrides[get_current_local_actor] = lambda: (
+            SimpleNamespace(role="teacher")
         )
         with (
             TestClient(self.app) as client,
-            patch.object(node_service, "refresh_hostname", new_callable=AsyncMock) as cloud,
+            patch.object(
+                node_service, "refresh_hostname", new_callable=AsyncMock
+            ) as cloud,
         ):
             response = client.post("/installation/hostname/refresh")
             self.assertEqual(response.status_code, 403)
