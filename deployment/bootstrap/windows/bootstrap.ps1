@@ -327,22 +327,7 @@ function Invoke-WeaveWslCommand {
             else {
                 $process.WaitForExit()
             }
-            try {
-                $stdoutText = $stdoutTask.GetAwaiter().GetResult()
-            }
-            catch {
-                # An unavailable WSL runtime may terminate before PowerShell
-                # finishes reading the redirected pipe. Preserve its nonzero
-                # exit code so Ensure-WslAvailable can install WSL.
-                $cause = $_.Exception
-                while ($null -ne $cause.InnerException) {
-                    $cause = $cause.InnerException
-                }
-                if ($process.ExitCode -eq 0 -or $cause -isnot [System.IO.IOException]) {
-                    throw
-                }
-                $stdoutText = ""
-            }
+            $stdoutText = $stdoutTask.GetAwaiter().GetResult()
         }
         else {
             # Stream each line from WSL in this PowerShell thread. Using
@@ -400,20 +385,8 @@ function Invoke-WeaveWslCommand {
             }
         }
 
+        $stderrText = $stderrTask.GetAwaiter().GetResult()
         $exitCode = $process.ExitCode
-        try {
-            $stderrText = $stderrTask.GetAwaiter().GetResult()
-        }
-        catch {
-            $cause = $_.Exception
-            while ($null -ne $cause.InnerException) {
-                $cause = $cause.InnerException
-            }
-            if ($exitCode -eq 0 -or $cause -isnot [System.IO.IOException]) {
-                throw
-            }
-            $stderrText = ""
-        }
     }
     finally {
         $process.Dispose()
