@@ -26,7 +26,14 @@ $missingWslArgs = @(
     '-NoProfile', '-NonInteractive', '-Command',
     '[Console]::Error.WriteLine("The Windows Subsystem for Linux is not installed."); exit 1'
 )
-$missingWsl = @(Invoke-WeaveWslCommand -Arguments $missingWslArgs -Quiet -TimeoutSeconds 30)
+try {
+    $missingWsl = @(Invoke-WeaveWslCommand -Arguments $missingWslArgs -Quiet -TimeoutSeconds 30)
+}
+catch {
+    Write-Output "NATIVE FAILURE DEBUG: $($_.Exception.GetType().FullName) / $($_.Exception.Message)"
+    Write-Output "NATIVE FAILURE STACK: $($_.ScriptStackTrace)"
+    throw
+}
 if ($missingWsl.Count -ne 1) {
     throw "Quiet native probe returned $($missingWsl.Count) success records."
 }
