@@ -124,7 +124,7 @@ def is_admin() -> bool:
     return hasattr(os, "geteuid") and os.geteuid() == 0
 
 
-def elevate_gui() -> bool:
+def elevate_gui(operation: str) -> bool:
     """Relaunch only when user requests an administrative action; no silent elevation."""
     if is_admin():
         return True
@@ -132,7 +132,7 @@ def elevate_gui() -> bool:
         import ctypes
         import subprocess as sp
         program = str(Path(sys.argv[0]).resolve())
-        parameters = sp.list2cmdline(sys.argv[1:] + ["--elevated"])
+        parameters = sp.list2cmdline(["--elevated", "--auto-command", operation])
         result = ctypes.windll.shell32.ShellExecuteW(
             None, "runas", program, parameters, None, 1)
         return int(result) > 32
