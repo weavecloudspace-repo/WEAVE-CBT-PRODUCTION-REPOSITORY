@@ -21,7 +21,7 @@ BLUE = "#1d4ed8"
 BG = "#f8fafc"
 DARK = "#0f172a"
 DANGEROUS = {"stop", "restart"}
-OPERATIONS = {"install", "start", "stop", "restart", "status", "doctor", "release", "lan_refresh"}
+OPERATIONS = {"install", "start", "stop", "restart", "status", "doctor", "logs", "release", "lan_refresh"}
 
 
 def resource(name: str) -> Path:
@@ -69,7 +69,7 @@ class Desktop(QMainWindow):
         self.refresh()
         self.poll = QTimer(self)
         self.poll.timeout.connect(self.refresh)
-        self.poll.start(10000)
+        self.poll.start(60000)
 
     def setup_ui(self):
         shell = QWidget()
@@ -217,6 +217,7 @@ class Desktop(QMainWindow):
         row = QHBoxLayout()
         row.addWidget(button("Check status", lambda: self.run("status"), "primary"))
         row.addWidget(button("Diagnose", lambda: self.run("doctor")))
+        row.addWidget(button("View service logs", lambda: self.run("logs")))
         row.addWidget(button("Clear display", self.log_widget.clear))
         inner.addLayout(row)
         lay.addWidget(box, 1)
@@ -282,7 +283,8 @@ class Desktop(QMainWindow):
         if command == "install" and self.desktop.server_installed:
             QMessageBox.information(self, "Already installed", "WEAVE CBT is already installed. Your data is preserved.")
             return
-        if command in {"install", "start", "stop", "restart", "lan_refresh"} and not is_admin():
+        needs_admin = command in {"install", "start", "stop", "restart", "lan_refresh"}
+        if needs_admin and not is_admin() and sys.platform == "win32":
             outcome = QMessageBox.question(
                 self, "Administrator permission required",
                 "This operation changes local services and requires administrator permission. Relaunch with elevated privileges?",
@@ -299,8 +301,20 @@ class Desktop(QMainWindow):
         self.install_output.appendPlainText(f"\nStarting: {command}")
         self.install_progress.setVisible(command == "install")
         self.install_btn.setEnabled(False)
-        self.process.setProgram(str(self.desktop.cli))
-        self.process.setArguments(args)
+        if needs_admin and not is_admin() and sys.platform.startswith("linux"):
+            pkexec = shutil.which("pkexec")
+            if not pkexec:
+                self.busy = False
+                self.poll.start(60000)
+                QMessageBox.warning(self, "Authorization unavailable",
+                                    "Polkit is required to authorize this operation. Install a desktop Polkit authentication agent.")
+                self.refresh()
+                return
+            self.process.setProgram(pkexec)
+            self.process.setArguments([str(self.desktop.cli), *args])
+        else:
+            self.process.setProgram(str(self.desktop.cli))
+            self.process.setArguments(args)
         self.process.start()
         if not self.process.waitForStarted(2500):
             self.finished(1, QProcess.CrashExit)
