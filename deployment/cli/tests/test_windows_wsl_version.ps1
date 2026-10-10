@@ -11,7 +11,7 @@ function Write-WeaveCheck { param([string]$Message) }
 function Write-WeaveAction { param([string]$Message) }
 function Write-WeaveSuccess { param([string]$Message) }
 function Write-WeaveWarning { param([string]$Message) }
-$script:LatestVersion = [Version]'2.4.5.0'
+$script:LatestVersion = [Version]'2.4.5'
 $script:LatestWslMsiAsset = $null
 function Get-LatestMicrosoftWslMsiAsset {
     $script:LatestWslMsiAsset = [PSCustomObject]@{Version = $script:LatestVersion}
