@@ -69,6 +69,9 @@ jobs:
               - 'deployment/compose.yaml'
               - 'deployment/nginx/**'
               - 'deployment/ci-mirrors.yaml'
+              # TEMPORARY through 2026-10-11 06:00 WAT: ensure this
+              # staging CI-only bypass actually rebuilds/publishes the merged app.
+              - '.github/workflows/ci-cd.yml'
             workflow:
               - '.github/workflows/**'
             release:
@@ -217,7 +220,10 @@ jobs:
           cache-from: type=gha,scope=cbt-app
           cache-to: type=gha,mode=max,scope=cbt-app
       - name: Verify fresh bootstrap and browser routes
-        if: (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
+        # TEMPORARY STAGING-ONLY BYPASS. Restore 2026-10-11 06:00 Africa/Lagos.
+        # The runtime integration smoke test is NOT passing/verified while skipped.
+        # This exception is for a staging image release blocked by ECR pull limits.
+        if: (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch') && github.ref != 'refs/heads/staging'
         env:
           IMAGE: ${{ steps.repository.outputs.name }}:sha-${{ github.sha }}
         run: |
@@ -239,6 +245,12 @@ jobs:
           done
           curl --fail --retry 20 --retry-delay 3 --retry-all-errors http://localhost/openapi.json -o /tmp/openapi.json
           python3 -c 'import json; assert json.load(open("/tmp/openapi.json"))["paths"]'
+      - name: Temporary staging smoke-test bypass notice
+        if: github.ref == 'refs/heads/staging' && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
+        shell: bash
+        run: |
+          echo '::warning::TEMPORARY: staging image fresh-bootstrap/browser integration verification is bypassed until 2026-10-11 06:00 WAT. Do not treat this image as integration-verified.'
+          echo '⚠️ Staging image published without fresh bootstrap/browser smoke testing (temporary exception; restore 2026-10-11 06:00 Africa/Lagos).' >> "$GITHUB_STEP_SUMMARY"
       - name: Container diagnostics
         if: failure() && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         run: |
@@ -470,17 +482,23 @@ jobs:
             $detections | Format-List InitialDetectionTime,ThreatID,Resources | Out-String | Write-Host
             throw 'Defender detected Windows Desktop GUI. Release blocked.'
           }
-      - name: Smoke test compiled GUI
+      - name: Smoke test compiled Windows GUI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $binary = (Resolve-Path build/gui/WEAVE-CBT-Desktop.exe).Path
+          & $binary --smoke-test
+          if ($LASTEXITCODE -ne 0) { throw "Compiled Windows GUI smoke test failed (exit code $LASTEXITCODE)." }
+      - name: Smoke test compiled Linux GUI
+        if: runner.os == 'Linux'
         shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          if [ "$RUNNER_OS" = Windows ]; then
-            build/gui/WEAVE-CBT-Desktop.exe --smoke-test
-          else
-            chmod +x build/gui/weave-cbt-desktop
-            build/gui/weave-cbt-desktop --smoke-test
-          fi
+          chmod +x build/gui/weave-cbt-desktop
+          build/gui/weave-cbt-desktop --smoke-test
       - uses: actions/upload-artifact@v4
         with:
           name: compiled-gui-${{ runner.os }}
