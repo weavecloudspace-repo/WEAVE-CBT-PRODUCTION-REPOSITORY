@@ -25,7 +25,7 @@ Section: education
 Priority: optional
 Architecture: amd64
 Maintainer: WEAVE CBT <support@weavecloudspace.com>
-Depends: libc6, libstdc++6
+Depends: libc6, libstdc++6, libegl1, libgl1, libopengl0, libxkbcommon-x11-0, libxcb-cursor0, libxcb-icccm4, libxcb-keysyms1, libxcb-xinerama0
 Description: WEAVE CBT desktop interface and CLI manager
  GUI for the WEAVE CBT local server runtime.
 EOF
