@@ -33,16 +33,19 @@ def _firewall_exists() -> bool:
     ) == "yes"
 
 
-def _firewall(address: str, subnet: str, *, create: bool) -> None:
-    if create:
-        lan._powershell(
-            "New-NetFirewallRule -Name '" + TLS_RULE
-            + "' -DisplayName 'WEAVE CBT - School LAN HTTPS' "
-            "-Direction Inbound -Action Allow -Protocol TCP -LocalPort 443 "
-            "-LocalAddress '" + address + "' -RemoteAddress '" + subnet
-            + "' -Profile Private,Domain -Enabled True | Out-Null",
-            context="Restrict school HTTPS access",
-        )
+def _create_firewall(address: str, subnet: str) -> None:
+    lan._powershell(
+        "New-NetFirewallRule -Name '" + TLS_RULE
+        + "' -DisplayName 'WEAVE CBT - School LAN HTTPS' "
+        "-Direction Inbound -Action Allow -Protocol TCP -LocalPort 443 "
+        "-LocalAddress '" + address + "' -RemoteAddress '" + subnet
+        + "' -Profile Private,Domain -Enabled True | Out-Null",
+        context="Restrict school HTTPS access",
+    )
+
+
+def _verify_firewall(address: str, subnet: str) -> None:
+    """Verify every owned-rule constraint before use or deletion."""
     raw = lan._powershell(
         "$r = Get-NetFirewallRule -Name '" + TLS_RULE + "' -ErrorAction Stop; "
         "$a = $r | Get-NetFirewallAddressFilter; "
@@ -57,20 +60,26 @@ def _firewall(address: str, subnet: str, *, create: bool) -> None:
     )
     try:
         result = json.loads(raw)
-        assert str(result["Direction"]).lower() == "inbound"
-        assert str(result["Action"]).lower() == "allow"
-        assert str(result["Enabled"]).lower() == "true"
-        assert str(result["Protocol"]).lower() == "tcp"
-        assert [str(x) for x in result["Port"]] == ["443"]
-        assert [str(x) for x in result["Address"]] == [address]
-        assert lan.ipaddress.IPv4Network(result["Remote"][0], strict=True) == (
-            lan.ipaddress.IPv4Network(subnet, strict=True)
+        profiles = {item.strip().lower() for item in result["Profile"].split(",")}
+        remote = result["Remote"]
+        valid = (
+            result["Direction"].lower() == "inbound"
+            and result["Action"].lower() == "allow"
+            and result["Enabled"].lower() == "true"
+            and result["Protocol"].lower() == "tcp"
+            and result["Port"] == ["443"]
+            and result["Address"] == [address]
+            and profiles <= {"private", "domain"} and bool(profiles)
+            and isinstance(remote, list) and len(remote) == 1
+            and lan.ipaddress.IPv4Network(remote[0], strict=True)
+            == lan.ipaddress.IPv4Network(subnet, strict=True)
         )
-        assert set(p.strip().lower() for p in result["Profile"].split(",")) <= {
-            "private", "domain"
-        }
-    except (AssertionError, KeyError, TypeError, ValueError, IndexError, AttributeError):
-        raise lan.LanError("CBT HTTPS firewall does not match the saved school LAN scope") from None
+        if not valid:
+            raise ValueError("Firewall rule metadata/scope mismatch")
+    except (KeyError, TypeError, ValueError, IndexError, AttributeError) as exc:
+        raise lan.LanError(
+            "CBT HTTPS firewall does not match the saved school LAN scope"
+        ) from exc
 
 
 def _state_path(data: Path) -> Path:
@@ -91,13 +100,14 @@ def _save(data: Path, value: dict[str, str]) -> None:
 
 
 def reconcile(data: Path, *, remove: bool = False) -> None:
-    """Create/refresh HTTPS only if the school already opted into LAN forwarding."""
+    """Reconcile only WEAVE-owned HTTPS forwarding; compensate failed writes."""
     base = lan._read_state(data)
     record = _state_path(data)
     if remove and not record.exists():
         return
     if base is None and not remove:
         raise lan.LanError("Run 'weave lan' to select a trusted school subnet first.")
+
     if record.exists():
         try:
             saved = json.loads(record.read_text(encoding="utf-8"))
@@ -112,17 +122,23 @@ def reconcile(data: Path, *, remove: bool = False) -> None:
         assert base is not None
         address, subnet = base["listen_address"], base["client_subnet"]
         old_target = lan._wsl_address()
+
     if not remove:
         assert base is not None
         if (address, subnet) != (base["listen_address"], base["client_subnet"]):
             raise lan.LanError("HTTPS forwarding scope differs from the school LAN")
         lan._assert_private_interface(address)
+
     destination = _destination(address)
     if destination not in (None, f"{old_target}/443"):
         raise lan.LanError("TCP/443 belongs to another application; refusing to overwrite it")
+    if destination is not None and not record.exists():
+        raise lan.LanError("TCP/443 mapping exists without WEAVE ownership state")
+
     has_rule = _firewall_exists()
     if has_rule:
-        _firewall(address, subnet, create=False)
+        _verify_firewall(address, subnet)
+
     if remove:
         if destination is not None:
             lan._run(
@@ -131,27 +147,75 @@ def reconcile(data: Path, *, remove: bool = False) -> None:
             )
         if has_rule:
             lan._powershell(
-                "Remove-NetFirewallRule -Name '" + TLS_RULE + "' -ErrorAction Stop"
+                "Remove-NetFirewallRule -Name '" + TLS_RULE + "' -ErrorAction Stop",
+                context="Remove owned school HTTPS firewall rule",
             )
         record.unlink()
         return
+
     if has_rule and not record.exists():
         raise lan.LanError("HTTPS firewall exists without WEAVE ownership state")
+
     new_target = lan._wsl_address()
-    if destination != f"{new_target}/443":
-        if destination is not None:
+    if new_target == address:
+        raise lan.LanError("WSL address matches Windows listener; NAT is not applicable")
+
+    previous_removed = False
+    mapping_added = False
+    firewall_created = False
+    try:
+        if destination != f"{new_target}/443":
+            if destination is not None:
+                lan._run(
+                    ["netsh.exe", "interface", "portproxy", "delete", "v4tov4",
+                     "listenport=443", f"listenaddress={address}"]
+                )
+                previous_removed = True
             lan._run(
-                ["netsh.exe", "interface", "portproxy", "delete", "v4tov4",
-                 "listenport=443", f"listenaddress={address}"]
+                ["netsh.exe", "interface", "portproxy", "add", "v4tov4",
+                 "listenport=443", f"listenaddress={address}", "connectport=443",
+                 f"connectaddress={new_target}"]
             )
-        lan._run(
-            ["netsh.exe", "interface", "portproxy", "add", "v4tov4",
-             "listenport=443", f"listenaddress={address}", "connectport=443",
-             f"connectaddress={new_target}"]
+            mapping_added = True
+        if not has_rule:
+            _create_firewall(address, subnet)
+            firewall_created = True
+        _verify_firewall(address, subnet)
+        _save(
+            data,
+            {"listen_address": address, "client_subnet": subnet, "wsl_address": new_target},
         )
-    if not has_rule:
-        _firewall(address, subnet, create=True)
-    _save(
-        data,
-        {"listen_address": address, "client_subnet": subnet, "wsl_address": new_target},
-    )
+    except (lan.LanError, OSError) as exc:
+        recovery_errors: list[str] = []
+        if firewall_created:
+            try:
+                lan._powershell(
+                    "Remove-NetFirewallRule -Name '" + TLS_RULE + "' -ErrorAction Stop",
+                    context="Roll back CBT HTTPS firewall",
+                )
+            except lan.LanError as recovery:
+                recovery_errors.append(str(recovery))
+        if mapping_added:
+            try:
+                lan._run(
+                    ["netsh.exe", "interface", "portproxy", "delete", "v4tov4",
+                     "listenport=443", f"listenaddress={address}"]
+                )
+            except lan.LanError as recovery:
+                recovery_errors.append(str(recovery))
+        if previous_removed:
+            try:
+                lan._run(
+                    ["netsh.exe", "interface", "portproxy", "add", "v4tov4",
+                     "listenport=443", f"listenaddress={address}",
+                     "connectport=443", f"connectaddress={old_target}"]
+                )
+            except lan.LanError as recovery:
+                recovery_errors.append(str(recovery))
+        if recovery_errors:
+            raise lan.LanError(
+                f"HTTPS forwarding failed and compensation was incomplete: {exc}. "
+                "Inspect Windows portproxy/firewall manually: "
+                + "; ".join(recovery_errors)
+            ) from exc
+        raise
