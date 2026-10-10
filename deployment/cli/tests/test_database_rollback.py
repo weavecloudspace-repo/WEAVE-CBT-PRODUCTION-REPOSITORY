@@ -62,6 +62,7 @@ class DatabaseRollbackTests(unittest.TestCase):
             self.assertEqual(record.phase, "ready")
             self.assertEqual(record.previous_image, "ghcr.io/example/cbt:v1")
             self.assertEqual(record.target_image, "ghcr.io/example/cbt:v2")
+            stack.compose.verify_database_maintenance.assert_called_once()
             stack.compose.stop_application.assert_called_once()
             stack.compose.snapshot_database.assert_called_once_with(
                 record.snapshot_database
@@ -102,6 +103,24 @@ class DatabaseRollbackTests(unittest.TestCase):
             ):
                 result = _invoke(update, ["--image", "ghcr.io/example/cbt:v2"])
             self.assertEqual(result.exit_code, 1, result.output)
+            stack.compose.restore_database.assert_not_called()
+            stack.compose.drop_snapshot_database.assert_not_called()
+            self.assertIn(b"cbt:v1", env_file.read_bytes())
+            self.assertFalse(recovery_path(Path(directory)).exists())
+
+    def test_invalid_postgres_preflight_never_stops_server_or_rewrites_image(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stack, env_file = self._setup(directory)
+            stack.compose.verify_database_maintenance.side_effect = RuntimeError(
+                "PostgreSQL container is missing POSTGRES_DB"
+            )
+            with patch.object(update, "get_stack", return_value=stack):
+                result = _invoke(update, ["--image", "ghcr.io/example/cbt:v2"])
+            self.assertEqual(result.exit_code, 1, result.output)
+            self.assertIn("missing POSTGRES_DB", result.output)
+            stack.compose.stop_application.assert_not_called()
+            stack.compose.pull_weave_image.assert_not_called()
+            stack.compose.snapshot_database.assert_not_called()
             stack.compose.restore_database.assert_not_called()
             self.assertIn(b"cbt:v1", env_file.read_bytes())
             self.assertFalse(recovery_path(Path(directory)).exists())

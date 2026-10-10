@@ -6,6 +6,7 @@ Never change an unrelated Windows portproxy entry or firewall rule.
 """
 from __future__ import annotations
 
+import base64
 import ipaddress
 import json
 import os
@@ -52,27 +53,40 @@ def _private_subnet(value: str, address: str) -> str:
     return str(network)
 
 
-def _run(args: list[str], *, timeout: int = 30) -> str:
+def _run(args: list[str], *, timeout: int = 30, context: str = "") -> str:
     try:
         result = subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise LanError(f"Windows network command could not complete: {exc}") from exc
+        raise LanError(f"{context or 'Windows network command'} could not complete: {exc}") from exc
     if result.returncode:
-        detail = (result.stderr or result.stdout).strip()[:350]
+        detail = (result.stderr or result.stdout).strip()[:1000]
         if not detail:
             detail = (
-                "Windows returned no diagnostic text. Verify Administrator elevation, "
-                "the IP Helper service, and Windows Firewall service; rerun the "
-                "failed command from an elevated terminal."
+                "Windows returned no diagnostic text. Inspect Windows Security, "
+                "the network profile, IP Helper service and Windows Firewall."
             )
+        prefix = f"{context}: " if context else ""
         raise LanError(
-            f"{Path(args[0]).name} failed (exit {result.returncode}): {detail}"
+            f"{prefix}{Path(args[0]).name} failed (exit {result.returncode}): {detail}"
         )
     return result.stdout.strip()
 
 
-def _powershell(script: str) -> str:
-    return _run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script])
+def _powershell(script: str, *, context: str = "Windows LAN check") -> str:
+    """Send a lossless PowerShell script and retain the specific failure reason.
+
+    -EncodedCommand avoids Windows command-line quoting of nested PowerShell
+    strings. Terminating and nonterminating errors are written to stderr.
+    """
+    payload = (
+        "$ErrorActionPreference = 'Stop'; try { " + script
+        + " } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }"
+    )
+    encoded = base64.b64encode(payload.encode("utf-16le")).decode("ascii")
+    return _run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+        context=context,
+    )
 
 
 def _wsl_address() -> str:
@@ -102,7 +116,8 @@ def _assert_private_interface(address: str) -> None:
         "Get-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -ErrorAction SilentlyContinue }); "
         "if (-not @($profiles | Where-Object { "
         "$_.NetworkCategory -in @('Private','DomainAuthenticated') }).Count) { "
-        "throw 'Set the school network profile to Private/Domain before enabling CBT LAN.' }"
+        "throw 'Set the school network profile to Private/Domain before enabling CBT LAN.' }",
+        context="Validate LAN interface and network profile",
     )
 
 
@@ -112,7 +127,8 @@ def _mapped_destination(address: str) -> str | None:
         "$path = 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\PortProxy\\v4tov4\\tcp'; "
         "$item = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue; "
         "if ($item) { $entry = $item.PSObject.Properties[$name]; "
-        "if ($entry) { [Console]::Out.Write($entry.Value) } }"
+        "if ($entry) { [Console]::Out.Write($entry.Value) } }",
+        context="Inspect existing Windows port forwarding",
     )
     return existing.strip() or None
 
@@ -120,7 +136,8 @@ def _mapped_destination(address: str) -> str | None:
 def _firewall_exists() -> bool:
     return _powershell(
         "$r = Get-NetFirewallRule -Name '" + RULE +
-        "' -ErrorAction SilentlyContinue; if ($r) { 'yes' }"
+        "' -ErrorAction SilentlyContinue; if ($r) { 'yes' }",
+        context="Inspect WEAVE-owned firewall rule",
     ) == "yes"
 
 
@@ -130,7 +147,8 @@ def _add_firewall(address: str, subnet: str) -> None:
         "' -DisplayName 'WEAVE CBT - School LAN TCP 80' "
         "-Direction Inbound -Action Allow -Protocol TCP -LocalPort 80 "
         "-LocalAddress '" + address + "' -RemoteAddress '" + subnet +
-        "' -Profile Private,Domain -Enabled True | Out-Null"
+        "' -Profile Private,Domain -Enabled True | Out-Null",
+        context="Create restricted school firewall rule",
     )
 
 
@@ -152,7 +170,8 @@ def _verify_firewall(address: str, subnet: str) -> None:
         "LocalPort = @($p.LocalPort | ForEach-Object { [string]$_ }); "
         "LocalAddress = @($a.LocalAddress | ForEach-Object { [string]$_ }); "
         "RemoteAddress = @($a.RemoteAddress | ForEach-Object { [string]$_ }) "
-        "}; ConvertTo-Json -InputObject $data -Compress -Depth 4"
+        "}; ConvertTo-Json -InputObject $data -Compress -Depth 4",
+        context="Verify restricted school firewall rule",
     )
     try:
         result = json.loads(raw)

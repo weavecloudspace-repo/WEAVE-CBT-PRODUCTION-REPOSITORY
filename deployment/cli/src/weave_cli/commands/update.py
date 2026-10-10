@@ -88,19 +88,22 @@ def restore_previous(stack, record: UpdateRecovery) -> None:
         replace(stack.installation, installed_version=record.previous_version)
     )
 
-    # Cleanup is non-critical once the original API and DB are healthy.
-    obsolete = (
-        record.failed_database
-        if record.phase == "restored"
-        else record.snapshot_database
-    )
-    try:
-        stack.compose.drop_snapshot_database(obsolete)
-    except Exception as cleanup_error:
-        warning(
-            f"Previous CBT version restored; unused PostgreSQL database "
-            f"{obsolete} remains for manual cleanup: {cleanup_error}"
+    # A failed snapshot leaves phase=preparing. There is NO saved database
+    # to drop in that phase. Never attempt destructive maintenance merely
+    # because a generated name exists in the recovery journal.
+    if record.phase != "preparing":
+        obsolete = (
+            record.failed_database if record.phase == "restored"
+            else record.snapshot_database
         )
+        try:
+            stack.compose.drop_snapshot_database(obsolete)
+        except Exception as cleanup_error:
+            warning(
+                f"Previous CBT version restored; unused PostgreSQL database "
+                f"{obsolete} may remain: {cleanup_error}. Do not delete it "
+                "without checking its contents first."
+            )
     journal.unlink(missing_ok=True)
 
 
@@ -157,6 +160,10 @@ def update(
 
         with update_lock(data_dir):
             guard_pending_update(data_dir)
+            # Do not pause an operational CBT installation if the PostgreSQL
+            # maintenance path is broken (including Windows-to-WSL quoting).
+            info("Checking PostgreSQL maintenance access before stopping services...")
+            stack.compose.verify_database_maintenance()
             journal = recovery_path(data_dir)
             old = read_recovery(journal)
             if old is not None:
@@ -205,7 +212,10 @@ def update(
                     if latest is None:
                         raise RuntimeError("Rollback journal was unexpectedly removed.")
                     restore_previous(stack, latest)
-                    warning("Previous image AND database state restored.")
+                    if latest.phase == "preparing":
+                        warning("Previous image and services restored. No completed database snapshot required a swap.")
+                    else:
+                        warning("Previous image AND database state restored.")
                 except Exception as rollback_error:
                     error(
                         "AUTOMATIC ROLLBACK FAILED. Do not start CBT. "

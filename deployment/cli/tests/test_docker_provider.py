@@ -27,12 +27,21 @@ class DockerProviderTests(unittest.TestCase):
                 "WeaveCBT",
                 "--user",
                 "root",
-                "--",
+                "--exec",
                 "docker",
                 "compose",
                 "ps",
             ],
         )
+
+    def test_windows_provider_preserves_container_shell_script_as_single_argv_item(self):
+        script = 'test "$POSTGRES_DB" != "" && printf "%s" "$1"'
+        with patch("weave_cli.docker.provider.shutil.which", return_value="wsl.exe"):
+            command = WindowsWslDockerProvider().build_command(
+                ["compose", "exec", "-T", "postgres", "sh", "-eu", "-c", script]
+            )
+        self.assertIn("--exec", command)
+        self.assertEqual(command[-1], script)
 
     def test_windows_provider_translates_host_path_for_wsl(self):
         translated = WindowsWslDockerProvider().translate_path(

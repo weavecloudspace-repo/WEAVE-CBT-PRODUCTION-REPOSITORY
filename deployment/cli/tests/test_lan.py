@@ -60,6 +60,25 @@ class FirewallNormalizationTests(unittest.TestCase):
                 self.assertFalse((directory / "lan.json").exists())
                 self.assertGreaterEqual(ps.call_count, 3)
 
+    def test_powershell_error_report_preserves_script_and_context(self):
+        import base64
+        from subprocess import CompletedProcess
+        with patch.object(lan.subprocess, "run", return_value=CompletedProcess(
+                args=["powershell.exe"], returncode=1, stdout="",
+                stderr="Set the school network profile to Private")) as run:
+            with self.assertRaisesRegex(lan.LanError, "Validate LAN interface"):
+                lan._powershell('throw "Set the school network profile to Private"',
+                                context="Validate LAN interface")
+            with self.assertRaisesRegex(lan.LanError, "profile to Private"):
+                lan._powershell('throw "Set the school network profile to Private"',
+                                context="Validate LAN interface")
+        args = run.call_args.args[0]
+        self.assertIn("-EncodedCommand", args)
+        command = base64.b64decode(args[-1]).decode("utf-16le")
+        self.assertIn("ErrorActionPreference = 'Stop'", command)
+        self.assertIn('throw "Set the school network profile to Private"', command)
+        self.assertIn("Console]::Error.WriteLine", command)
+
     def test_empty_command_diagnostic_is_actionable(self):
         from subprocess import CompletedProcess
         with patch.object(lan.subprocess, "run", return_value=CompletedProcess(

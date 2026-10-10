@@ -17,7 +17,8 @@ _POSTGRES_ENV_GUARD = """
 # The database name comes from the installed, admin-controlled Postgres config.
 # Reject punctuation before quoting SQL identifiers.
 case "${POSTGRES_DB:-}" in
-  ""|*[!A-Za-z0-9_]*) echo "Unsafe PostgreSQL database name" >&2; exit 64 ;;
+  "") echo "PostgreSQL container is missing POSTGRES_DB; refusing snapshot." >&2; exit 64 ;;
+  *[!A-Za-z0-9_]*) echo "Unsafe PostgreSQL database name in container configuration." >&2; exit 64 ;;
 esac
 case "${POSTGRES_USER:-}" in
   "") echo "Missing PostgreSQL user" >&2; exit 64 ;;
@@ -135,6 +136,20 @@ class DockerCompose:
                 script, "weave-cbt-db", *arguments,
             ],
             timeout=None,
+        )
+
+    def verify_database_maintenance(self) -> CommandResult:
+        """Read-only maintenance preflight while exam services still run.
+
+        Ensure the target Postgres container has its expected environment,
+        and that the maintenance database accepts connections, BEFORE we
+        stop the application's writers or create an update-recovery journal.
+        """
+        return self._postgres_maintenance(
+            _POSTGRES_ENV_GUARD
+            + """
+psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres -Atqc 'SELECT 1' >/dev/null
+"""
         )
 
     def snapshot_database(self, backup_name: str) -> CommandResult:

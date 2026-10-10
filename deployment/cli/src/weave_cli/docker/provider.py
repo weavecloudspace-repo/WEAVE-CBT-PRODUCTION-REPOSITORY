@@ -70,7 +70,9 @@ class WindowsWslDockerProvider(DockerCommandProvider):
             WEAVE_WSL_DISTRIBUTION,
             "--user",
             "root",
-            "--",
+            # --exec bypasses WSL's default shell: dollar expressions and quotes
+            # inside docker compose exec -c scripts must arrive unchanged.
+            "--exec",
             "docker",
             *arguments,
         ]

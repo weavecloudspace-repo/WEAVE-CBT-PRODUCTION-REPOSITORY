@@ -140,6 +140,19 @@ class DockerComposeTests(unittest.TestCase):
             expected_timeout=None,
         )
 
+    def test_postgres_preflight_is_read_only_and_validates_container_environment(self):
+        with patch.object(
+            self.runtime, "run_docker_command",
+            return_value=CommandResult(0, "", ""),
+        ) as run:
+            self.compose.verify_database_maintenance()
+        args = run.call_args.kwargs["arguments"]
+        self.assertEqual(args[-8:-5], ["exec", "-T", "postgres"])
+        self.assertIn("POSTGRES_DB", args[-2])
+        self.assertIn("SELECT 1", args[-2])
+        self.assertNotIn("CREATE DATABASE", args[-2])
+        self.assertNotIn("ALTER DATABASE", args[-2])
+
     def test_snapshot_is_run_inside_local_postgres(self):
         with patch.object(
             self.runtime,
