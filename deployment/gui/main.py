@@ -347,6 +347,10 @@ def main():
     app.setApplicationName("WEAVE CBT Desktop Manager")
     app.setFont(QFont("Segoe UI", 10))
     ui = Desktop()
+    if "--smoke-test" in sys.argv:
+        print("WEAVE GUI ready", flush=True)
+        ui.close()
+        return
     ui.show()
     sys.exit(app.exec())
 
