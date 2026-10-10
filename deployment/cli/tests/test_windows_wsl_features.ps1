@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 $scriptPath = Join-Path $PSScriptRoot '..\..\bootstrap\windows\bootstrap.ps1'
 $content = Get-Content -LiteralPath $scriptPath -Raw
-foreach ($name in @('Ensure-WslWindowsFeatures', 'Get-WeaveWslCommandResult', 'Get-WeaveWslStatusExitCode', 'Ensure-WslAvailable')) {
+foreach ($name in @('Ensure-WslWindowsFeatures', 'Get-WeaveWslCommandResult', 'Get-WeaveWslStatusExitCode', 'Ensure-WslAvailable, 'Get-InstalledWslDistributions'))) {
     $pattern = '(?ms)^function ' + [regex]::Escape($name) + ' \{.*?^\}'
     $match = [regex]::Match($content, $pattern)
     if (-not $match.Success) {
@@ -107,6 +107,11 @@ function Invoke-WeaveWslCommand {
     param([string[]]$Arguments, [switch]$Quiet)
     $command = $Arguments -join ' '
     $script:WslCalls.Add($command)
+    if ($command -eq '--list --quiet') {
+        Write-Output 'diagnostic line not carrying an exit code'
+        if ($script:ListHasNoResult) { return }
+        return [PSCustomObject]@{ ExitCode = 0; Output = @('Ubuntu', 'WeaveCBT') }
+    }
     if ($command -eq '--status') {
         $script:WslStatusCount++
         if ($script:WslStatusCount -eq 1) {
@@ -158,4 +163,19 @@ if ($script:WslStatusCount -ne 2) {
     throw 'Expected WSL status to be verified after web-download fallback.'
 }
 
+$script:ListHasNoResult = $false
+$distributions = @(Get-InstalledWslDistributions)
+if ($distributions.Count -ne 2 -or $distributions -notcontains 'WeaveCBT') {
+    throw "WSL distribution enumeration ignored a valid structured result."
+}
+$script:ListHasNoResult = $true
+try {
+    Get-InstalledWslDistributions | Out-Null
+    throw 'Expected missing structured WSL distribution list to fail.'
+}
+catch {
+    if ($_.Exception.Message -notlike '*Failed to list installed WSL distributions*') {
+        throw
+    }
+}
 Write-Output "Windows feature enable/reboot/resume simulation passed."
