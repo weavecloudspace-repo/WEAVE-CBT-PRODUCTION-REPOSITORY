@@ -20,12 +20,12 @@ from app.domains.node.schemas import (
     PairInstallationResponse,
     StoredNodeIdentity,
 )
+from app.integrations.weave.certificates import weave_certificate_gateway
 from app.integrations.weave.installation import (
     WeaveInstallationGateway,
     weave_installation_gateway,
 )
 from app.integrations.weave.schemas import WeavePairingRequest
-from app.integrations.weave.certificates import weave_certificate_gateway
 
 
 class NodeService:

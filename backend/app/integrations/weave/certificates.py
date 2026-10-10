@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
+from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
 
 from app.integrations.weave.client import WeaveClient, weave_client
 from app.integrations.weave.exceptions import WeaveContractError

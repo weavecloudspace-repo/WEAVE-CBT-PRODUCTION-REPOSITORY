@@ -2,7 +2,7 @@
 
 import os
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -12,6 +12,7 @@ os.environ.setdefault(
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
 from pydantic import SecretStr
+
 from app.integrations.weave.certificates import WeaveCertificateGateway, verify_hostname
 from app.integrations.weave.exceptions import WeaveContractError
 
@@ -52,7 +53,7 @@ class CertificateGatewayTests(unittest.IsolatedAsyncioTestCase):
             "id": str(uuid4()), "hostname": self.hostname,
             "fqdn": "_acme-challenge." + self.hostname,
             "status": "created",
-            "expires_at": datetime.now(timezone.utc).isoformat(),
+            "expires_at": datetime.now(UTC).isoformat(),
             "ttl": 300,
         }
         await self.gateway.create(
