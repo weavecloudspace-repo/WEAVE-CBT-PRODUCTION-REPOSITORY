@@ -24,6 +24,8 @@ def tls(
 ) -> None:
     """Issue and maintain a browser-trusted certificate for this paired machine."""
     banner("HTTPS certificates")
+    # Direct Python callers may leave this Typer OptionInfo default unset.
+    activate = activate is True
     try:
         if int(dry_run) + int(renew) + int(activate) > 1:
             raise RuntimeError("--dry-run, --renew, and --activate cannot be combined")
