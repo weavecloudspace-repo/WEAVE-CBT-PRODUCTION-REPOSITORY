@@ -377,6 +377,10 @@ def refresh_if_configured(data: Path, *, runtime_type: str) -> None:
     """Reconcile a previously opted-in LAN listener after WSL starts."""
     if runtime_type == "wsl2" and _state_path(data).exists():
         configure(data, refresh=True)
+        if (data / "tls-lan.json").exists():
+            from weave_cli.commands.lan_tls import reconcile
+
+            reconcile(data)
 
 
 def lan(

@@ -59,6 +59,10 @@ def tls(
         stack.compose._run_compose_command(
             command=["exec", "-T", "nginx", "nginx", "-s", "reload"]
         )
+        if stack.installation.runtime_type == "wsl2":
+            from weave_cli.commands.lan_tls import reconcile
+
+            reconcile(stack.installation.data_directory)
         success("TLS is configured. Verify LAN DNS and HTTPS from another computer.")
     except (*COMMAND_ERRORS, RuntimeError, OSError) as exc:
         fail(exc)
