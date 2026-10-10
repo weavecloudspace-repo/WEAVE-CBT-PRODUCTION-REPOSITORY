@@ -21,6 +21,10 @@ function Invoke-WeaveWslCommand {
     $command = $Arguments -join ' '
     $script:WslCalls.Add($command)
     if ($command -eq '--version') {
+        Write-Output 'Additional WSL version probe diagnostics'
+        if ($script:Mode -eq 'missing-record') {
+            return
+        }
         if ($script:Mode -eq 'inbox') {
             return [PSCustomObject]@{ExitCode = 1; Output = @()}
         }
@@ -39,4 +43,15 @@ if ($script:WslCalls -notcontains '--update --web-download') { throw 'Official W
 $count = $script:WslCalls.Count
 Ensure-WslSystemdSupport
 if ($script:WslCalls.Count -ne $count + 1) { throw 'Healthy modern WSL was updated unnecessarily.' }
+$script:WslCalls.Clear()
+$script:Mode = 'missing-record'
+Ensure-WslSystemdSupport
+if ($script:WslCalls -notcontains '--update --web-download') {
+    throw 'Expected official WSL update if the version probe returns no ExitCode.'
+}
+$script:WslCalls.Clear()
+Ensure-WslSystemdSupport
+if ($script:WslCalls.Count -ne 1) {
+    throw 'Expected a healthy installed WSL to skip updates despite extra version diagnostic output.'
+}
 Write-Output 'Windows PowerShell WSL systemd version/update simulation passed.'
