@@ -784,7 +784,8 @@ function Ensure-WslSystemdSupport {
     # Microsoft's inbox/older WSL can report --status successfully but cannot
     # support systemd. Modern WSL 0.67.6+ is a hard prerequisite.
     Write-WeaveCheck "Verifying modern Microsoft WSL with systemd support."
-    $version = Invoke-WeaveWslCommand -Arguments @("--version") -CaptureOutput -TimeoutSeconds 90
+    $versionRecords = @(Invoke-WeaveWslCommand -Arguments @("--version") -CaptureOutput -TimeoutSeconds 90)
+    $version = Get-WeaveWslCommandResult -Records $versionRecords -Operation "WSL version check"
     $wslVersion = $null
     if ($version.ExitCode -eq 0) {
         $versionText = (($version.Output -join " ") -replace [char]0, "")
@@ -821,7 +822,8 @@ function Ensure-WslSystemdSupport {
         throw "Unable to update Microsoft WSL (exit $($updated.ExitCode)). WSL 0.67.6+ is required for systemd. Check Windows build, HTTPS access and Microsoft WSL availability."
     }
 
-    $version = Invoke-WeaveWslCommand -Arguments @("--version") -CaptureOutput -TimeoutSeconds 90
+    $versionRecords = @(Invoke-WeaveWslCommand -Arguments @("--version") -CaptureOutput -TimeoutSeconds 90)
+    $version = Get-WeaveWslCommandResult -Records $versionRecords -Operation "WSL version check"
     if ($version.ExitCode -ne 0) {
         throw "Microsoft WSL does not recognize --version after update. A modern WSL release with systemd support is required."
     }
