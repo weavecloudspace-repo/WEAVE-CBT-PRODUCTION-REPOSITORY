@@ -235,6 +235,15 @@ export function SetupFlow({ view, error, installation, dispatch, onPair }) {
             <h1>Successfully Paired!</h1>
             <p>This CBT server is now connected to {installation.status?.tenant_name || 'your Weave school account'}.</p>
             <div className="setup-success-info"><Pictogram name="server" size={21} /><span>Your server is set up and ready to use. School data may continue preparing in the background.</span></div>
+            {installation.status?.hostname && (
+              <div className="setup-success-info" aria-label="Assigned CBT server hostname">
+                <Pictogram name="server" size={21} />
+                <span style={{ overflowWrap: 'anywhere' }}>
+                  <strong>Assigned HTTPS address:</strong> https://{installation.status.hostname}
+                  <small style={{ display: 'block' }}>HTTPS becomes available after certificate setup and school LAN DNS configuration.</small>
+                </span>
+              </div>
+            )
             <button className="setup-primary" onClick={() => dispatch({ type: 'view', view: 'landing' })}>Continue to Home <Pictogram name="arrow" size={19} /></button>
           </div>
           <p className="product-script setup-success-script" aria-hidden="true">Same tools.<br />Brighter learning.</p>
