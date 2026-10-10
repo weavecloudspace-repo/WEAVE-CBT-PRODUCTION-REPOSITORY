@@ -86,7 +86,17 @@ def discover(*, windows: bool | None = None, packaged: Path | None = None) -> Di
             issue = f"CLI metadata is unreadable: {exc}"
     path = state_path(windows=windows)
     installation = None
-    if path.exists():
+    try:
+        state_available = path.is_file()
+        # Root-owned Linux installation state may be unreadable to the GUI.
+        # Distinguish that from a genuinely absent installation.
+        path.stat()
+    except FileNotFoundError:
+        state_available = False
+    except PermissionError:
+        state_available = False
+        issue = "CBT installation state requires Administrator access. Run a privileged diagnostic before installing."
+    if state_available:
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
             if (isinstance(raw, dict)
