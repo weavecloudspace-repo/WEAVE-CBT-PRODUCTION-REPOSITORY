@@ -145,6 +145,7 @@ jobs:
       always() &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master') &&
+      (github.event_name != 'workflow_dispatch' || inputs.approve_production == true) &&
       !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     outputs:
       image: ${{ steps.digest.outputs.image || steps.reuse.outputs.image }}
