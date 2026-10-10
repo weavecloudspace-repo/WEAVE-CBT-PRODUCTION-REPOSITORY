@@ -121,6 +121,9 @@ function Invoke-WeaveWslCommand {
     }
     if ($command -eq '--install --no-distribution') {
         Write-Output 'WSL installer emitted additional native output.'
+        if ($script:InstallMode -eq 'native-fails') {
+            return [PSCustomObject]@{ExitCode = 1}
+        }
         if ($script:InstallMode -eq 'missing-record') {
             # The exact failure seen on Windows: no usable ExitCode record.
             return
@@ -129,6 +132,9 @@ function Invoke-WeaveWslCommand {
     }
     if ($command -eq '--install --no-distribution --web-download') {
         Write-Output 'Official WSL web-download is finishing.'
+        if ($script:InstallMode -eq 'native-fails') {
+            return [PSCustomObject]@{ExitCode = 1}
+        }
         return [PSCustomObject]@{ExitCode = 0}
     }
     return [PSCustomObject]@{ExitCode = 0}
@@ -161,6 +167,22 @@ if ($script:WslCalls -notcontains '--install --no-distribution --web-download') 
 }
 if ($script:WslStatusCount -ne 2) {
     throw 'Expected WSL status to be verified after web-download fallback.'
+}
+
+# If the native WSL installer refuses both normal methods, the official
+# Microsoft MSI must be installed without requiring user intervention.
+$script:WslCalls.Clear()
+$script:WslStatusCount = 0
+$script:SavedState = $null
+$script:InstallMode = 'native-fails'
+$script:MsiInstallCount = 0
+function Install-LatestMicrosoftWslMsi { $script:MsiInstallCount++ }
+Ensure-WslAvailable
+if ($script:MsiInstallCount -ne 1) {
+    throw 'Expected automatic Microsoft WSL MSI fallback when native commands fail.'
+}
+if ($script:WslCalls -notcontains '--install --no-distribution --web-download') {
+    throw 'Expected both built-in WSL commands before MSI fallback.'
 }
 
 $script:ListHasNoResult = $false
