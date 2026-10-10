@@ -291,7 +291,7 @@ class Desktop(QMainWindow):
                 self, "Administrator permission required",
                 "This operation changes local services and requires administrator permission. Relaunch with elevated privileges?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            if outcome == QMessageBox.Yes and elevate_gui():
+            if outcome == QMessageBox.Yes and elevate_gui(command):
                 QApplication.quit()
             return
         args = ["lan", "--refresh"] if command == "lan_refresh" else [command]
@@ -369,6 +369,12 @@ def main():
         ui.close()
         return
     ui.show()
+    if "--auto-command" in sys.argv:
+        index = sys.argv.index("--auto-command") + 1
+        if index < len(sys.argv):
+            operation = sys.argv[index]
+            if operation in {"install", "start", "stop", "restart", "lan_refresh"}:
+                QTimer.singleShot(0, lambda: ui.run(operation))
     sys.exit(app.exec())
 
 
