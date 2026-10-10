@@ -366,7 +366,11 @@ def main():
     app.setFont(QFont("Segoe UI", 10))
     ui = Desktop()
     if "--smoke-test" in sys.argv:
-        print("WEAVE GUI ready", flush=True)
+        wizard = SetupWizard(ui, resource("theme.qss").parent)
+        if len(wizard.pageIds()) != 3:
+            raise RuntimeError("WEAVE first-launch setup wizard is incomplete")
+        wizard.close()
+        print("WEAVE GUI and setup wizard ready", flush=True)
         ui.close()
         return
     ui.show()
