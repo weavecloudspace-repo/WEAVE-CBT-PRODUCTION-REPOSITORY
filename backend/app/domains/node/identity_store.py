@@ -185,6 +185,43 @@ class NodeIdentityStore:
     # INITIAL PERSISTENCE
     # ==========================#
 
+    def update_hostname(self, *, server_id, hostname: str) -> StoredNodeIdentity:
+        """Atomically update only the public hostname of an existing machine identity.
+
+        The caller must hold pairing_lock to serialize identity changes across
+        all local API processes. Machine credentials and owner never change.
+        """
+        from app.integrations.weave.certificates import verify_hostname
+
+        valid_hostname = verify_hostname(hostname)
+        identity = self.load()
+        if identity.server_id != server_id:
+            raise NodeIdentityCorruptError("Paired machine identity changed")
+        if identity.hostname == valid_hostname:
+            return identity
+        updated = identity.model_copy(update={"hostname": valid_hostname})
+        payload = updated.model_dump(mode="json", exclude={"server_credential"})
+        payload["server_credential"] = updated.server_credential.get_secret_value()
+        serialized = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+        temporary_path = (
+            self.storage_path / f".hostname--{os.getpid()}--{secrets.token_hex(8)}.tmp"
+        )
+        try:
+            self._write_temporary_file(temporary_path, serialized)
+            os.replace(temporary_path, self.identity_path)
+            self._restrict_file_permissions(self.identity_path)
+            self._sync_storage_directory()
+        except OSError as exc:
+            raise NodeIdentityStorageError(
+                "Unable to securely persist CBT hostname"
+            ) from exc
+        finally:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return updated
+
     def save_initial(self, identity: StoredNodeIdentity) -> None:
         """
         Persist the initial Weave-issued node identity

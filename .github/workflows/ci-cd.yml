@@ -529,6 +529,7 @@ jobs:
           Copy-Item build\cli\weave.exe build\payload\weave.exe
           Copy-Item deployment\compose.yaml build\payload\assets\compose.yaml
           Copy-Item deployment\nginx build\payload\assets\nginx -Recurse
+          Copy-Item deployment\certificates build\payload\assets\certificates -Recurse
           Copy-Item deployment\bootstrap build\payload\assets\bootstrap -Recurse
           python deployment\distribution\make_manifest.py --channel $env:CHANNEL --image $env:CBT_IMAGE --version "1.0.$env:GITHUB_RUN_NUMBER" --destination build\payload\assets\release-manifest.json
           if ($LASTEXITCODE -ne 0) { throw "Manifest generation failed." }
@@ -638,7 +639,7 @@ jobs:
           install -m 0755 build/cli/weave build/package/weave-cbt/weave
           install -m 0755 deployment/distribution/linux/install.sh build/package/weave-cbt/install.sh
           cp deployment/compose.yaml build/package/weave-cbt/assets/
-          cp -R deployment/nginx deployment/bootstrap build/package/weave-cbt/assets/
+          cp -R deployment/nginx deployment/bootstrap deployment/certificates build/package/weave-cbt/assets/
           python deployment/distribution/make_manifest.py --channel "$CHANNEL" --image "$CBT_IMAGE" --version "1.0.$GITHUB_RUN_NUMBER" --destination build/package/weave-cbt/assets/release-manifest.json
           build/package/weave-cbt/weave release
           tar -C build/package -czf "dist/weave-cbt-$CHANNEL-linux-amd64.tar.gz" weave-cbt

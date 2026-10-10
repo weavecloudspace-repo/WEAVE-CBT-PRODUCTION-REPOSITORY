@@ -20,6 +20,7 @@ from app.domains.node.schemas import (
     PairInstallationResponse,
     StoredNodeIdentity,
 )
+from app.integrations.weave.certificates import weave_certificate_gateway
 from app.integrations.weave.installation import (
     WeaveInstallationGateway,
     weave_installation_gateway,
@@ -62,10 +63,25 @@ class NodeService:
             configured=True,
             server_id=identity.server_id,
             server_name=identity.server_name,
+            hostname=identity.hostname,
             tenant_id=identity.tenant_id,
             tenant_name=identity.tenant_name,
             paired_at=identity.paired_at,
         )
+
+    async def refresh_hostname(self) -> InstallationStatus:
+        """Recover or refresh the machine's official DNS hostname without re-pairing."""
+        async with self.identity_store.pairing_lock():
+            identity = self.identity_store.load()
+            hostname = await weave_certificate_gateway.hostname(
+                credential=identity.server_credential, server_id=identity.server_id
+            )
+            await asyncio.to_thread(
+                self.identity_store.update_hostname,
+                server_id=identity.server_id,
+                hostname=hostname,
+            )
+        return self.get_installation_status()
 
     async def pair_installation(
         self,
@@ -109,6 +125,7 @@ class NodeService:
             identity = StoredNodeIdentity(
                 server_id=weave_result.server_id,
                 server_name=weave_result.server_name,
+                hostname=weave_result.hostname,
                 server_credential=weave_result.server_credential,
                 tenant_id=weave_result.tenant.id,
                 tenant_name=weave_result.tenant.name,
@@ -124,6 +141,7 @@ class NodeService:
                 configured=True,
                 server_id=identity.server_id,
                 server_name=identity.server_name,
+                hostname=identity.hostname,
                 tenant_id=identity.tenant_id,
                 tenant_name=identity.tenant_name,
                 paired_at=identity.paired_at,

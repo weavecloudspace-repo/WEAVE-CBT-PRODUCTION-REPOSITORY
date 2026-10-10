@@ -83,6 +83,11 @@ class DockerCompose:
                 "-p",
                 self.project_name,
             ]
+            + (
+                ["--profile", "tls"]
+                if (self.env_file.parent / "tls.enabled").exists()
+                else []
+            )
             + command,
             stream=stream,
             timeout=None if stream and timeout == DEFAULT_TIMEOUT else timeout,

@@ -35,6 +35,8 @@ class StoredNodeIdentity(BaseModel):
         max_length=150,
     )
 
+    hostname: str | None = Field(default=None, max_length=253)
+
     server_credential: SecretStr
 
     tenant_id: UUID
@@ -63,6 +65,7 @@ class InstallationStatus(BaseModel):
 
     server_id: UUID | None = None
     server_name: str | None = None
+    hostname: str | None = None
 
     tenant_id: UUID | None = None
     tenant_name: str | None = None
@@ -118,6 +121,7 @@ class PairInstallationResponse(BaseModel):
 
     server_id: UUID
     server_name: str
+    hostname: str | None = None
 
     tenant_id: UUID
     tenant_name: str
