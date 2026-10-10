@@ -61,9 +61,14 @@ VersionInfoProductVersion={#VersionString}
 [Files]
 ; Both binaries are bundled in this one setup EXE. No ZIP or CLI download is
 ; required on the school computer, including when internet is unavailable.
-Source: "{#PayloadDir}\weave.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PayloadDir}\weave.exe"; DestDir: "{app}"; Flags: ignoreversion uninsneveruninstall
 Source: "{#DesktopExe}"; DestDir: "{app}"; DestName: "WEAVE-CBT-Desktop.exe"; Flags: ignoreversion
-Source: "{#PayloadDir}\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PayloadDir}\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs uninsneveruninstall
+
+[Registry]
+; Makes the CLI available in a new terminal. Never remove an existing PATH
+; entry, and leave the CLI available when only the desktop app is uninstalled.
+Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Check: NeedsPathEntry; Flags: preservestringtype
 
 [Icons]
 Name: "{autoprograms}\WEAVE CBT Desktop Manager"; Filename: "{app}\WEAVE-CBT-Desktop.exe"; WorkingDir: "{app}"
@@ -84,6 +89,20 @@ var
   ServerStatus: TNewStaticText;
   ChannelStatus: TNewStaticText;
 
+function NeedsPathEntry(): Boolean;
+var
+  ExistingPath: String;
+  Needle: String;
+begin
+  if not RegQueryStringValue(HKLM, 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', 'Path', ExistingPath) then
+  begin
+    Result := True;
+    Exit;
+  end;
+  Needle := ';' + Uppercase(ExpandConstant('{app}')) + ';';
+  Result := Pos(Needle, ';' + Uppercase(ExistingPath) + ';') = 0;
+end;
+
 function ExistingManifest(): String;
 var
   ManifestPath: String;
@@ -100,6 +119,12 @@ var
 begin
   Result := True;
   Manifest := ExistingManifest();
+  if FileExists(ExpandConstant('{autopf}\WeaveCBT\weave.exe')) and (Manifest = '') then
+  begin
+    MsgBox('An existing WEAVE CLI was found without a verifiable release manifest. Setup will not overwrite an unknown installation. Please repair the existing CLI installation first.', mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
   if (Manifest <> '') and
       (Pos('"channel": "staging"', Manifest) > 0) and ('{#Channel}' <> 'staging') then
   begin
