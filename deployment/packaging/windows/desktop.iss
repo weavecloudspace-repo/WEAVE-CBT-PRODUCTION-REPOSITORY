@@ -106,11 +106,12 @@ end;
 function ExistingManifest(): String;
 var
   ManifestPath: String;
+  FileData: AnsiString;
 begin
   ManifestPath := ExpandConstant('{autopf}\WeaveCBT\assets\release-manifest.json');
   Result := '';
-  if FileExists(ManifestPath) then
-    LoadStringFromFile(ManifestPath, Result);
+  if FileExists(ManifestPath) and LoadStringFromFile(ManifestPath, FileData) then
+    Result := String(FileData);
 end;
 
 function InitializeSetup(): Boolean;
