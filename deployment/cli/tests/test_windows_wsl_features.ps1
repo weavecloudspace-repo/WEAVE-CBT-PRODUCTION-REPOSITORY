@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 $scriptPath = Join-Path $PSScriptRoot '..\..\bootstrap\windows\bootstrap.ps1'
 $content = Get-Content -LiteralPath $scriptPath -Raw
-foreach ($name in @('Ensure-WslWindowsFeatures', 'Get-WeaveWslStatusExitCode', 'Ensure-WslAvailable')) {
+foreach ($name in @('Ensure-WslWindowsFeatures', 'Get-WeaveWslCommandResult', 'Get-WeaveWslStatusExitCode', 'Ensure-WslAvailable')) {
     $pattern = '(?ms)^function ' + [regex]::Escape($name) + ' \{.*?^\}'
     $match = [regex]::Match($content, $pattern)
     if (-not $match.Success) {
@@ -91,6 +91,7 @@ $script:SavedState = [PSCustomObject]@{
 $script:RemovedState = $false
 $script:WslCalls = New-Object 'System.Collections.Generic.List[string]'
 $script:WslStatusCount = 0
+$script:InstallMode = 'normal'
 $script:RebootRequiredExitCode = 3010
 
 function Read-BootstrapState { return $script:SavedState }
@@ -113,6 +114,18 @@ function Invoke-WeaveWslCommand {
             return [PSCustomObject]@{ExitCode = 1}
         }
     }
+    if ($command -eq '--install --no-distribution') {
+        Write-Output 'WSL installer emitted additional native output.'
+        if ($script:InstallMode -eq 'missing-record') {
+            # The exact failure seen on Windows: no usable ExitCode record.
+            return
+        }
+        return [PSCustomObject]@{ExitCode = 0}
+    }
+    if ($command -eq '--install --no-distribution --web-download') {
+        Write-Output 'Official WSL web-download is finishing.'
+        return [PSCustomObject]@{ExitCode = 0}
+    }
     return [PSCustomObject]@{ExitCode = 0}
 }
 
@@ -126,6 +139,23 @@ if ($script:WslCalls -notcontains '--install --no-distribution') {
 }
 if ($script:WslStatusCount -ne 2) {
     throw "Expected WSL status to be checked twice."
+}
+
+
+# Fresh host: initial installer command returns only a diagnostic and no
+# structured result. Bootstrap must fall back to Microsoft's web-download
+# method rather than throwing PropertyNotFoundStrict on ExitCode.
+$script:WslCalls.Clear()
+$script:WslStatusCount = 0
+$script:SavedState = $null
+$script:RemovedState = $false
+$script:InstallMode = 'missing-record'
+Ensure-WslAvailable
+if ($script:WslCalls -notcontains '--install --no-distribution --web-download') {
+    throw 'Expected official WSL web-download fallback after missing install ExitCode.'
+}
+if ($script:WslStatusCount -ne 2) {
+    throw 'Expected WSL status to be verified after web-download fallback.'
 }
 
 Write-Output "Windows feature enable/reboot/resume simulation passed."
