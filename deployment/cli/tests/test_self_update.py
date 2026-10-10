@@ -11,6 +11,7 @@ class ManagerUpdateTests(unittest.TestCase):
     def test_strict_version_parser(self):
         self.assertEqual(self_update._version("staging-1.0.1501"), (1, 0, 1501))
         self.assertEqual(self_update._version("v1.0.1501"), (1, 0, 1501))
+        self.assertEqual(self_update._version("1.0.1501"), (1, 0, 1501))
         with self.assertRaises(self_update.ManagerUpdateError):
             self_update._version("staging-1x0x1501")
 

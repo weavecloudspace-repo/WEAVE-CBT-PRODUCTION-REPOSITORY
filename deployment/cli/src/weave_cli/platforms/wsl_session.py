@@ -67,7 +67,7 @@ while ($true) {{
 # Task Scheduler can briefly display powershell.exe even with -WindowStyle Hidden.
 # Use the stock Windows Script Host GUI executable as the windowless launcher.
 $wscriptExecutable = Join-Path $env:SystemRoot 'System32\wscript.exe'
-$helperDirectory = Join-Path $env:ProgramData 'WeaveCBT'
+$helperDirectory = Join-Path $env:ProgramFiles 'WeaveCBT'
 $helperPath = Join-Path $helperDirectory 'weave-wsl-keeper.vbs'
 $arguments = '//B //NoLogo "' + $helperPath + '"'
 $needsUpdate = -not $task

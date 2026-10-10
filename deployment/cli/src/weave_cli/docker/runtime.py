@@ -110,6 +110,11 @@ class DockerRuntime:
                                 if not chunk:
                                     break
                                 last_progress[0] = time.monotonic()
+                                if os.name == "nt":
+                                    # WSL progress uses CR to redraw a row.
+                                    # Convert to normal line breaks in Windows
+                                    # redirected pipes, keeping Docker exit codes.
+                                    chunk = chunk.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
                                 try:
                                     sys.stdout.buffer.write(chunk)
                                     sys.stdout.buffer.flush()

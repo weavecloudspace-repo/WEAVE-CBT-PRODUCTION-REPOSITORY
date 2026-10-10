@@ -23,7 +23,7 @@ from weave_cli.commands.install import _assets_root, _read_release_manifest
 
 _REPO = "weavecloudspace-repo/WEAVE-CBT-PRODUCTION-REPOSITORY"
 _RELEASES = f"https://api.github.com/repos/{_REPO}/releases?per_page=50"
-_VERSION = re.compile(r"^(?:staging-|v)([0-9]+)\.([0-9]+)\.([0-9]+)$")
+_VERSION = re.compile(r"^(?:staging-|v)?([0-9]+)\.([0-9]+)\.([0-9]+)$")
 _HASH = re.compile(r"^[a-f0-9]{64}$")
 
 
