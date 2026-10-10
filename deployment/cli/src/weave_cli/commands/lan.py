@@ -58,9 +58,15 @@ def _run(args: list[str], *, timeout: int = 30) -> str:
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise LanError(f"Windows network command could not complete: {exc}") from exc
     if result.returncode:
+        detail = (result.stderr or result.stdout).strip()[:350]
+        if not detail:
+            detail = (
+                "Windows returned no diagnostic text. Verify Administrator elevation, "
+                "the IP Helper service, and Windows Firewall service; rerun the "
+                "failed command from an elevated terminal."
+            )
         raise LanError(
-            f"Windows network command failed (exit {result.returncode}): "
-            f"{(result.stderr or result.stdout).strip()[:350]}"
+            f"{Path(args[0]).name} failed (exit {result.returncode}): {detail}"
         )
     return result.stdout.strip()
 
@@ -129,18 +135,51 @@ def _add_firewall(address: str, subnet: str) -> None:
 
 
 def _verify_firewall(address: str, subnet: str) -> None:
-    _powershell(
+    """Verify the *exact* owned firewall scope despite Windows CIDR normalization.
+
+    Windows serializes 192.168.1.0/24 as 192.168.1.0/255.255.255.0 on
+    some builds.  Inspect the returned values as networks, never as strings.
+    """
+    raw = _powershell(
+        "$ErrorActionPreference = 'Stop'; "
         "$r = Get-NetFirewallRule -Name '" + RULE + "' -ErrorAction Stop; "
         "$a = $r | Get-NetFirewallAddressFilter; "
         "$p = $r | Get-NetFirewallPortFilter; "
-        "if ($r.Direction -ne 'Inbound' -or $r.Action -ne 'Allow' "
-        "-or $r.Enabled -ne 'True' -or $p.Protocol -ne 'TCP' "
-        "-or $p.LocalPort -ne '80' -or "
-        "@($a.LocalAddress) -notcontains '" + address + "' -or "
-        "@($a.RemoteAddress) -notcontains '" + subnet + "') { "
-        "throw 'WEAVE firewall rule differs from its recorded private LAN scope.' }"
+        "$data = @{ "
+        "Direction = [string]$r.Direction; Action = [string]$r.Action; "
+        "Enabled = [string]$r.Enabled; Profile = [string]$r.Profile; "
+        "Protocol = [string]$p.Protocol; "
+        "LocalPort = @($p.LocalPort | ForEach-Object { [string]$_ }); "
+        "LocalAddress = @($a.LocalAddress | ForEach-Object { [string]$_ }); "
+        "RemoteAddress = @($a.RemoteAddress | ForEach-Object { [string]$_ }) "
+        "}; ConvertTo-Json -InputObject $data -Compress -Depth 4"
     )
-
+    try:
+        result = json.loads(raw)
+        if not isinstance(result, dict):
+            raise ValueError("Firewall rule result is not an object.")
+        profiles = {x.strip().lower() for x in result["Profile"].split(",")}
+        basic = (
+            result["Direction"].lower() == "inbound"
+            and result["Action"].lower() == "allow"
+            and result["Enabled"].lower() == "true"
+            and profiles <= {"private", "domain"} and bool(profiles)
+            and result["Protocol"].lower() == "tcp"
+            and result["LocalPort"] == ["80"]
+            and result["LocalAddress"] == [address]
+        )
+        remote = result["RemoteAddress"]
+        network = ipaddress.IPv4Network(subnet, strict=True)
+        matches = (
+            isinstance(remote, list) and len(remote) == 1
+            and ipaddress.IPv4Network(remote[0], strict=True) == network
+        )
+        if not basic or not matches:
+            raise ValueError("Firewall rule metadata/scope mismatch.")
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise LanError(
+            "WEAVE firewall rule differs from its recorded private LAN scope."
+        ) from exc
 
 def _state_path(data: Path) -> Path:
     return data / "lan.json"
