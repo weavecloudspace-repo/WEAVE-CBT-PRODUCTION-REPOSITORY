@@ -29,6 +29,8 @@ def tls(
         if not stack.runtime.docker_engine_running():
             raise RuntimeError("Docker Engine could not be started")
         marker = stack.installation.data_directory / "tls.enabled"
+        if renew and not marker.is_file():
+            raise RuntimeError("HTTPS has not been enabled. Run 'weave tls' first.")
         command = ["--profile", "tls", "run", "--rm"]
         if dry_run:
             command.extend(["-e", "WEAVE_ACME_DRY_RUN=true"])
@@ -43,9 +45,18 @@ def tls(
             success("Certificate dry run passed; no trusted certificate installed.")
             return
         if not renew:
+            # Validate candidate HTTPS configuration in an ephemeral Nginx
+            # container before changing the running stack or enabling renewal.
+            stack.compose._run_compose_command(
+                command=["run", "--rm", "--no-deps", "nginx", "nginx", "-t"]
+            )
             # A marker is not a credential. A successful issuance enables the
             # renewal service on all subsequent start/restart commands.
-            fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600) if not marker.exists() else None
+            fd = (
+                os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                if not marker.exists()
+                else None
+            )
             if fd is not None:
                 try:
                     os.write(fd, b"enabled\n")

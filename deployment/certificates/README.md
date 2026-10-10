@@ -13,9 +13,13 @@ remain exclusively on WEAVE Cloud.
    resolves to the CBT host's private LAN IPv4 address. Public A records are
    unnecessary; DNS-01 uses public TXT records managed by WEAVE Cloud.
 4. Install the version-matched CBT release with its certificate assets.
-5. Run: weave tls --dry-run
-6. When the dry run succeeds, run: weave tls
-7. Test HTTPS and hostname resolution from a separate student computer.
+5. For already-paired legacy servers without a hostname, call the local installation
+   hostname-refresh endpoint from the administrator's trusted setup session.
+   A fresh pairing includes the hostname automatically.
+6. Run: weave tls --dry-run
+7. When the dry run succeeds, run: weave tls
+8. Test HTTPS and hostname resolution from a separate student computer.
+   Inspect all interface exposure and restrict public access on Linux hosts.
 
 Windows WSL2 requires a previously configured restricted school LAN listener,
 through the existing weave lan command. The TLS command creates a separate
