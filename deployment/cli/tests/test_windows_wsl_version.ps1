@@ -67,7 +67,7 @@ if ($script:WslCalls.Count -ne 1) {
 # An already-working but outdated WSL must be upgraded automatically.
 $script:WslCalls.Clear()
 $script:Mode = 'modern'
-$script:LatestVersion = [Version]'3.0.1.0'
+$script:LatestVersion = [Version]'3.0.1'
 $script:UsedMsiFallback = $false
 Remove-Item Function:\Install-LatestMicrosoftWslMsi
 function Install-LatestMicrosoftWslMsi {
