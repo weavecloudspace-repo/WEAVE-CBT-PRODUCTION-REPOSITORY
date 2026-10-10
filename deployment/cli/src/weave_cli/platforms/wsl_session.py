@@ -45,6 +45,8 @@ if ($task) {{
 if ($task) {
     Stop-ScheduledTask -TaskName $taskName
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+    $helperPath = Join-Path $env:ProgramData 'WeaveCBT\weave-wsl-keeper.vbs'
+    Remove-Item -LiteralPath $helperPath -Force -ErrorAction SilentlyContinue
 }
 """
     keeper = rf"""
@@ -63,11 +65,18 @@ while ($true) {{
 }}
 """
     return preamble + rf"""
-$powershellExecutable = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-$arguments = '-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand {_encoded(keeper)}'
+# Task Scheduler can briefly display powershell.exe even with -WindowStyle Hidden.
+# Use the stock Windows Script Host GUI executable as the windowless launcher.
+$wscriptExecutable = Join-Path $env:SystemRoot 'System32\wscript.exe'
+$helperDirectory = Join-Path $env:ProgramData 'WeaveCBT'
+$helperPath = Join-Path $helperDirectory 'weave-wsl-keeper.vbs'
+$arguments = '//B //NoLogo "' + $helperPath + '"'
 $needsUpdate = -not $task
 if ($task) {{
-    $needsUpdate = @($task.Actions).Count -ne 1 -or $task.Actions[0].Arguments -ne $arguments
+    $needsUpdate = @($task.Actions).Count -ne 1 -or
+        $task.Actions[0].Execute -ne $wscriptExecutable -or
+        $task.Actions[0].Arguments -ne $arguments -or
+        -not (Test-Path -LiteralPath $helperPath)
 }}
 if ($needsUpdate) {{
     $principalCheck = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -75,7 +84,17 @@ if ($needsUpdate) {{
         throw 'Run weave start as Administrator once to configure WSL session persistence.'
     }}
     if ($task) {{ Stop-ScheduledTask -TaskName $taskName }}
-    $action = New-ScheduledTaskAction -Execute $powershellExecutable -Argument $arguments
+    New-Item -ItemType Directory -Path $helperDirectory -Force | Out-Null
+    # Only Administrators and SYSTEM may modify the script that runs elevated.
+    $powerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $commandLine = '"' + $powerShell + '" -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand {_encoded(keeper)}'
+    $vbCommand = $commandLine.Replace('"', '""')
+    $vbBody = 'Set shell = CreateObject("WScript.Shell")' + [Environment]::NewLine +
+        'result = shell.Run("' + $vbCommand + '", 0, True)' + [Environment]::NewLine
+    Set-Content -LiteralPath $helperPath -Value $vbBody -Encoding Ascii
+    & icacls.exe $helperPath /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
+    if ($LASTEXITCODE -ne 0) {{ throw 'Unable to secure the windowless runtime launcher.' }}
+    $action = New-ScheduledTaskAction -Execute $wscriptExecutable -Argument $arguments
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $identity.Name
     $principal = New-ScheduledTaskPrincipal -UserId $identity.User.Value -LogonType Interactive -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) `
