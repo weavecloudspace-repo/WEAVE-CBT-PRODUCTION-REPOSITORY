@@ -60,7 +60,7 @@ jobs:
           .\deployment\cli\tests\test_windows_wsl_pipes.ps1
 
   image:
-    name: Resolve and verify application image
+    name: Build, verify and publish application image
     if: >-
       (github.event_name == 'push' &&
        (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')) ||
@@ -68,7 +68,7 @@ jobs:
        github.ref == 'refs/heads/master' && inputs.approve_production == true)
     needs: [backend, frontend, bootstrap]
     outputs:
-      image: ${{ steps.digest.outputs.image || steps.reuse.outputs.image }}
+      image: ${{ steps.digest.outputs.image }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
@@ -82,7 +82,6 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
-        if: github.ref != 'refs/heads/staging'
         with:
           driver-opts: |
             image=mirror.gcr.io/moby/buildkit:buildx-stable-1
@@ -90,7 +89,6 @@ jobs:
             [registry."docker.io"]
               mirrors = ["mirror.gcr.io"]
       - name: Build current application image
-        if: github.ref != 'refs/heads/staging'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -106,7 +104,6 @@ jobs:
           cache-from: type=gha,scope=cbt-app
           cache-to: type=gha,mode=max,scope=cbt-app
       - name: Verify fresh bootstrap and browser routes
-        if: github.ref != 'refs/heads/staging'
         env:
           IMAGE: ${{ steps.repository.outputs.name }}:sha-${{ github.sha }}
         run: |
@@ -129,26 +126,26 @@ jobs:
           curl --fail --retry 20 --retry-delay 3 --retry-all-errors http://localhost/openapi.json -o /tmp/openapi.json
           python3 -c 'import json; assert json.load(open("/tmp/openapi.json"))["paths"]'
       - name: Container diagnostics
-        if: failure() && github.ref != 'refs/heads/staging'
+        if: failure()
         run: |
           if [ -f deployment/ci.env ]; then
             docker compose -p weave-cbt-ci -f deployment/compose.yaml --env-file deployment/ci.env logs --no-color --tail 100
           fi
       - name: Stop smoke-test services
-        if: always() && github.ref != 'refs/heads/staging'
+        if: always()
         run: |
           if [ -f deployment/ci.env ]; then
             docker compose -p weave-cbt-ci -f deployment/compose.yaml --env-file deployment/ci.env down --volumes
           fi
       - name: Log in to GitHub Container Registry
-        if: github.ref != 'refs/heads/staging'
+
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish verified image
-        if: github.ref != 'refs/heads/staging'
+
         env:
           IMAGE: ${{ steps.repository.outputs.name }}
         run: |
@@ -159,27 +156,15 @@ jobs:
 
       - name: Resolve published Docker image digest
         id: digest
-        if: github.ref != 'refs/heads/staging'
         env:
           IMAGE: ${{ steps.repository.outputs.name }}
         run: |
           DIGEST=$(docker buildx imagetools inspect "$IMAGE:sha-$GITHUB_SHA" --format '{{.Manifest.Digest}}')
           test -n "$DIGEST"
           echo "image=$IMAGE@$DIGEST" >> "$GITHUB_OUTPUT"
-      # TEMPORARY STAGING-ONLY BYPASS: only Windows bootstrap and test files
-      # changed since image build c9d96c465c3f. Pin its verified immutable digest.
-      # Remove this bypass after publishing the refreshed installer.
-      - name: Reuse last verified staging application image
-        id: reuse
-        if: github.ref == 'refs/heads/staging'
-        env:
-          PINNED_IMAGE: ghcr.io/weavecloudspace-repo/weave-cbt-production-repository@sha256:8596487e40356badf73abfce0b1e0e074ef98d12a35c157b4e83880434514c41
-        run: |
-          echo "image=$PINNED_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "Installer reuses existing published application image: $PINNED_IMAGE" >> "$GITHUB_STEP_SUMMARY"
       - name: Require anonymous GHCR access for zero-login manager installations
         env:
-          PUBLISHED_IMAGE: ${{ steps.digest.outputs.image || steps.reuse.outputs.image }}
+          PUBLISHED_IMAGE: ${{ steps.digest.outputs.image }}
         run: |
           set -Eeuo pipefail
           anonymous_config="$(mktemp -d)"
@@ -332,7 +317,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}
-          CBT_IMAGE: ${{ needs.image.outputs.image }}
         run: |
           set -Eeuo pipefail
           # Require exactly the two compiled manager packages. Prevent
@@ -358,9 +342,4 @@ jobs:
             TAG="v1.0.$GITHUB_RUN_NUMBER"
             PRERELEASE=
           fi
-          if [ "$CHANNEL" = staging ]; then
-            NOTES="Manager from commit $GITHUB_SHA; reuses previously validated CBT application image $CBT_IMAGE without rebuilding it. Install CLI manager, then run weave install."
-          else
-            NOTES="Matched CBT image from commit $GITHUB_SHA. Install CLI manager, then run weave install."
-          fi
-          gh release create "$TAG" "${windows[@]}" "${linux[@]}" dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "WEAVE CBT $TAG" $PRERELEASE --notes "$NOTES"
+          gh release create "$TAG" "${windows[@]}" "${linux[@]}" dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "WEAVE CBT $TAG" $PRERELEASE --notes "Matched CBT image from commit $GITHUB_SHA. Install CLI manager, then run weave install."
