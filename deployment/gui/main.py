@@ -7,21 +7,43 @@ from __future__ import annotations
 
 import ipaddress
 import json
-import os
 import sys
 from datetime import datetime
+from itertools import pairwise
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QProcess, QSettings, QTimer, QUrl, QSize
-from PySide6.QtGui import QDesktopServices, QFont, QIcon, QPixmap
-from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFileDialog, QFrame,
-    QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
-    QMessageBox, QPlainTextEdit, QPushButton, QScrollArea,
-    QStackedWidget, QVBoxLayout, QWidget,
-)
-
 from bridge import discover, elevate_gui, is_admin, state_path
+from PySide6.QtCore import QPointF, QProcess, QRectF, QSettings, QSize, Qt, QTimer, QUrl
+from PySide6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QFont,
+    QIcon,
+    QPainter,
+    QPalette,
+    QPen,
+    QPixmap,
+)
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QFileDialog,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QScrollArea,
+    QStackedWidget,
+    QStyledItemDelegate,
+    QVBoxLayout,
+    QWidget,
+)
 from setup_wizard import SetupWizard
 
 ROOT = Path(__file__).resolve().parent
@@ -29,11 +51,38 @@ RELEASES_URL = "https://github.com/weavecloudspace-repo/WEAVE-CBT-PRODUCTION-REP
 PAGES = ["Overview", "Server", "Network", "Updates", "Diagnostics", "Logs", "Settings"]
 MUTATIONS = {"install", "start", "stop", "restart", "update", "lan", "tls"}
 SERVICES = ("api", "worker", "postgres", "redis", "nginx", "bootstrap")
+SERVICE_DETAILS = {
+    "api": ("FastAPI", "Examination API", "services/fastapi.svg"),
+    "worker": ("WEAVE worker", "Background jobs", "weave-logo-blue.png"),
+    "postgres": ("PostgreSQL", "Examination database", "services/postgresql.svg"),
+    "redis": ("Redis", "Cache & job queue", "services/redis.svg"),
+    "nginx": ("NGINX", "Web gateway", "services/nginx.svg"),
+    "bootstrap": ("WEAVE bootstrap", "Startup & migrations", "weave-logo-blue.png"),
+}
 
 
 def resource(name: str) -> Path:
     paths = (ROOT / "resources" / name, Path(sys.argv[0]).resolve().parent / "resources" / name)
     return next((path for path in paths if path.is_file()), paths[0])
+
+
+def desktop_palette():
+    """Keep native control text readable even when the OS uses a dark theme."""
+    palette = QPalette()
+    colors = {
+        QPalette.Window: "#ffffff", QPalette.WindowText: "#10213b",
+        QPalette.Base: "#ffffff", QPalette.AlternateBase: "#f4f6fa",
+        QPalette.Text: "#10213b", QPalette.Button: "#ffffff",
+        QPalette.ButtonText: "#10213b", QPalette.BrightText: "#ffffff",
+        QPalette.ToolTipBase: "#ffffff", QPalette.ToolTipText: "#10213b",
+        QPalette.Highlight: "#2052d4", QPalette.HighlightedText: "#ffffff",
+        QPalette.PlaceholderText: "#546782",
+    }
+    for role, color in colors.items():
+        palette.setColor(role, QColor(color))
+    for role in (QPalette.Text, QPalette.WindowText, QPalette.ButtonText):
+        palette.setColor(QPalette.Disabled, role, QColor("#52657f"))
+    return palette
 
 
 def label(text="", kind="normal", wrap=False):
@@ -43,18 +92,73 @@ def label(text="", kind="normal", wrap=False):
     return widget
 
 
+def logo_widget(filename, size=36):
+    image = QLabel()
+    image.setFixedSize(size + 12, size + 12)
+    image.setAlignment(Qt.AlignCenter)
+    image.setProperty("kind", "serviceLogo")
+    pixmap = QIcon(str(resource(filename))).pixmap(QSize(size, size))
+    if not pixmap.isNull():
+        image.setPixmap(pixmap)
+    return image
+
+
 def heading(text, size=20):
     item = QLabel(text)
     item.setObjectName("heading")
     item.setFont(QFont("Segoe UI", size, QFont.DemiBold))
+    item.setStyleSheet(f"font-size: {size}px; font-weight: 600;")
+    item.setWordWrap(True)
     return item
+
+
+def navigation_icon(name):
+    """Draw small vector icons without adding an asset or font dependency."""
+    pixmap = QPixmap(20, 20)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setPen(QPen(QColor("#b9cbed"), 1.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+    if name == "Overview":
+        for x, y in ((3, 3), (12, 3), (3, 12), (12, 12)):
+            painter.drawRoundedRect(QRectF(x, y, 5, 5), 1, 1)
+    elif name == "Server":
+        for y in (3, 11):
+            painter.drawRoundedRect(QRectF(2, y, 16, 6), 1.5, 1.5)
+            painter.drawPoint(QPointF(5, y + 3))
+            painter.drawLine(QPointF(11, y + 3), QPointF(15, y + 3))
+    elif name == "Network":
+        painter.drawRoundedRect(QRectF(7, 2, 6, 5), 1, 1)
+        painter.drawLine(10, 7, 10, 11)
+        painter.drawLine(4, 11, 16, 11)
+        for x in (1, 7, 13):
+            painter.drawRoundedRect(QRectF(x, 13, 6, 5), 1, 1)
+    elif name == "Updates":
+        painter.drawArc(QRectF(3, 3, 14, 14), 30 * 16, 285 * 16)
+        painter.drawLine(16, 2, 16, 7)
+        painter.drawLine(12, 7, 16, 7)
+    elif name == "Diagnostics":
+        points = ((1, 10), (5, 10), (8, 4), (11, 16), (14, 10), (19, 10))
+        for start, end in pairwise(points):
+            painter.drawLine(QPointF(*start), QPointF(*end))
+    elif name == "Logs":
+        painter.drawRoundedRect(QRectF(4, 2, 12, 16), 1.5, 1.5)
+        for y in (6, 10, 14):
+            painter.drawLine(7, y, 13, y)
+    else:
+        for y, x in ((4, 7), (10, 13), (16, 7)):
+            painter.drawLine(2, y, 18, y)
+            painter.setBrush(QColor("#14243e"))
+            painter.drawEllipse(QPointF(x, y), 2, 2)
+    painter.end()
+    return QIcon(pixmap)
 
 
 def action(text, handler, style="secondary"):
     widget = QPushButton(text)
     widget.setProperty("kind", style)
     widget.setCursor(Qt.PointingHandCursor)
-    widget.setMinimumHeight(39)
+    widget.setMinimumHeight(38)
     widget.clicked.connect(handler)
     return widget
 
@@ -63,7 +167,7 @@ def panel(kind="card"):
     frame = QFrame()
     frame.setProperty("surface", kind)
     layout = QVBoxLayout(frame)
-    layout.setContentsMargins(22, 20, 22, 20)
+    layout.setContentsMargins(20, 18, 20, 18)
     layout.setSpacing(12)
     return frame, layout
 
@@ -73,17 +177,32 @@ def line_button(text, handler, kind="secondary"):
 
 
 class Metric(QFrame):
-    def __init__(self, title_text, value="Checking", hint=""):
+    def __init__(self, title_text, value="Checking", hint="", logo=None, compact=False):
         super().__init__()
         self.setProperty("surface", "metric")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(6)
-        layout.addWidget(label(title_text.upper(), "eyebrow"))
-        self.value = heading(value, 17)
+        if compact:
+            layout.setContentsMargins(16, 12, 16, 12)
+            layout.setSpacing(4)
+        title = QHBoxLayout()
+        title.addWidget(label(title_text.upper(), "eyebrow"), 1)
+        if logo:
+            image = logo_widget(logo, 24)
+            if compact:
+                image.setFixedSize(28, 28)
+            title.addWidget(image)
+        layout.addLayout(title)
+        self.value = heading(value, 18 if compact else 20)
         self.value.setProperty("status", "muted")
-        layout.addWidget(self.value)
+        if compact:
+            title.addWidget(self.value)
+        else:
+            layout.addWidget(self.value)
         self.hint = label(hint, "muted", True)
+        if compact:
+            self.hint.setStyleSheet("font-size: 12px;")
         layout.addWidget(self.hint)
 
     def set_value(self, text, hint="", state="muted"):
@@ -92,6 +211,59 @@ class Metric(QFrame):
         self.value.style().unpolish(self.value)
         self.value.style().polish(self.value)
         self.hint.setText(hint)
+
+
+class StatusBadge(QLabel):
+    """Give the existing status text a matching, accessible visual treatment."""
+    def __init__(self, text):
+        super().__init__()
+        self.setProperty("kind", "chip")
+        self.setText(text)
+
+    def setText(self, text):
+        super().setText(text)
+        tone = "ok" if text == "RUNNING" else "warning" if text in {
+            "NEEDS ATTENTION", "STATUS UNAVAILABLE",
+        } else "muted"
+        self.setProperty("tone", tone)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+
+class ServiceStatus(QLabel):
+    """Mirror the existing service observation in both desktop pages."""
+    def __init__(self, text="Unknown"):
+        super().__init__()
+        self.mirrors = []
+        self.setProperty("kind", "chip")
+        self.setText(text)
+
+    def add_mirror(self, widget):
+        self.mirrors.append(widget)
+        self.setText(self.text())
+
+    def setText(self, text):
+        super().setText(text)
+        if text == "Completed" or text == "Running / healthy":
+            tone = "ok"
+        elif "unhealthy" in text.lower() or text in {"Exited", "Dead", "Restarting"}:
+            tone = "danger"
+        elif text == "Running":
+            # Container state alone does not establish a passed health check.
+            tone = "info"
+        elif text.endswith(" running"):
+            active, _, total = text.split()[0].partition("/")
+            tone = "info" if active == total else "warning"
+        elif text == "Not reported" or text == "Unknown":
+            tone = "muted"
+        else:
+            tone = "warning"
+        for widget in (self, *self.mirrors):
+            if widget is not self:
+                widget.setText(text)
+            widget.setProperty("tone", tone)
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
 
 
 class ControlCenter(QMainWindow):
@@ -143,28 +315,43 @@ class ControlCenter(QMainWindow):
         sidebar.setObjectName("sidebar")
         sidebar.setFixedWidth(224)
         side = QVBoxLayout(sidebar)
-        side.setContentsMargins(17, 30, 17, 22)
+        side.setContentsMargins(18, 28, 18, 22)
         side.setSpacing(8)
 
         brand = QHBoxLayout()
         image = QLabel()
+        image.setObjectName("brandMark")
+        image.setFixedSize(46, 42)
+        image.setAlignment(Qt.AlignCenter)
         pix = QPixmap(str(resource("weave-logo-blue.png")))
         if not pix.isNull():
-            image.setPixmap(pix.scaled(QSize(48, 38), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            image.setPixmap(pix.scaled(QSize(34, 28), Qt.KeepAspectRatio, Qt.SmoothTransformation))
         brand.addWidget(image)
-        brand.addWidget(heading("WEAVE CBT", 15))
+        brand_text = QVBoxLayout()
+        brand_text.setSpacing(3)
+        brand_text.addWidget(heading("WEAVE CBT", 16))
+        brand_text.addWidget(label("Desktop Manager", "brandCaption"))
+        brand.addLayout(brand_text)
         brand.addStretch()
         side.addLayout(brand)
-        side.addWidget(label("SERVER CONTROL CENTER", "eyebrow"))
         side.addSpacing(26)
+        side.addWidget(label("WORKSPACE", "eyebrow"))
+        side.addSpacing(5)
         self.nav = {}
         for i, page_name in enumerate(PAGES):
             control = action(page_name, lambda checked=False, index=i: self.navigate(index), "nav")
             control.setCheckable(True)
+            control.setIcon(navigation_icon(page_name))
+            control.setIconSize(QSize(20, 20))
             self.nav[i] = control
             side.addWidget(control)
         side.addStretch()
-        side.addWidget(label("LOCAL EXAM INFRASTRUCTURE", "eyebrow", True))
+        footer, footer_layout = panel("sidebarNote")
+        footer_layout.setContentsMargins(14, 14, 14, 14)
+        footer_layout.setSpacing(6)
+        footer_layout.addWidget(label("LOCAL INFRASTRUCTURE", "eyebrow"))
+        footer_layout.addWidget(label("Your server keeps running when this window is closed.", "sidebarHint", True))
+        side.addWidget(footer)
         shell.addWidget(sidebar)
 
         right = QWidget()
@@ -174,12 +361,14 @@ class ControlCenter(QMainWindow):
         header = QFrame()
         header.setObjectName("topbar")
         bar = QHBoxLayout(header)
-        bar.setContentsMargins(30, 16, 30, 16)
-        self.page_name = heading("Overview", 19)
+        bar.setContentsMargins(28, 14, 28, 14)
+        bar.setSpacing(10)
+        bar.addWidget(label("Workspace  /", "muted"))
+        self.page_name = heading("Overview", 14)
         bar.addWidget(self.page_name)
         bar.addStretch()
         self.channel = label("Checking release", "chip")
-        self.connection = label("Checking server", "chip")
+        self.connection = StatusBadge("Checking server")
         bar.addWidget(self.channel)
         bar.addWidget(self.connection)
         bar.addWidget(action("Refresh", self.refresh))
@@ -204,16 +393,20 @@ class ControlCenter(QMainWindow):
 
         css = resource("theme.qss")
         if css.is_file():
-            self.setStyleSheet(css.read_text(encoding="utf-8"))
+            self.setStyleSheet(css.read_text(encoding="utf-8").replace(
+                "__chevron_down__", resource("chevron-down.svg").as_posix()))
 
     def page(self, name, description):
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(34, 28, 34, 35)
-        layout.setSpacing(17)
-        layout.addWidget(heading(name, 24))
-        layout.addWidget(label(description, "muted", True))
-        layout.addSpacing(6)
+        layout.setContentsMargins(28, 26, 28, 28)
+        layout.setSpacing(14)
+        intro = QVBoxLayout()
+        intro.setSpacing(6)
+        intro.addWidget(heading(name, 28))
+        intro.addWidget(label(description, "muted", True))
+        layout.addLayout(intro)
+        layout.addSpacing(2)
         return content, layout
 
     def row(self, *widgets):
@@ -224,67 +417,159 @@ class ControlCenter(QMainWindow):
         return row
 
     def overview_page(self):
-        page, body = self.page("Overview", "One place to operate and monitor this computer's examination infrastructure.")
-
-        hero, box = panel("hero")
-        box.addWidget(label("WEAVE CBT  /  SERVER READINESS", "eyebrow"))
-        box.addWidget(heading("Your examination server, at a glance", 21))
-        self.summary = label("Checking the local installation and services...", "muted", True)
-        box.addWidget(self.summary)
-        body.addWidget(hero)
-
-        metrics = QGridLayout()
-        metrics.setHorizontalSpacing(12)
-        metrics.setVerticalSpacing(12)
-        self.metric_server = Metric("CBT server")
-        self.metric_docker = Metric("Docker runtime")
-        self.metric_database = Metric("PostgreSQL")
-        self.metric_lan = Metric("School network")
-        for i, widget in enumerate((self.metric_server, self.metric_docker, self.metric_database, self.metric_lan)):
-            metrics.addWidget(widget, 0, i)
-        body.addLayout(metrics)
-
-        shortcuts, quick = panel()
-        quick.addWidget(heading("Quick actions", 17))
-        quick.addWidget(label("Only the commands available for this installation are enabled.", "muted"))
+        page = QWidget()
+        body = QVBoxLayout(page)
+        body.setContentsMargins(28, 24, 28, 24)
+        body.setSpacing(16)
+        title = QHBoxLayout()
+        title.addWidget(heading("Welcome back", 28))
+        title.addStretch()
         self.start_btn = action("Start server", lambda: self.run("start"), "primary")
         self.stop_btn = action("Stop server", lambda: self.confirm_operation("stop"), "danger")
         self.restart_btn = action("Restart", lambda: self.confirm_operation("restart"))
         self.install_shortcut = action("Install server", lambda: self.navigate(1), "primary")
-        first = QGridLayout()
-        first.setSpacing(10)
-        for index, control in enumerate((self.install_shortcut, self.start_btn, self.stop_btn, self.restart_btn)):
-            first.addWidget(control, index // 2, index % 2)
-        quick.addLayout(first)
-        second = QGridLayout()
-        second.setSpacing(10)
+        self.lifecycle_grid = QGridLayout()
+        self.lifecycle_grid.setSpacing(8)
+        title.addLayout(self.lifecycle_grid)
+        body.addLayout(title)
+
+        self.metrics_grid = metrics = QGridLayout()
+        metrics.setHorizontalSpacing(12)
+        metrics.setVerticalSpacing(12)
+        self.metric_server = Metric("CBT server", compact=True)
+        self.metric_docker = Metric("Docker runtime", logo="services/docker.svg", compact=True)
+        for i, widget in enumerate((self.metric_server, self.metric_docker)):
+            widget.setMinimumHeight(94)
+            widget.layout().setContentsMargins(18, 16, 18, 16)
+            widget.layout().setSpacing(6)
+            metrics.addWidget(widget, 0, i)
+        body.addLayout(metrics)
+
+        service_health, health = panel()
+        health.setContentsMargins(20, 18, 20, 18)
+        health.setSpacing(14)
+        service_title = QHBoxLayout()
+        service_title.addWidget(heading("Service health", 17))
+        service_title.addStretch()
+        details = action("Details", lambda: self.navigate(1), "disclosure")
+        details.setMinimumHeight(26)
+        details.setProperty("density", "compact")
+        service_title.addWidget(details)
+        health.addLayout(service_title)
+        self.overview_service_grid = QGridLayout()
+        self.overview_service_grid.setSpacing(12)
+        self.overview_service_labels = {}
+        self.overview_service_cards = []
+        for name in SERVICES:
+            title_text, description, logo = SERVICE_DETAILS[name]
+            card, content = panel("serviceCard")
+            card.setToolTip(description)
+            card.setMinimumHeight(78)
+            content.setContentsMargins(14, 12, 14, 12)
+            identity = QHBoxLayout()
+            identity.setSpacing(12)
+            identity.addWidget(logo_widget(logo, 32))
+            text = QVBoxLayout()
+            text.setSpacing(6)
+            text.addWidget(heading(title_text, 15))
+            value = label("Unknown", "chip")
+            value.setProperty("density", "compact")
+            text.addWidget(value, 0, Qt.AlignLeft)
+            identity.addLayout(text, 1)
+            content.addLayout(identity)
+            self.overview_service_labels[name] = value
+            self.overview_service_cards.append(card)
+        health.addLayout(self.overview_service_grid)
+        body.addWidget(service_health)
+
+        access, links = panel()
+        links.setContentsMargins(18, 16, 18, 16)
+        links.setSpacing(12)
+        links.addWidget(heading("Examination portals", 17))
+        copy_address = action("Copy LAN address", self.copy_lan_url)
+        copy_address.setToolTip("LAN access must be tested from another device.")
+        links.addLayout(self.row(
+            action("Open staff portal", lambda: self.open_url("http://127.0.0.1/staff")),
+            action("Open student portal", lambda: self.open_url("http://127.0.0.1/student")),
+        ))
+        links.addWidget(copy_address)
+
+        maintenance, tools = panel()
+        tools.setContentsMargins(18, 16, 18, 16)
+        tools.setSpacing(12)
+        tools.addWidget(heading("Tools & maintenance", 17))
+        tool_actions = QGridLayout()
+        tool_actions.setSpacing(10)
         for index, control in enumerate((
             action("Check updates", lambda: self.navigate(3)),
             action("Run diagnostics", lambda: self.run("doctor")),
             action("Network setup", lambda: self.navigate(2)),
             action("View logs", lambda: self.navigate(5)),
         )):
-            second.addWidget(control, index // 2, index % 2)
-        quick.addLayout(second)
-        body.addWidget(shortcuts)
+            tool_actions.addWidget(control, index // 2, index % 2)
+        tools.addLayout(tool_actions)
+        self.quick_access_grid = QGridLayout()
+        self.quick_access_grid.setSpacing(16)
+        self.quick_access_grid.addWidget(access, 0, 0)
+        self.quick_access_grid.addWidget(maintenance, 0, 1)
+        for column in range(2):
+            self.quick_access_grid.setColumnStretch(column, 1)
+        body.addLayout(self.quick_access_grid)
 
-        access, links = panel()
-        links.addWidget(heading("Open the examination portal", 17))
-        links.addWidget(label("Local access is on this computer. LAN access must be tested from another device.", "muted", True))
-        links.addLayout(self.row(
-            action("Open staff portal", lambda: self.open_url("http://127.0.0.1/staff")),
-            action("Open student portal", lambda: self.open_url("http://127.0.0.1/student")),
-            action("Copy LAN address", self.copy_lan_url),
-        ))
-        body.addWidget(access)
-
-        recent, activity = panel()
-        activity.addWidget(heading("Recent manager activity", 17))
         self.last_activity = label("No actions in this session.", "muted", True)
-        activity.addWidget(self.last_activity)
-        body.addWidget(recent)
+        self.last_activity.hide()
+        self.activity_toggle = QPushButton("Recent activity  +")
+        self.activity_toggle.setProperty("kind", "disclosure")
+        self.activity_toggle.setCursor(Qt.PointingHandCursor)
+        self.activity_toggle.setCheckable(True)
+        self.activity_toggle.toggled.connect(self.last_activity.setVisible)
+        self.activity_toggle.toggled.connect(lambda expanded: self.activity_toggle.setText(
+            "Recent activity  −" if expanded else "Recent activity  +"))
+        body.addWidget(self.activity_toggle, 0, Qt.AlignLeft)
+        body.addWidget(self.last_activity)
+        self.arrange_overview()
         body.addStretch()
         return page
+
+    def arrange_overview(self):
+        """Reflow existing widgets only; their signals and state stay attached."""
+        wide = self.width() >= 1130
+        for i, card in enumerate(self.overview_service_cards):
+            self.overview_service_grid.removeWidget(card)
+            columns = 3
+            self.overview_service_grid.addWidget(card, i // columns, i % columns)
+        for i in range(3):
+            self.overview_service_grid.setColumnStretch(i, 1)
+        controls = (self.install_shortcut, self.start_btn, self.stop_btn, self.restart_btn)
+        for widget in controls:
+            self.lifecycle_grid.removeWidget(widget)
+        if self.desktop.server_installed:
+            # Keep the hidden installation button attached to its original card.
+            self.lifecycle_grid.addWidget(self.install_shortcut, 1, 0)
+            for i, widget in enumerate(controls[1:]):
+                self.lifecycle_grid.addWidget(widget, 0, i)
+        else:
+            for i, widget in enumerate(controls):
+                self.lifecycle_grid.addWidget(widget, i // 2, i % 2)
+        for i in range(3):
+            self.lifecycle_grid.setColumnStretch(i, 1 if self.desktop.server_installed or i < 2 else 0)
+        for i, widget in enumerate((self.metric_server, self.metric_docker)):
+            self.metrics_grid.removeWidget(widget)
+            self.metrics_grid.addWidget(widget, 0, i)
+            self.metrics_grid.setColumnStretch(i, 1)
+        if hasattr(self, "server_cards"):
+            services, progress = self.server_cards
+            for widget in self.server_cards:
+                self.server_grid.removeWidget(widget)
+            self.server_grid.addWidget(services, 0, 0)
+            self.server_grid.addWidget(progress, 0 if wide else 1, 1 if wide else 0)
+            self.server_grid.setColumnStretch(0, 2 if wide else 1)
+            self.server_grid.setColumnStretch(1, 3 if wide else 0)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "quick_access_grid"):
+            self.arrange_overview()
 
     def server_page(self):
         page, body = self.page("Server management", "Lifecycle controls and live service observations, sourced from the WEAVE CLI.")
@@ -292,6 +577,8 @@ class ControlCenter(QMainWindow):
         group.addWidget(heading("Server installation", 17))
         self.install_detail = label("Checking local installation state...", "muted", True)
         group.addWidget(self.install_detail)
+        self.summary = label("Checking the local installation and services...", "muted", True)
+        group.addWidget(self.summary)
         self.install_btn = action("Install WEAVE CBT", self.prepare_install, "primary")
         self.server_start = action("Start", lambda: self.run("start"), "primary")
         self.server_stop = action("Stop", lambda: self.confirm_operation("stop"), "danger")
@@ -302,26 +589,34 @@ class ControlCenter(QMainWindow):
         services, list_layout = panel()
         list_layout.addWidget(heading("Docker services", 17))
         list_layout.addWidget(label("State and health come from Docker Compose; an unavailable service is never shown as healthy.", "muted", True))
+        self.metric_database = Metric("PostgreSQL", logo="services/postgresql.svg", compact=True)
+        list_layout.addWidget(self.metric_database)
         self.service_labels = {}
         for name in SERVICES:
             line = QHBoxLayout()
+            line.setSpacing(10)
+            line.addWidget(logo_widget(SERVICE_DETAILS[name][2], 24))
             line.addWidget(label(name.capitalize(), "service"))
             line.addStretch()
-            value = label("Unknown", "chip")
+            value = ServiceStatus()
+            value.add_mirror(self.overview_service_labels[name])
             line.addWidget(value)
             list_layout.addLayout(line)
             self.service_labels[name] = value
-        body.addWidget(services)
 
         install, install_layout = panel()
         install_layout.addWidget(heading("Operation progress", 17))
-        install_layout.addWidget(label("Commands execute in the background. This panel displays real CLI output.", "muted"))
+        install_layout.addWidget(label("Commands execute in the background. This panel displays real CLI output.", "muted", True))
         self.activity_console = QPlainTextEdit()
         self.activity_console.setReadOnly(True)
         self.activity_console.setMinimumHeight(160)
         self.activity_console.setPlaceholderText("Server operations will appear here.")
         install_layout.addWidget(self.activity_console)
-        body.addWidget(install)
+        self.server_cards = (services, install)
+        self.server_grid = QGridLayout()
+        self.server_grid.setSpacing(16)
+        body.addLayout(self.server_grid)
+        self.arrange_overview()
         body.addStretch()
         return page
 
@@ -331,6 +626,8 @@ class ControlCenter(QMainWindow):
         info.addWidget(heading("LAN access", 17))
         self.network_details = label("Checking network configuration...", "muted", True)
         info.addWidget(self.network_details)
+        self.metric_lan = Metric("School network", compact=True)
+        info.addWidget(self.metric_lan)
         info.addWidget(label(
             "WEAVE only manages its own TCP 80 firewall rule and forwarding entry. "
             "The host network must be Private or Domain. Test access from a student device.",
@@ -432,6 +729,7 @@ class ControlCenter(QMainWindow):
         card, layout = panel()
         layout.addWidget(heading("Logs viewer", 17))
         self.log_service = QComboBox()
+        self.log_service.setItemDelegate(QStyledItemDelegate(self.log_service))
         self.log_service.addItem("All services", "")
         for service in SERVICES:
             self.log_service.addItem(service.capitalize(), service)
@@ -685,6 +983,7 @@ class ControlCenter(QMainWindow):
         for widget in (self.install_btn,):
             widget.setEnabled(ready and not present and not self.desktop.problem)
         self.install_shortcut.setVisible(not present)
+        self.arrange_overview()
         self.start_btn.setEnabled(ready and present)
         self.stop_btn.setEnabled(ready and present)
         self.restart_btn.setEnabled(ready and present)
@@ -948,6 +1247,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("WEAVE CBT Desktop Manager")
     app.setStyle("Fusion")
+    app.setPalette(desktop_palette())
     app.setFont(QFont("Segoe UI", 10))
     brand = resource("weave-logo-blue.png")
     if brand.is_file():
