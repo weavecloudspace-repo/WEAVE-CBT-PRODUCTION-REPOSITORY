@@ -261,7 +261,7 @@ class Desktop(QMainWindow):
              if manager else "CLI manager missing. Repair the desktop package to install the verified bundled CLI.")
             + (f"\n{self.desktop.problem}" if self.desktop.problem else "")
         )
-        self.install_btn.setEnabled(manager and not present and not self.busy)
+        self.install_btn.setEnabled(manager and not present and not self.busy and not self.desktop.problem)
         self.install_action.setVisible(not present)
         self.start_action.setEnabled(present and not self.busy)
         self.stop_action.setEnabled(present and not self.busy)
