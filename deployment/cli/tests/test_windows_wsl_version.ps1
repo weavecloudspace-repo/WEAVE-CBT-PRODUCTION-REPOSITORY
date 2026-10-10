@@ -1,9 +1,11 @@
 $ErrorActionPreference = 'Stop'
 $bootstrap = Join-Path $PSScriptRoot '..\..\bootstrap\windows\bootstrap.ps1'
 $content = Get-Content -LiteralPath $bootstrap -Raw
-$match = [regex]::Match($content, '(?ms)^function Ensure-WslSystemdSupport \{.*?^\}')
-if (-not $match.Success) { throw 'Unable to extract WSL systemd support function.' }
-Invoke-Expression $match.Value
+foreach ($name in @('Get-WeaveWslCommandResult', 'Ensure-WslSystemdSupport')) {
+    $match = [regex]::Match($content, '(?ms)^function ' + [regex]::Escape($name) + ' \{.*?^\}')
+    if (-not $match.Success) { throw "Unable to extract WSL function $name." }
+    Invoke-Expression $match.Value
+}
 
 function Write-WeaveCheck { param([string]$Message) }
 function Write-WeaveAction { param([string]$Message) }
@@ -27,6 +29,7 @@ function Invoke-WeaveWslCommand {
     }
     if ($command -eq '--update --web-download') {
         $script:Mode = 'modern'
+        Write-Output 'Updating official WSL runtime.'
         return [PSCustomObject]@{ExitCode = 0; Output = @()}
     }
     throw "Unexpected WSL command '$command'"
