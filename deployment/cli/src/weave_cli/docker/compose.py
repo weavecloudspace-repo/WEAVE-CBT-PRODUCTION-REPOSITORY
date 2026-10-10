@@ -84,6 +84,14 @@ class DockerCompose:
                 self.project_name,
             ]
             + (
+                # Docker's animated progress uses carriage returns and ANSI cursor
+                # movement, which render incorrectly through Windows -> WSL pipes.
+                # Use stable output for monitored pulls and TLS certificate jobs.
+                ["--ansi", "never", "--progress", "plain"]
+                if stream and stall_timeout is not None
+                else []
+            )
+            + (
                 ["--profile", "tls"]
                 if (self.env_file.parent / "tls.enabled").exists()
                 else []
@@ -267,12 +275,8 @@ psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
         for attempt in range(1, 4):
             print(f"[WEAVE][ACTION] Pulling {', '.join(services)} (attempt {attempt}/3)", flush=True)
             try:
-                # Progress drawn for a Linux terminal is not safe to relay
-                # verbatim through WSL into Windows PowerShell. Force stable,
-                # newline-delimited output without cursor-moving ANSI codes.
-                # These flags precede the 'pull' subcommand (Compose globals).
                 return self._run_compose_command(
-                    command=["--ansi", "never", "--progress", "plain", "pull", *services],
+                    command=["pull", *services],
                     stream=True,
                     timeout=1200,
                     stall_timeout=180,
