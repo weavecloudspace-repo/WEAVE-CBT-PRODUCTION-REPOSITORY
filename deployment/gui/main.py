@@ -284,6 +284,8 @@ class Desktop(QMainWindow):
             QMessageBox.information(self, "Already installed", "WEAVE CBT is already installed. Your data is preserved.")
             return
         needs_admin = command in {"install", "start", "stop", "restart", "lan_refresh"}
+        if sys.platform.startswith("linux") and command in {"status", "doctor", "logs"}:
+            needs_admin = True
         if needs_admin and not is_admin() and sys.platform == "win32":
             outcome = QMessageBox.question(
                 self, "Administrator permission required",
