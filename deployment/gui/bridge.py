@@ -86,8 +86,8 @@ def _safe_excerpt(output: str | bytes | None) -> str:
     if isinstance(output, bytes):
         output = output.decode("utf-8", "replace")
     output = re.sub(
-        r"(?i)\\b(password|token|secret|authorization|api[_-]?key)\\s*[:=]\\s*\\S+",
-        r"\\1=<redacted>", output,
+        r"(?i)\b(password|token|secret|authorization|api[_-]?key)\s*[:=]\s*\S+",
+        r"\1=<redacted>", output,
     )
     return " ".join(output.split())[:240]
 
