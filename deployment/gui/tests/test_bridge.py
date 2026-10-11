@@ -1,10 +1,11 @@
 """The discovery path must remain testable without PySide6, UAC or Docker."""
 import json
+import stat
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import bridge
@@ -28,6 +29,48 @@ class DiscoveryTests(unittest.TestCase):
                 detected = bridge.discover()
                 self.assertTrue(detected.manager_installed)
                 self.assertFalse(detected.server_installed)
+
+    def test_public_linux_state_requires_root_owned_nonwritable_regular_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "weave-cbt-manager.json"
+            marker.write_text(json.dumps({
+                "schema_version": 1, "installed_version": "1.0",
+                "install_directory": "/opt/weave-cbt",
+                "data_directory": "/var/lib/weave-cbt",
+            }))
+            with patch.object(bridge, "PUBLIC_LINUX_STATE", marker):
+                with patch.object(Path, "lstat", return_value=Mock(
+                    st_uid=0, st_mode=stat.S_IFREG | 0o644
+                )):
+                    self.assertEqual(bridge._public_linux_installation()["installed_version"], "1.0")
+                with patch.object(Path, "lstat", return_value=Mock(
+                    st_uid=1001, st_mode=stat.S_IFREG | 0o644
+                )):
+                    self.assertIsNone(bridge._public_linux_installation())
+                with patch.object(Path, "lstat", return_value=Mock(
+                    st_uid=0, st_mode=stat.S_IFREG | 0o666
+                )):
+                    self.assertIsNone(bridge._public_linux_installation())
+                with patch.object(Path, "lstat", return_value=Mock(
+                    st_uid=0, st_mode=stat.S_IFLNK | 0o644
+                )):
+                    self.assertIsNone(bridge._public_linux_installation())
+
+    def test_unreadable_private_linux_state_uses_trusted_public_projection(self):
+        safe_metadata = {
+            "schema_version": 1, "installed_version": "1.0",
+            "install_directory": "/opt/weave-cbt",
+            "data_directory": "/var/lib/weave-cbt",
+        }
+        with patch.object(bridge, "candidates", return_value=[]), \
+             patch.object(bridge, "state_path", return_value=Path("/root-private/install.json")), \
+             patch.object(Path, "is_file", return_value=False), \
+             patch.object(Path, "stat", side_effect=PermissionError), \
+             patch.object(bridge, "_public_linux_installation", return_value=safe_metadata):
+            found = bridge.discover(windows=False)
+        self.assertTrue(found.server_installed)
+        self.assertFalse(found.manager_installed)
+        self.assertEqual(found.installation["installed_version"], "1.0")
 
     def test_state_requires_real_compose_and_env(self):
         with tempfile.TemporaryDirectory() as directory:
