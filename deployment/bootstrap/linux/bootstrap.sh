@@ -181,11 +181,12 @@ docker_is_standardized() {
 
 
 remove_conflicting_packages() {
-    log_check "Checking for packages that conflict with Docker CE."
+    # The school may already host unrelated Docker/Podman services, images
+    # or volumes. A CBT installer must NEVER silently uninstall their runtime.
+    log_check "Checking for existing host container runtime packages."
 
     local package_name
-    local conflicts_found=0
-
+    local -a conflicts=()
     for package_name in \
         docker.io \
         docker-compose \
@@ -197,15 +198,14 @@ remove_conflicting_packages() {
         runc
     do
         if package_installed "$package_name"; then
-            conflicts_found=1
-            log_action "Removing conflicting package '$package_name'."
-            "${APT_GET[@]}" remove -y "$package_name"
+            conflicts+=("$package_name")
         fi
     done
 
-    if [ "$conflicts_found" -eq 0 ]; then
-        log_skip "No conflicting Docker packages are installed."
+    if [ "${#conflicts[@]}" -ne 0 ]; then
+        die "Existing container runtime packages detected: ${conflicts[*]}. Refusing automatic replacement; this host may run unrelated workloads. Have an administrator assess the existing engine, back up its data and explicitly plan any migration before installing WEAVE CBT."
     fi
+    log_skip "No conflicting host container runtime packages detected."
 }
 
 
