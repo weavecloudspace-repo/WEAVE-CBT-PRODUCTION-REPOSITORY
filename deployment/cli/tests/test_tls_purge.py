@@ -27,7 +27,14 @@ class TlsPurgeSafetyTests(unittest.TestCase):
         ]
         with self.assertRaisesRegex(PurgeSafetyError, "tls_certificates"):
             verify_purged_resources(runtime)
-        self.assertNotIn("rm", str(runtime.run_docker_command.call_args_list))
+        # Compare complete Docker subcommands, not substrings:
+        # "--format" contains "rm" but is a read-only listing option.
+        for request in runtime.run_docker_command.call_args_list:
+            arguments = request.args[0]
+            self.assertIn(arguments[0], {"ps", "volume"})
+            self.assertNotIn("rm", arguments)
+            self.assertNotIn("prune", arguments)
+            self.assertNotIn("remove", arguments)
 
     def test_stale_tls_snippet_volume_blocks_reset(self):
         runtime = Mock()
