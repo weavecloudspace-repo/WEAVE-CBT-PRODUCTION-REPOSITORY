@@ -82,7 +82,7 @@ class CliProcessTests(unittest.TestCase):
                  patch.dict(os.environ, {"ProgramFiles": str(Path(root) / "Other")}), \
                  patch.object(bridge.shutil, "which", return_value=None):
                 options = bridge.candidates(windows=True)
-            self.assertIn(Path(root) / "weave.exe", options)
+            self.assertIn((Path(root) / "weave.exe").resolve(), options)
 
 
 if __name__ == "__main__":
