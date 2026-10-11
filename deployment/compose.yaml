@@ -1,5 +1,13 @@
+# Bound Docker's diagnostic buffer independently of the host error archive.
+x-service-logging: &service-logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   postgres:
+    logging: *service-logging
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
@@ -15,6 +23,7 @@ services:
     restart: unless-stopped
 
   redis:
+    logging: *service-logging
     image: redis:7-alpine
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -24,24 +33,28 @@ services:
     restart: unless-stopped
 
   bootstrap:
+    logging: *service-logging
     image: ${WEAVE_IMAGE:?WEAVE_IMAGE is required}
     command: [/app/weave-cbt/weave-cbt, bootstrap]
     # Populate the initially empty Docker volume in one sequential container.
     # This avoids concurrent copy-up of the image's identity/media/branding.
     volumes:
       - weave_data:/var/lib/weave-cbt
+      - ${WEAVE_SERVICE_LOGS_DIR:-./service-logs}:/var/log/weave-cbt
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
       ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
       DEBUG: ${DEBUG:-false}
       WEAVE_API_BASE_URL: ${WEAVE_API_BASE_URL:?WEAVE_API_BASE_URL is required}
+      WEAVE_LOG_DIR: /var/log/weave-cbt
     depends_on:
       postgres:
         condition: service_healthy
     restart: "no"
 
   api:
+    logging: *service-logging
     image: ${WEAVE_IMAGE:?WEAVE_IMAGE is required}
     command: [/app/weave-cbt/weave-cbt, api]
     scale: 3
@@ -51,8 +64,10 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
       DEBUG: ${DEBUG:-false}
       WEAVE_API_BASE_URL: ${WEAVE_API_BASE_URL:?WEAVE_API_BASE_URL is required}
+      WEAVE_LOG_DIR: /var/log/weave-cbt
     volumes:
       - weave_data:/var/lib/weave-cbt
+      - ${WEAVE_SERVICE_LOGS_DIR:-./service-logs}:/var/log/weave-cbt
     expose: ["8000"]
     depends_on:
       postgres:
@@ -65,6 +80,7 @@ services:
     stop_grace_period: 30s
 
   worker:
+    logging: *service-logging
     image: ${WEAVE_IMAGE:?WEAVE_IMAGE is required}
     command: [/app/weave-cbt/weave-cbt, worker]
     environment:
@@ -73,8 +89,10 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
       DEBUG: ${DEBUG:-false}
       WEAVE_API_BASE_URL: ${WEAVE_API_BASE_URL:?WEAVE_API_BASE_URL is required}
+      WEAVE_LOG_DIR: /var/log/weave-cbt
     volumes:
       - weave_data:/var/lib/weave-cbt
+      - ${WEAVE_SERVICE_LOGS_DIR:-./service-logs}:/var/log/weave-cbt
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,6 +104,7 @@ services:
     stop_grace_period: 30s
 
   nginx:
+    logging: *service-logging
     image: nginx:stable-alpine
     ports: ["80:80", "443:443"]
     volumes:

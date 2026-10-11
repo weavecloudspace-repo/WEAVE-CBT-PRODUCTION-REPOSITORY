@@ -6,6 +6,7 @@ from weave_cli.commands import (
     doctor,
     install,
     lan,
+    network,
     logs,
     restart,
     reinstall,
@@ -32,6 +33,7 @@ app = typer.Typer(
 for command in (
     install,
     lan,
+    network,
     start,
     stop,
     restart,

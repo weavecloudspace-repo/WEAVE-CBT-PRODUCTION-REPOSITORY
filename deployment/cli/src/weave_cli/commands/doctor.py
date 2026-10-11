@@ -1,5 +1,7 @@
 """Read-only operational diagnostics for a WEAVE CBT installation."""
 
+import shutil
+
 import typer
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
@@ -32,6 +34,29 @@ def doctor() -> None:
     try:
         stack = get_stack()
         success("Installation state and deployment files are valid.")
+
+        # Read-only host diagnostics make low-disk-space and recent errors visible
+        # before an examination. Missing archives do not affect readiness.
+        try:
+            disk = shutil.disk_usage(stack.installation.data_directory)
+            remaining = disk.free / (1024 ** 3)
+            if remaining < 1:
+                warning(f"Host data drive has only {remaining:.2f} GiB available.")
+            else:
+                success(f"Host data drive has {remaining:.1f} GiB available.")
+        except OSError:
+            warning("Host disk capacity could not be inspected.")
+        try:
+            from weave_cli.commands.error_archive import get_error_records
+
+            latest_errors = get_error_records(stack.installation.data_directory, limit=5)
+            if latest_errors:
+                warning(f"Found {len(latest_errors)} recent archived errors (up to 5 shown).")
+                info("Use 'weave logs --errors' to review these errors.")
+            else:
+                info("No recent archived application errors were found.")
+        except OSError:
+            warning("Error archive is not readable; live 'weave logs' remains available.")
 
         for available, description in (
             (stack.runtime.docker_cli_available(), "Docker CLI"),

@@ -13,12 +13,18 @@ def run_api() -> None:
     from app.core.settings import settings
     from app.main import app
 
-    uvicorn.run(
+    # Uvicorn configures its own named loggers during Config construction.
+    # Register the archive *after* that configuration so API exceptions persist.
+    config = uvicorn.Config(
         app,
         host=settings.HOST,
         port=settings.PORT,
         log_level=settings.LOG_LEVEL.lower(),
     )
+    from app.core.error_logging import configure_error_logging
+
+    configure_error_logging("api")
+    uvicorn.Server(config).run()
 
 
 def run_worker() -> None:
@@ -56,7 +62,17 @@ def main() -> None:
         commands = " | ".join(COMMANDS)
         raise SystemExit(f"Usage: weave-cbt <{commands}>")
 
-    COMMANDS[sys.argv[1]]()
+    mode = sys.argv[1]
+    from app.core.error_logging import configure_error_logging
+    configure_error_logging(mode)
+    try:
+        COMMANDS[mode]()
+    except Exception:
+        import logging
+        logging.getLogger("weave.runtime").exception(
+            "Service terminated unexpectedly", extra={"operation": mode}
+        )
+        raise
 
 
 if __name__ == "__main__":

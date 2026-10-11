@@ -8,12 +8,12 @@ from __future__ import annotations
 import ipaddress
 import json
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from itertools import pairwise
 from pathlib import Path
 
-from bridge import discover, elevate_gui, is_admin, state_path
-from PySide6.QtCore import QPointF, QProcess, QRectF, QSettings, QSize, Qt, QTimer, QUrl
+from bridge import cli_subprocess_environment, discover, elevate_gui, is_admin, read_manager_release_manifest, state_path
+from PySide6.QtCore import QPointF, QProcess, QProcessEnvironment, QRectF, QSettings, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
@@ -49,6 +49,14 @@ from setup_wizard import SetupWizard
 ROOT = Path(__file__).resolve().parent
 RELEASES_URL = "https://github.com/weavecloudspace-repo/WEAVE-CBT-PRODUCTION-REPOSITORY/releases"
 PAGES = ["Overview", "Server", "Network", "Updates", "Diagnostics", "Logs", "Settings"]
+
+
+def cli_qprocess_environment() -> QProcessEnvironment:
+    environment = QProcessEnvironment()
+    for name, value in cli_subprocess_environment().items():
+        environment.insert(name, value)
+    return environment
+
 MUTATIONS = {"install", "start", "stop", "restart", "update", "lan", "tls"}
 SERVICES = ("api", "worker", "postgres", "redis", "nginx", "bootstrap")
 SERVICE_DETAILS = {
@@ -282,6 +290,8 @@ class ControlCenter(QMainWindow):
         self.status = None
         self.busy = False
         self.last_command = ""
+        self.last_arguments = []
+        self.network_suggestion = None
         self.last_error = ""
         self.output_tail = ""
         self.operation_records = []
@@ -626,6 +636,17 @@ class ControlCenter(QMainWindow):
         info.addWidget(heading("LAN access", 17))
         self.network_details = label("Checking network configuration...", "muted", True)
         info.addWidget(self.network_details)
+        info.addWidget(label("Detected host interfaces (read-only)", "field"))
+        self.network_inventory = label(
+            "Click Detect IP and subnet to inspect the host's network interfaces.",
+            "muted", True,
+        )
+        info.addWidget(self.network_inventory)
+        info.addLayout(self.row(
+            action("Detect IP and subnet", lambda: self.run("network", ["info", "--json"]), "primary"),
+            action("Network doctor", lambda: self.run("network", ["doctor"])),
+            action("Copy student URL", self.copy_lan_url),
+        ))
         self.metric_lan = Metric("School network", compact=True)
         info.addWidget(self.metric_lan)
         info.addWidget(label(
@@ -728,6 +749,16 @@ class ControlCenter(QMainWindow):
         page, body = self.page("Service logs", "Review output from WEAVE CBT and individual Compose services.")
         card, layout = panel()
         layout.addWidget(heading("Logs viewer", 17))
+        self.log_mode = QComboBox()
+        self.log_mode.addItem("Live container output", "live")
+        self.log_mode.addItem("Archived error reports", "errors")
+        self.log_date = QLineEdit()
+        self.log_date.setPlaceholderText("YYYY-MM-DD (optional, UTC)")
+        self.log_date.setToolTip("Filter the persistent error archive by date; leave blank for recent errors.")
+        self.log_date.setEnabled(False)
+        self.log_mode.currentIndexChanged.connect(
+            lambda _index: self.log_date.setEnabled(self.log_mode.currentData() == "errors")
+        )
         self.log_service = QComboBox()
         self.log_service.setItemDelegate(QStyledItemDelegate(self.log_service))
         self.log_service.addItem("All services", "")
@@ -738,11 +769,14 @@ class ControlCenter(QMainWindow):
         self.log_view.setMinimumHeight(365)
         self.log_view.setPlaceholderText("Select a service and click Load logs.")
         layout.addLayout(self.row(
+            self.log_mode,
             self.log_service,
             action("Load logs", self.load_logs, "primary"),
             action("Save displayed logs", self.save_logs),
+            action("Open archive folder", self.open_archive_folder),
             action("Clear", self.log_view.clear),
         ))
+        layout.addLayout(self.row(label("Archived error date:", "field"), self.log_date))
         layout.addWidget(self.log_view)
         layout.addWidget(label("Exported logs may contain diagnostic or confidential data; share only with trusted administrators.", "muted", True))
         body.addWidget(card)
@@ -791,14 +825,7 @@ class ControlCenter(QMainWindow):
         return ""
 
     def _read_manifest(self):
-        if not self.desktop.cli:
-            return {}
-        path = self.desktop.cli.parent / "assets" / "release-manifest.json"
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            return data if isinstance(data, dict) else {}
-        except (OSError, ValueError):
-            return {}
+        return read_manager_release_manifest(self.desktop.cli)
 
     def _lan(self):
         if not self.desktop.server_installed:
@@ -905,6 +932,7 @@ class ControlCenter(QMainWindow):
         elif manager and self.probe.state() == QProcess.NotRunning:
             self.probe.setProgram(str(self.desktop.cli))
             self.probe.setArguments(["status", "--json"])
+            self.probe.setProcessEnvironment(cli_qprocess_environment())
             self.probe.start()
         else:
             self.connection.setText("STATUS UNAVAILABLE")
@@ -1080,8 +1108,38 @@ class ControlCenter(QMainWindow):
 
     def load_logs(self):
         service = self.log_service.currentData()
+        archived = self.log_mode.currentData() == "errors"
+        if archived and service in {"postgres", "redis", "nginx"}:
+            self._message(
+                "Infrastructure logs",
+                "PostgreSQL, Redis and NGINX currently retain bounded Docker logs. "
+                "Select Live container output for these services.",
+            )
+            return
         self.log_view.clear()
-        self.run("logs", [service] if service else [])
+        args = ([service] if service else [])
+        if archived:
+            args += ["--errors", "--last", "20"]
+            day = self.log_date.text().strip()
+            if day:
+                try:
+                    if date.fromisoformat(day).isoformat() != day:
+                        raise ValueError("Invalid date")
+                except ValueError:
+                    self._message("Invalid date", "Use YYYY-MM-DD, for example 2026-10-11.", error=True)
+                    return
+                args += ["--date", day]
+        self.run("logs", args)
+
+    def open_archive_folder(self):
+        if not self.desktop.installation:
+            self._message("No installation", "The CBT server has not been installed.")
+            return
+        folder = Path(self.desktop.installation["data_directory"]) / "service-logs"
+        if not folder.is_dir():
+            self._message("No archive", "No local error archive directory is available yet.")
+            return
+        self.open_url(QUrl.fromLocalFile(str(folder)))
 
     def save_logs(self):
         if not self.log_view.toPlainText().strip():
@@ -1099,11 +1157,24 @@ class ControlCenter(QMainWindow):
         if lan:
             QApplication.clipboard().setText(f"http://{lan['listen_address']}/student")
             self._message("Address copied", "LAN student address copied. Verify it from a school computer.")
+        elif sys.platform.startswith("linux") and self.network_suggestion:
+            address = self.network_suggestion["address"]
+            QApplication.clipboard().setText(f"http://{address}/student")
+            self._message(
+                "Linux student address copied",
+                "Suggested native LAN URL copied. Confirm the server is reachable "
+                "from a separate student computer before using it.",
+            )
         else:
-            self._message("LAN not configured", "There is no saved WEAVE-managed LAN address. Configure it on the Network page.")
+            self._message(
+                "LAN address unavailable",
+                "Detect the host IP/subnet on the Network page first, or configure "
+                "WEAVE-owned forwarding on Windows.",
+            )
 
     def open_url(self, url):
-        if not QDesktopServices.openUrl(QUrl(url)):
+        target = url if isinstance(url, QUrl) else QUrl(url)
+        if not QDesktopServices.openUrl(target):
             self._message("Cannot open browser", "The system could not open the requested URL.", error=True)
 
     def toggle_refresh(self, enabled):
@@ -1116,12 +1187,28 @@ class ControlCenter(QMainWindow):
 
     def run(self, command, arguments=None):
         args = list(arguments or [])
-        if command not in MUTATIONS | {"status", "doctor", "logs", "release", "self-update"} or self.busy:
+        if command not in MUTATIONS | {"status", "doctor", "logs", "release", "self-update", "network"} or self.busy:
             return
         # Restrict the user-controlled GUI to known CLI arguments. All LAN
         # values are independently validated again by the CLI.
         if command == "lan" and args not in (["--refresh"], ["--remove"]):
             if len(args) != 4 or args[:1] != ["--listen-address"] or args[2] != "--client-subnet":
+                return
+        if command == "network" and args not in (["info", "--json"], ["doctor"], ["url"]):
+            return
+        if command == "logs":
+            allowed = [[], *[[s] for s in SERVICES]]
+            allowed += [[s, "--errors", "--last", "20"] for s in SERVICES]
+            allowed += [["--errors", "--last", "20"]]
+            if len(args) >= 2 and args[-2] == "--date":
+                date_arg = args[-1]
+                try:
+                    valid_date = date.fromisoformat(date_arg).isoformat() == date_arg
+                except ValueError:
+                    valid_date = False
+                if not valid_date or args[:-2] not in allowed or "--errors" not in args:
+                    return
+            elif args not in allowed:
                 return
         if command == "update" and args != ["--yes"]:
             return
@@ -1133,7 +1220,12 @@ class ControlCenter(QMainWindow):
             return
         self.desktop = discover(packaged=ROOT)
         if not self.desktop.cli:
-            self._message("CLI unavailable", "The WEAVE management CLI is missing or failed validation. Repair the desktop package.", error=True)
+            self._message(
+                "CLI unavailable",
+                "The WEAVE management CLI is missing or failed validation.",
+                error=True,
+                details=self.desktop.problem or "No CLI candidate was found.",
+            )
             return
         if command == "install" and self.desktop.server_installed:
             self._message("Already installed", "This CBT server is already registered. An installation will not overwrite examination data.")
@@ -1148,6 +1240,7 @@ class ControlCenter(QMainWindow):
             return
         self.busy = True
         self.last_command = command
+        self.last_arguments = args
         self.last_error = ""
         self.output_tail = ""
         self._enable_actions()
@@ -1176,6 +1269,7 @@ class ControlCenter(QMainWindow):
         else:
             self.process.setProgram(str(self.desktop.cli))
             self.process.setArguments([command, *args])
+        self.process.setProcessEnvironment(cli_qprocess_environment())
         self.process.start()
         if not self.process.waitForStarted(2500):
             self.finished(1, QProcess.CrashExit)
@@ -1189,7 +1283,7 @@ class ControlCenter(QMainWindow):
             field.appendPlainText(data.rstrip("\r\n"))
             if field.document().blockCount() > 1100:
                 field.setPlainText("\n".join(field.toPlainText().splitlines()[-700:]))
-        if self.last_command == "doctor":
+        if self.last_command == "doctor" or (self.last_command == "network" and self.last_arguments == ["doctor"]):
             self.diagnostic_log.appendPlainText(data.rstrip("\r\n"))
         if self.last_command == "logs":
             self.navigate(5)
@@ -1213,6 +1307,25 @@ class ControlCenter(QMainWindow):
         if self.auto_refresh.isChecked():
             self.poll.start(20000)
         self.refresh()
+        if name == "network" and self.last_arguments == ["info", "--json"] and code == 0:
+            try:
+                payload = json.loads(self.output_tail)
+                interfaces = payload.get("interfaces", [])
+                lines = [
+                    f"{item['name']}: {item['address']} / {item['subnet_mask']} "
+                    f"({item['network']})  |  Gateway: {item['gateway']}"
+                    for item in interfaces
+                ]
+                self.network_inventory.setText(
+                    "\n".join(lines) if lines else "No active IPv4 interfaces detected."
+                )
+                selected = payload.get("recommended")
+                self.network_suggestion = selected
+                if selected and sys.platform == "win32":
+                    self.ip_input.setText(selected["address"])
+                    self.subnet_input.setText(selected["network"])
+            except (ValueError, TypeError, KeyError):
+                self.network_inventory.setText("Network results could not be read. Check Diagnostics.")
         if code == 10 and name == "install":
             self._message("Restart required", "Windows must restart to complete WSL setup. Save your work, reboot Windows and then resume installation.")
         elif code == 0:
@@ -1253,11 +1366,24 @@ def main():
     if brand.is_file():
         app.setWindowIcon(QIcon(str(brand)))
     ui = ControlCenter()
-    if "--smoke-test" in sys.argv:
+    if "--smoke-test" in sys.argv or "--smoke-test-cli" in sys.argv:
         wizard = SetupWizard(ui, resource("theme.qss").parent)
         if len(wizard.pageIds()) != 3 or ui.pages.count() != len(PAGES):
             raise RuntimeError("WEAVE GUI pages or setup wizard are incomplete")
         wizard.close()
+        if "--smoke-test-cli" in sys.argv:
+            if not ui.desktop.manager_installed:
+                raise RuntimeError("CLI discovery failed: " + (ui.desktop.problem or "no executable found"))
+            process = QProcess()
+            process.setProgram(str(ui.desktop.cli))
+            process.setArguments(["release"])
+            process.setProcessEnvironment(cli_qprocess_environment())
+            process.start()
+            if not process.waitForStarted(15000) or not process.waitForFinished(30000):
+                raise RuntimeError("Compiled GUI could not launch bundled CLI: " + process.errorString())
+            if process.exitCode() != 0:
+                raise RuntimeError(f"Compiled GUI CLI release check exited {process.exitCode()}.")
+            print("Compiled GUI -> CLI discovery and QProcess verified", flush=True)
         print("WEAVE desktop control center and setup wizard ready", flush=True)
         ui.close()
         return

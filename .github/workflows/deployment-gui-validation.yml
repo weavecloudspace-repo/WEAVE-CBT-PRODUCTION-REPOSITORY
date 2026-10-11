@@ -18,7 +18,7 @@ jobs:
   desktop:
     name: Qt Desktop ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 80
+    timeout-minutes: 110
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -35,7 +35,7 @@ jobs:
       - name: Test CLI detection and local state
         run: python -m unittest discover -s deployment/gui/tests -v
       - name: Install PySide6 and Nuitka
-        run: python -m pip install 'PySide6>=6.7,<7' nuitka zstandard
+        run: python -m pip install 'PySide6>=6.7,<7' nuitka zstandard 'pyinstaller>=6.10,<7'
       - name: Smoke-test Qt window
         env:
           QT_QPA_PLATFORM: offscreen
@@ -51,8 +51,107 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          python -m nuitka --mode=onefile --enable-plugin=pyside6 --windows-console-mode=disable --assume-yes-for-downloads --include-data-dir=deployment/gui/resources=resources --output-dir=build/gui --output-filename=WEAVE-CBT-Desktop.exe deployment/gui/main.py
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name WEAVE-CBT-Desktop --distpath build/gui --workpath build/gui/pyinstaller-work --specpath build/gui/pyinstaller-spec --add-data "$((Resolve-Path 'deployment/gui/resources').Path);resources" deployment/gui/main.py
           if ($LASTEXITCODE -ne 0) { throw 'GUI compilation failed' }
+      # Isolated PyInstaller validation trial; the release builder remains
+      # unchanged until a Defender-clean compiled GUI passes every smoke gate.
+      # GUI-subsystem executables require explicit waiting and exit-code checks.
+      - name: Scan and smoke-test compiled Windows desktop
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $gui = (Resolve-Path build/gui/WEAVE-CBT-Desktop.exe).Path
+          if (-not (Get-Command Start-MpScan -ErrorAction SilentlyContinue) -or
+              -not (Get-Command Get-MpThreatDetection -ErrorAction SilentlyContinue)) {
+            throw 'Microsoft Defender scanning is unavailable; Windows desktop verification cannot continue.'
+          }
+          Start-MpScan -ScanType CustomScan -ScanPath $gui -ErrorAction Stop
+          if (-not (Test-Path $gui)) { throw 'Defender quarantined the Windows desktop executable.' }
+          $detections = @(Get-MpThreatDetection -ErrorAction Stop | Where-Object {
+            @($_.Resources) -match [regex]::Escape($gui)
+          })
+          if ($detections.Count -gt 0) { throw 'Defender detected the Windows desktop executable.' }
           $env:QT_QPA_PLATFORM = 'offscreen'
-          & (Resolve-Path build\gui\WEAVE-CBT-Desktop.exe).Path --smoke-test
-          if ($LASTEXITCODE -ne 0) { throw 'Compiled GUI failed smoke test' }
+          $process = Start-Process -FilePath $gui -ArgumentList '--smoke-test' -Wait -PassThru
+          if ($null -eq $process -or $process.ExitCode -ne 0) {
+            throw "Compiled GUI smoke test failed (exit code $($process.ExitCode))."
+          }
+      - name: Inspect Windows GUI crash metadata
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $since = (Get-Date).AddMinutes(-25)
+          Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000,1001; StartTime=$since} -ErrorAction SilentlyContinue |
+            Where-Object { $_.Message -match 'WEAVE-CBT-Desktop.exe' } |
+            Select-Object -First 4 TimeCreated, Id, ProviderName, Message |
+            Format-List | Out-String -Width 200 | Write-Host
+      - name: Compiled Windows GUI-to-CLI integration
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m pip install -e ./deployment
+          if ($LASTEXITCODE -ne 0) { throw 'CLI dependencies failed to install' }
+          python -m nuitka --mode=onefile --onefile-no-compression --assume-yes-for-downloads --output-dir=build/gui --output-filename=weave.exe deployment/cli/entrypoint.py
+          if ($LASTEXITCODE -ne 0) { throw 'CLI compilation failed' }
+          New-Item -ItemType Directory -Path build/gui/assets -Force | Out-Null
+          Copy-Item deployment/compose.yaml build/gui/assets/compose.yaml
+          Copy-Item deployment/nginx build/gui/assets/nginx -Recurse
+          Copy-Item deployment/certificates build/gui/assets/certificates -Recurse
+          Copy-Item deployment/bootstrap build/gui/assets/bootstrap -Recurse
+          $digest = 'ghcr.io/weavecloudspace-repo/weave-cbt-production-repository@sha256:' + ('a' * 64)
+          python deployment/distribution/make_manifest.py --channel staging --image $digest --version 0.0.test --destination build/gui/assets/release-manifest.json
+          if ($LASTEXITCODE -ne 0) { throw 'Test manifest creation failed' }
+          $cli = (Resolve-Path build/gui/weave.exe).Path
+          $gui = (Resolve-Path build/gui/WEAVE-CBT-Desktop.exe).Path
+          if (-not (Get-Command Start-MpScan -ErrorAction SilentlyContinue) -or
+              -not (Get-Command Get-MpThreatDetection -ErrorAction SilentlyContinue)) {
+            throw 'Microsoft Defender scanning is unavailable; compiled integration cannot proceed.'
+          }
+          foreach ($binary in @($gui, $cli)) {
+            Start-MpScan -ScanType CustomScan -ScanPath $binary -ErrorAction Stop
+            if (-not (Test-Path $binary)) { throw "Defender quarantined $binary." }
+            $detections = @(Get-MpThreatDetection -ErrorAction Stop | Where-Object {
+              @($_.Resources) -match [regex]::Escape($binary)
+            })
+            if ($detections.Count -gt 0) { throw "Defender detected $binary; no test artifact will be published." }
+          }
+          & $cli release
+          if ($LASTEXITCODE -ne 0) { throw 'Standalone compiled CLI verification failed' }
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $process = Start-Process -FilePath $gui -ArgumentList '--smoke-test-cli' -Wait -PassThru
+          if ($null -eq $process -or $process.ExitCode -ne 0) {
+            throw "Compiled GUI-to-CLI discovery and QProcess failed (exit code $($process.ExitCode))."
+          }
+          Write-Host 'Compiled GUI-to-CLI integration verified by explicit process exit code.'
+      - name: Create isolated Windows diagnostic artifact
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $artifact = 'build/windows-cli-discovery-test-only'
+          New-Item -ItemType Directory -Force -Path $artifact | Out-Null
+          Copy-Item build/gui/WEAVE-CBT-Desktop.exe $artifact/
+          Copy-Item build/gui/weave.exe $artifact/
+          Copy-Item build/gui/assets/release-manifest.json $artifact/
+          @'
+          WEAVE CBT compiled GUI-to-CLI diagnostic ONLY.
+          The included manifest contains a synthetic, INVALID application image.
+          Do not install, update or start an examination server with these files.
+          Run from an isolated Windows test directory:
+            WEAVE-CBT-Desktop.exe --smoke-test-cli
+          Exit code 0 checks GUI-to-CLI integration, not live server readiness.
+          Validate SHA256SUMS before running and allow Microsoft Defender to scan.
+          '@ | Set-Content -Path "$artifact/README.txt" -Encoding utf8
+          $names = @('WEAVE-CBT-Desktop.exe', 'weave.exe', 'release-manifest.json')
+          $hashes = foreach ($name in $names) {
+            $hash = (Get-FileHash -LiteralPath "$artifact/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $name"
+          }
+          $hashes | Set-Content -Path "$artifact/SHA256SUMS" -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: windows-gui-cli-diagnostic-${{ github.run_id }}
+          path: build/windows-cli-discovery-test-only/
+          retention-days: 7
+          if-no-files-found: error
+
