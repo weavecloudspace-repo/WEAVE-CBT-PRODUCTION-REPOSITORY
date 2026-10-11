@@ -18,7 +18,7 @@ jobs:
   desktop:
     name: Qt Desktop ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 80
+    timeout-minutes: 110
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -56,3 +56,25 @@ jobs:
           $env:QT_QPA_PLATFORM = 'offscreen'
           & (Resolve-Path build\gui\WEAVE-CBT-Desktop.exe).Path --smoke-test
           if ($LASTEXITCODE -ne 0) { throw 'Compiled GUI failed smoke test' }
+      - name: Compiled Windows GUI-to-CLI integration
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m pip install -e ./deployment
+          if ($LASTEXITCODE -ne 0) { throw 'CLI dependencies failed to install' }
+          python -m nuitka --mode=onefile --onefile-no-compression --assume-yes-for-downloads --output-dir=build/gui --output-filename=weave.exe deployment/cli/entrypoint.py
+          if ($LASTEXITCODE -ne 0) { throw 'CLI compilation failed' }
+          New-Item -ItemType Directory -Path build/gui/assets -Force | Out-Null
+          Copy-Item deployment/compose.yaml build/gui/assets/compose.yaml
+          Copy-Item deployment/nginx build/gui/assets/nginx -Recurse
+          Copy-Item deployment/certificates build/gui/assets/certificates -Recurse
+          Copy-Item deployment/bootstrap build/gui/assets/bootstrap -Recurse
+          $digest = 'ghcr.io/weavecloudspace-repo/weave-cbt-production-repository@sha256:' + ('a' * 64)
+          python deployment/distribution/make_manifest.py --channel staging --image $digest --version 0.0.test --destination build/gui/assets/release-manifest.json
+          if ($LASTEXITCODE -ne 0) { throw 'Test manifest creation failed' }
+          & (Resolve-Path build/gui/weave.exe).Path release
+          if ($LASTEXITCODE -ne 0) { throw 'Standalone compiled CLI verification failed' }
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          & (Resolve-Path build/gui/WEAVE-CBT-Desktop.exe).Path --smoke-test-cli
+          if ($LASTEXITCODE -ne 0) { throw 'Compiled GUI could not discover and launch compiled CLI' }
+
