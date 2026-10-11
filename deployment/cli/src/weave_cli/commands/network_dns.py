@@ -51,7 +51,7 @@ def _service_exists() -> bool:
 
 def _ensure_binary(destination: Path) -> None:
     if destination.is_file():
-        return
+        raise DNSError("An unverified CoreDNS executable is already present; inspect it before setup.")
     request = urllib.request.Request(ARCHIVE_URL, headers={"User-Agent": "WEAVE-CBT-DNS/1"})
     try:
         with urllib.request.urlopen(request, timeout=75) as response:
@@ -198,7 +198,10 @@ def setup(stack) -> dict:
         raise DNSError("DNS identity changed. Run weave network dns remove before reconfiguring.")
     if state["configured"]:
         if not _dns_answer(address, hostname):
-            _service_action("start", SERVICE)
+            try:
+                _service_action("start", SERVICE)
+            except lan.LanError:
+                pass
         if not _dns_answer(address, hostname):
             raise DNSError("CoreDNS is configured but not answering correctly.")
         return _status(stack)
@@ -221,6 +224,15 @@ def setup(stack) -> dict:
         "    forward . 1.1.1.1 8.8.8.8\n"
         "    cache 30\n}\n"
     ))
+    # Check both names before changing any rules: WEAVE must not overwrite or
+    # remove unrelated rules, even if they happen to use the same names.
+    for rule in FIREWALL:
+        present = lan._powershell(
+            "$r=Get-NetFirewallRule -Name '" + rule + "' -ErrorAction SilentlyContinue; "
+            "if ($r) { 'true' } else { 'false' }", context="Check WEAVE DNS firewall ownership"
+        ).strip().lower() == "true"
+        if present:
+            raise DNSError("A DNS firewall rule already exists. Inspect it before setup.")
     created = False
     try:
         # CoreDNS 1.14.3+ has native Windows-service support.

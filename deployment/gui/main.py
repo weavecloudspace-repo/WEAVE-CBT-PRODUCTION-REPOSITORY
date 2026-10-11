@@ -642,6 +642,9 @@ class ControlCenter(QMainWindow):
             "muted", True,
         )
         info.addWidget(self.network_inventory)
+        self.network_selector = QComboBox()
+        self.network_selector.setToolTip("Select the school-owned Wi-Fi or Ethernet adapter to trust.")
+        info.addWidget(self.network_selector)
         info.addLayout(self.row(
             action("Detect IP and subnet", lambda: self.run("network", ["status", "--json"]), "primary"),
             action("Network doctor", lambda: self.run("network", ["doctor"])),
@@ -1107,7 +1110,7 @@ class ControlCenter(QMainWindow):
             self.run("network", ["trust", "--interface", interface, "--yes"])
 
     def selected_network_name(self):
-        return (self.network_suggestion or {}).get("name", "")
+        return self.network_selector.currentData() or ""
 
     def enable_https(self):
         if self.confirm(
@@ -1236,7 +1239,7 @@ class ControlCenter(QMainWindow):
             return
         privileged = (command in MUTATIONS or
                       (command == "network" and (args[0] in {"setup", "trust", "refresh", "remove"} or args[:2] == ["dns", "setup"])) or
-                      (command == "self-update" and args == ["--yes"]) or (sys.platform.startswith("linux") and command in {"doctor", "status", "logs"})
+                      (command == "self-update" and args == ["--yes"]) or (sys.platform.startswith("linux") and command in {"doctor", "status", "logs"}))
         if privileged and not is_admin() and sys.platform == "win32":
             if self.confirm("Administrator permission", "This operation requires Administrator privileges. Relaunch the manager elevated?"):
                 if elevate_gui(command, args):
@@ -1335,6 +1338,10 @@ class ControlCenter(QMainWindow):
                 )
                 selected = payload.get("recommended")
                 self.network_suggestion = selected
+                self.network_selector.clear()
+                for item in interfaces:
+                    if item.get("private") and not item.get("name", "").lower().startswith(("vethernet", "docker", "wsl", "virtualbox", "vmware")):
+                        self.network_selector.addItem(f"{item['name']} ({item['category']})", item["name"])
                 if selected and sys.platform == "win32":
                     self.ip_input.setText(selected["address"])
                     self.subnet_input.setText(selected["network"])
