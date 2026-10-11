@@ -21,13 +21,13 @@ class WindowsCliEncodingTests(unittest.TestCase):
             process.returncode, 0, process.stderr.decode("utf-8", errors="replace")
         )
         self.assertIn("install", process.stdout.decode("utf-8"))
-        self.assertIn("lan", process.stdout.decode("utf-8"))
+        self.assertIn("network", process.stdout.decode("utf-8"))
 
     def test_cli_error_stream_with_cp1252_redirected_streams(self):
         environment = dict(os.environ)
         environment["PYTHONIOENCODING"] = "cp1252"
         process = subprocess.run(
-            [sys.executable, str(ENTRYPOINT), "lan", "--help"],
+            [sys.executable, str(ENTRYPOINT), "network", "--help"],
             env=environment, capture_output=True, timeout=30, check=False,
         )
         self.assertEqual(

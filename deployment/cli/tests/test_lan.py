@@ -119,7 +119,12 @@ class LanTests(unittest.TestCase):
     def test_cli_command_registered(self):
         result = CliRunner().invoke(app, ["--help"])
         self.assertEqual(result.exit_code, 0, result.output)
-        self.assertIn("lan", result.output)
+        self.assertIn("network", result.output)
+        # The previous command remains callable for deployed startup-task compatibility,
+        # but is intentionally hidden from top-level help.
+        self.assertNotIn("  lan ", result.output)
+        legacy = CliRunner().invoke(app, ["lan", "--help"])
+        self.assertEqual(legacy.exit_code, 0, legacy.output)
 
     def test_rejects_public_and_wildcard_listeners(self):
         for address in ("0.0.0.0", "127.0.0.1", "8.8.8.8", "169.254.3.4"):

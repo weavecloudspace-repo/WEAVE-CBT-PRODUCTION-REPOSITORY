@@ -43,6 +43,19 @@ class NetworkManagementTests(unittest.TestCase):
         self.assertIsNone(network.recommend([adapter]))
         self.assertEqual(network._candidate([adapter], "Wi-Fi")["category"], "Public")
 
+    def test_windows_setup_command_keeps_legacy_state_path(self):
+        with (patch.object(network, "get_stack", return_value=self.stack),
+              patch.object(network, "configure", return_value=True) as configured):
+            result = CliRunner().invoke(app, [
+                "network", "setup", "--listen-address", "192.168.1.12",
+                "--client-subnet", "192.168.1.0/24", "--yes",
+            ])
+        self.assertEqual(result.exit_code, 0, result.output)
+        configured.assert_called_once_with(
+            self.stack.installation.data_directory,
+            listen_address="192.168.1.12", client_subnet="192.168.1.0/24",
+        )
+
     def test_core_dns_setup_requires_https(self):
         with patch.object(network_dns.sys, "platform", "win32"):
             with self.assertRaisesRegex(network_dns.DNSError, "activate HTTPS"):

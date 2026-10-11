@@ -11,7 +11,7 @@ from pathlib import Path
 
 import typer
 
-from weave_cli.commands._shared import banner, error, get_stack, info, success, warning
+from weave_cli.commands._shared import COMMAND_ERRORS, banner, error, get_stack, info, success, warning
 from weave_cli.commands.lan import PRIVATE_RANGES, LanError, _read_state, configure, _powershell
 from weave_cli.installation import InstallationStateError
 from weave_cli.platforms.base import PlatformError
@@ -266,7 +266,7 @@ def network_url(
         else:
             warning("School DNS must resolve this hostname to the server LAN IP.")
         warning("Verify student access from a separate school computer.")
-    except (LanError, OSError, InstallationStateError, PlatformError, RuntimeError) as exc:
+    except (*COMMAND_ERRORS, LanError, RuntimeError) as exc:
         error(str(exc))
         raise typer.Exit(code=1) from exc
 

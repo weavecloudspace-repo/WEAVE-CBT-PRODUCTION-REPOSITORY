@@ -50,8 +50,9 @@ class ArchiveTests(unittest.TestCase):
         result = CliRunner().invoke(app, ["network", "--help"])
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn("doctor", result.output)
-        self.assertIn("recommend", result.output)
-        self.assertIn("configure", result.output)
+        self.assertIn("setup", result.output)
+        self.assertIn("trust", result.output)
+        self.assertIn("dns", result.output)
 
 
 if __name__ == "__main__":
