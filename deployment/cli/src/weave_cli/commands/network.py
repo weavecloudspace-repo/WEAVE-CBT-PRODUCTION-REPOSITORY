@@ -11,7 +11,7 @@ from pathlib import Path
 import typer
 
 from weave_cli.commands._shared import banner, error, get_stack, info, success, warning
-from weave_cli.commands.lan import LanError, _read_state, configure
+from weave_cli.commands.lan import PRIVATE_RANGES, LanError, _read_state, configure
 from weave_cli.installation import InstallationStateError
 from weave_cli.platforms.base import PlatformError
 
@@ -94,9 +94,19 @@ def inventory() -> list[dict]:
 
 def recommend(adapters: list[dict]) -> dict | None:
     """Prefer a private active physical subnet; never auto-select an ambiguous tie."""
-    suitable = [row for row in adapters
-                if row["private"] and row["category"] in ("Private", "DomainAuthenticated", "Host")
-                and ipaddress.IPv4Network(row["network"]).prefixlen >= 24]
+    suitable = [
+        row for row in adapters
+        if row["private"]
+        and row["category"] in ("Private", "DomainAuthenticated", "Host")
+        and not row["name"].lower().startswith(
+            ("vethernet", "docker", "wsl", "virtualbox", "vmware")
+        )
+        and any(
+            ipaddress.IPv4Network(row["network"]).subnet_of(parent)
+            for parent in PRIVATE_RANGES
+        )
+        and ipaddress.IPv4Network(row["network"]).prefixlen >= 24
+    ]
     # A multi-adapter school server needs explicit choice; guessing is unsafe.
     return suitable[0] if len(suitable) == 1 else None
 

@@ -32,6 +32,10 @@ class NetworkInventoryTests(unittest.TestCase):
         self.assertIsNone(network.recommend([broad]))
         untrusted = dict(self.adapter, category="Public")
         self.assertIsNone(network.recommend([untrusted]))
+        reserved = dict(self.adapter, network="198.18.10.0/24")
+        self.assertIsNone(network.recommend([reserved]))
+        virtual = dict(self.adapter, name="vEthernet (WSL)")
+        self.assertIsNone(network.recommend([virtual]))
 
     def test_linux_skips_virtual_bridge_and_calculates_netmask(self):
         result = [
