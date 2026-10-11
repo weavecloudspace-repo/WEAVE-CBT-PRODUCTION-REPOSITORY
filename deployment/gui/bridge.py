@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
-from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,6 +46,10 @@ def candidates(*, windows: bool | None = None, packaged: Path | None = None) -> 
         [Path(os.getenv("ProgramFiles", r"C:\Program Files")) / "WeaveCBT" / name]
         if windows else [Path("/usr/bin/weave"), Path("/usr/local/bin/weave")]
     )
+    if windows and sys.argv:
+        # Nuitka onefile extracts __file__ into a temporary directory.
+        # Use the installed GUI launcher's location before searching PATH.
+        roots.insert(0, Path(sys.argv[0]).resolve().parent / name)
     on_path = shutil.which(name)
     if on_path:
         roots.append(Path(on_path))
@@ -54,18 +58,73 @@ def candidates(*, windows: bool | None = None, packaged: Path | None = None) -> 
     return list(dict.fromkeys(roots))
 
 
-@lru_cache(maxsize=32)
-def _verified_cli(path: str, modified_ns: int, *, windows: bool) -> bool:
+@dataclass(frozen=True)
+class CliVerification:
+    valid: bool
+    problem: str = ""
+
+
+_successful_checks: set[tuple[str, int, int]] = set()
+
+
+def clear_cli_verification_cache() -> None:
+    _successful_checks.clear()
+
+
+def cli_subprocess_environment() -> dict[str, str]:
+    """Prevent Nuitka's onefile parent state from leaking into a separate CLI."""
+    environment = os.environ.copy()
+    for key in tuple(environment):
+        if key.upper().startswith(("_NUITKA_ONEFILE_", "NUITKA_ONEFILE_")):
+            environment.pop(key, None)
+    return environment
+
+
+def _safe_excerpt(output: str | bytes | None) -> str:
+    if not output:
+        return ""
+    if isinstance(output, bytes):
+        output = output.decode("utf-8", "replace")
+    output = re.sub(
+        r"(?i)\\b(password|token|secret|authorization|api[_-]?key)\\s*[:=]\\s*\\S+",
+        r"\\1=<redacted>", output,
+    )
+    return " ".join(output.split())[:240]
+
+
+def verify_cli(path: Path, *, windows: bool) -> CliVerification:
+    try:
+        stat = path.stat()
+    except OSError as exc:
+        return CliVerification(False, f"Cannot read CLI metadata ({type(exc).__name__}).")
+    identity = (str(path), stat.st_mtime_ns, stat.st_size)
+    if identity in _successful_checks:
+        return CliVerification(True)
     try:
         check = subprocess.run(
-            [path, "release"], capture_output=True, text=True,
-            encoding="utf-8", errors="replace", check=False, timeout=12,
+            [str(path), "release"], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", check=False, timeout=25,
+            env=cli_subprocess_environment(),
             **({"creationflags": subprocess.CREATE_NO_WINDOW}
                if windows and sys.platform == "win32" else {}),
         )
-        return check.returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
-        return False
+    except subprocess.TimeoutExpired:
+        return CliVerification(False, "CLI release check timed out after 25 seconds.")
+    except OSError as exc:
+        return CliVerification(False, f"CLI could not start ({type(exc).__name__}: {exc}).")
+    if check.returncode != 0:
+        details = "; ".join(
+            part for part in (
+                f"exit code {check.returncode}",
+                f"stderr: {_safe_excerpt(check.stderr)}" if check.stderr else "",
+                f"stdout: {_safe_excerpt(check.stdout)}" if check.stdout else "",
+            ) if part
+        )
+        return CliVerification(False, f"CLI release check failed: {details}.")
+    if len(_successful_checks) >= 32:
+        _successful_checks.clear()
+    _successful_checks.add(identity)
+    return CliVerification(True)
 
 
 def discover(*, windows: bool | None = None, packaged: Path | None = None) -> Discovery:
@@ -75,13 +134,12 @@ def discover(*, windows: bool | None = None, packaged: Path | None = None) -> Di
         if not candidate.is_file():
             continue
         try:
-            valid = _verified_cli(
-                str(candidate), candidate.stat().st_mtime_ns,
-                windows=windows if windows is not None else sys.platform == "win32")
-            if valid:
+            result = verify_cli(
+                candidate, windows=windows if windows is not None else sys.platform == "win32")
+            if result.valid:
                 cli = candidate
                 break
-            issue = f"Found CLI at {candidate}, but its release check failed."
+            issue = f"Found CLI at {candidate}, but {result.problem}"
         except OSError as exc:
             issue = f"CLI metadata is unreadable: {exc}"
     path = state_path(windows=windows)
