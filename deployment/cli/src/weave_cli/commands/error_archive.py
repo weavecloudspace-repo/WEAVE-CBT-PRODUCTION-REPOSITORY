@@ -42,7 +42,7 @@ def get_error_records(data_directory: Path, service: str | None = None,
                 with file.open("rb") as stream:
                     stream.seek(0, 2)
                     stream.seek(max(0, stream.tell() - 2 * 1024 * 1024))
-                    content = stream.read().decode("utf-8", "replace")
+                    content = stream.read().decode("utf-8", "replace").replace("\r\n", "\n")
                 for report in START.split(content):
                     if not report.startswith("=" * 48 + "\nWEAVE CBT  |  ERROR REPORT"):
                         continue

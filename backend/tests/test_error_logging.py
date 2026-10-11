@@ -1,4 +1,5 @@
 """Unit checks for local error archives; no database or Docker access required."""
+
 from __future__ import annotations
 
 import logging
