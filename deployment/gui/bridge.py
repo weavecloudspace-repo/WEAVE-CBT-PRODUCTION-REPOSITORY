@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import stat
 import shutil
 import subprocess
 import sys
@@ -127,6 +128,33 @@ def verify_cli(path: Path, *, windows: bool) -> CliVerification:
     return CliVerification(True)
 
 
+
+PUBLIC_LINUX_STATE = Path("/var/lib/weave-cbt-manager.json")
+
+
+def _public_linux_installation() -> dict | None:
+    """Read root-owned mode-0644 metadata, never private runtime.env."""
+    path = PUBLIC_LINUX_STATE
+    try:
+        metadata = path.lstat()
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0
+                or metadata.st_mode & 0o022):
+            return None
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        return None
+    for field in ("installed_version", "install_directory", "data_directory"):
+        value = payload.get(field)
+        if not isinstance(value, str) or not value.strip():
+            return None
+    if (not Path(payload["install_directory"]).is_absolute()
+            or not Path(payload["data_directory"]).is_absolute()):
+        return None
+    return payload
+
+
 def discover(*, windows: bool | None = None, packaged: Path | None = None) -> Discovery:
     cli = None
     issue = ""
@@ -144,6 +172,7 @@ def discover(*, windows: bool | None = None, packaged: Path | None = None) -> Di
             issue = f"CLI metadata is unreadable: {exc}"
     path = state_path(windows=windows)
     installation = None
+    access_denied = False
     try:
         state_available = path.is_file()
         # Root-owned Linux installation state may be unreadable to the GUI.
@@ -153,6 +182,7 @@ def discover(*, windows: bool | None = None, packaged: Path | None = None) -> Di
         state_available = False
     except PermissionError:
         state_available = False
+        access_denied = True
         issue = "CBT installation state requires Administrator access. Run a privileged diagnostic before installing."
     if state_available:
         try:
@@ -168,7 +198,14 @@ def discover(*, windows: bool | None = None, packaged: Path | None = None) -> Di
             else:
                 issue = "Existing CBT installation state is incomplete. Run diagnostics."
         except (OSError, ValueError) as exc:
-            issue = f"Cannot read CBT installation state: {exc}"
+            access_denied = isinstance(exc, PermissionError)
+            issue = f"Cannot read CBT installation state: {type(exc).__name__}"
+    if access_denied and (windows is False or (windows is None and sys.platform.startswith("linux"))):
+        public = _public_linux_installation()
+        if public is not None:
+            # Health still requires an explicitly elevated CLI status probe.
+            installation = public
+            issue = ""
     return Discovery(cli, installation, issue)
 
 
