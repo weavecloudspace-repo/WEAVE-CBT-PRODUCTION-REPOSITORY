@@ -1,5 +1,13 @@
+# Bound Docker's diagnostic buffer independently of the host error archive.
+x-service-logging: &service-logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   postgres:
+    logging: *service-logging
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
@@ -15,6 +23,7 @@ services:
     restart: unless-stopped
 
   redis:
+    logging: *service-logging
     image: redis:7-alpine
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -24,6 +33,7 @@ services:
     restart: unless-stopped
 
   bootstrap:
+    logging: *service-logging
     image: ${WEAVE_IMAGE:?WEAVE_IMAGE is required}
     command: [/app/weave-cbt/weave-cbt, bootstrap]
     # Populate the initially empty Docker volume in one sequential container.
@@ -44,6 +54,7 @@ services:
     restart: "no"
 
   api:
+    logging: *service-logging
     image: ${WEAVE_IMAGE:?WEAVE_IMAGE is required}
     command: [/app/weave-cbt/weave-cbt, api]
     scale: 3
@@ -69,6 +80,7 @@ services:
     stop_grace_period: 30s
 
   worker:
+    logging: *service-logging
     image: ${WEAVE_IMAGE:?WEAVE_IMAGE is required}
     command: [/app/weave-cbt/weave-cbt, worker]
     environment:
@@ -92,6 +104,7 @@ services:
     stop_grace_period: 30s
 
   nginx:
+    logging: *service-logging
     image: nginx:stable-alpine
     ports: ["80:80", "443:443"]
     volumes:

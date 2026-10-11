@@ -13,12 +13,18 @@ def run_api() -> None:
     from app.core.settings import settings
     from app.main import app
 
-    uvicorn.run(
+    # Uvicorn configures its own named loggers during Config construction.
+    # Register the archive *after* that configuration so API exceptions persist.
+    config = uvicorn.Config(
         app,
         host=settings.HOST,
         port=settings.PORT,
         log_level=settings.LOG_LEVEL.lower(),
     )
+    from app.core.error_logging import configure_error_logging
+
+    configure_error_logging("api")
+    uvicorn.Server(config).run()
 
 
 def run_worker() -> None:
