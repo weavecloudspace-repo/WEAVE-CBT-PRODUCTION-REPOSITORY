@@ -291,6 +291,7 @@ class ControlCenter(QMainWindow):
         self.busy = False
         self.last_command = ""
         self.last_arguments = []
+        self.network_suggestion = None
         self.last_error = ""
         self.output_tail = ""
         self.operation_records = []
@@ -1156,8 +1157,20 @@ class ControlCenter(QMainWindow):
         if lan:
             QApplication.clipboard().setText(f"http://{lan['listen_address']}/student")
             self._message("Address copied", "LAN student address copied. Verify it from a school computer.")
+        elif sys.platform.startswith("linux") and self.network_suggestion:
+            address = self.network_suggestion["address"]
+            QApplication.clipboard().setText(f"http://{address}/student")
+            self._message(
+                "Linux student address copied",
+                "Suggested native LAN URL copied. Confirm the server is reachable "
+                "from a separate student computer before using it.",
+            )
         else:
-            self._message("LAN not configured", "There is no saved WEAVE-managed LAN address. Configure it on the Network page.")
+            self._message(
+                "LAN address unavailable",
+                "Detect the host IP/subnet on the Network page first, or configure "
+                "WEAVE-owned forwarding on Windows.",
+            )
 
     def open_url(self, url):
         target = url if isinstance(url, QUrl) else QUrl(url)
@@ -1307,6 +1320,7 @@ class ControlCenter(QMainWindow):
                     "\n".join(lines) if lines else "No active IPv4 interfaces detected."
                 )
                 selected = payload.get("recommended")
+                self.network_suggestion = selected
                 if selected and sys.platform == "win32":
                     self.ip_input.setText(selected["address"])
                     self.subnet_input.setText(selected["network"])
