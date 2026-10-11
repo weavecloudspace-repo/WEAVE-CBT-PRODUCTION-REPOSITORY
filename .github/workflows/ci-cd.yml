@@ -69,8 +69,7 @@ jobs:
               - 'deployment/compose.yaml'
               - 'deployment/nginx/**'
               - 'deployment/ci-mirrors.yaml'
-              # TEMPORARY through 2026-10-11 06:00 WAT: ensure this
-              # staging CI-only bypass actually rebuilds/publishes the merged app.
+              # Changes to image verification must exercise the image gate.
               - '.github/workflows/ci-cd.yml'
             workflow:
               - '.github/workflows/**'
@@ -219,11 +218,34 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=cbt-app
           cache-to: type=gha,mode=max,scope=cbt-app
-      - name: Verify fresh bootstrap and browser routes
-        # TEMPORARY STAGING-ONLY BYPASS. Restore 2026-10-11 06:00 Africa/Lagos.
-        # The runtime integration smoke test is NOT passing/verified while skipped.
-        # This exception is for a staging image release blocked by ECR pull limits.
-        if: (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch') && github.ref != 'refs/heads/staging'
+      - name: Prefetch infrastructure images for the Docker smoke test
+        if: needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # Rate limits on a single public registry must not silently disable
+          # the end-to-end test. Reuse these images ONLY for CI verification.
+          for spec in postgres:16-alpine redis:7-alpine nginx:stable-alpine; do
+            name="${spec%%:*}"
+            tag="${spec#*:}"
+            target="weave-cbt-ci/$name:$tag"
+            for registry in mirror.gcr.io/library public.ecr.aws/docker/library docker.io/library; do
+              source="$registry/$name:$tag"
+              echo "Trying $source for the mandatory integration test"
+              if timeout 120 docker pull "$source"; then
+                docker tag "$source" "$target"
+                break
+              fi
+              echo "::warning::Cannot fetch $source; trying the next registry"
+            done
+            if ! docker image inspect "$target" >/dev/null 2>&1; then
+              echo "::error::Unable to fetch $name:$tag from any registry; refusing to skip the smoke test"
+              exit 1
+            fi
+          done
+      - name: Verify fresh bootstrap, service health and browser routes
+        id: integration_smoke
+        if: needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch'
         env:
           IMAGE: ${{ steps.repository.outputs.name }}:sha-${{ github.sha }}
         run: |
@@ -239,39 +261,71 @@ jobs:
           EOF
           printf 'WEAVE_IMAGE=%s\n' "$IMAGE" >> deployment/ci.env
           docker compose -p weave-cbt-ci -f deployment/compose.yaml -f deployment/ci-mirrors.yaml --env-file deployment/ci.env up -d --wait --wait-timeout 240
+          docker compose -p weave-cbt-ci -f deployment/compose.yaml -f deployment/ci-mirrors.yaml --env-file deployment/ci.env ps --all --format json > /tmp/weave-cbt-ci-services.json
+          python3 - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+
+          raw = Path('/tmp/weave-cbt-ci-services.json').read_text().strip()
+          try:
+              parsed = json.loads(raw)
+              rows = parsed if isinstance(parsed, list) else [parsed]
+          except json.JSONDecodeError:
+              rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
+          services = {}
+          for row in rows:
+              services.setdefault(row.get('Service'), []).append(row)
+          required = {'postgres': 1, 'redis': 1, 'api': 3, 'worker': 1, 'nginx': 1}
+          for service, count in required.items():
+              actual = services.get(service, [])
+              if len(actual) != count or any(r.get('State', '').lower() != 'running' for r in actual):
+                  raise SystemExit(f'{service}: expected {count} running container(s), found {actual}')
+          for service in ('postgres', 'redis'):
+              if any(r.get('Health', '').lower() != 'healthy' for r in services[service]):
+                  raise SystemExit(f'{service} health checks are not healthy')
+          bootstrap = services.get('bootstrap', [])
+          if len(bootstrap) != 1 or bootstrap[0].get('State', '').lower() != 'exited' or str(bootstrap[0].get('ExitCode')) != '0':
+              raise SystemExit(f'Bootstrap did not complete successfully: {bootstrap}')
+          print('Integration topology verified: 3 API replicas, worker, nginx, healthy database/Redis and completed bootstrap.')
+          PY
           for route in staff student; do
             curl --fail --retry 20 --retry-delay 3 --retry-all-errors "http://localhost/$route" -o "/tmp/$route.html"
             grep -q '<html' "/tmp/$route.html"
           done
           curl --fail --retry 20 --retry-delay 3 --retry-all-errors http://localhost/openapi.json -o /tmp/openapi.json
           python3 -c 'import json; assert json.load(open("/tmp/openapi.json"))["paths"]'
-      - name: Temporary staging smoke-test bypass notice
-        if: github.ref == 'refs/heads/staging' && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
-        shell: bash
-        run: |
-          echo '::warning::TEMPORARY: staging image fresh-bootstrap/browser integration verification is bypassed until 2026-10-11 06:00 WAT. Do not treat this image as integration-verified.'
-          echo '⚠️ Staging image published without fresh bootstrap/browser smoke testing (temporary exception; restore 2026-10-11 06:00 Africa/Lagos).' >> "$GITHUB_STEP_SUMMARY"
       - name: Container diagnostics
         if: failure() && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         run: |
           if [ -f deployment/ci.env ]; then
-            docker compose -p weave-cbt-ci -f deployment/compose.yaml --env-file deployment/ci.env logs --no-color --tail 100
+            docker compose -p weave-cbt-ci -f deployment/compose.yaml -f deployment/ci-mirrors.yaml --env-file deployment/ci.env logs --no-color --tail 100
           fi
       - name: Stop smoke-test services
         if: always() && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         run: |
           if [ -f deployment/ci.env ]; then
-            docker compose -p weave-cbt-ci -f deployment/compose.yaml --env-file deployment/ci.env down --volumes
+            docker compose -p weave-cbt-ci -f deployment/compose.yaml -f deployment/ci-mirrors.yaml --env-file deployment/ci.env down --volumes
           fi
+      - name: Enforce successful Docker smoke-test before publishing
+        if: always() && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
+        env:
+          SMOKE_OUTCOME: ${{ steps.integration_smoke.outcome }}
+        run: |
+          if [ "$SMOKE_OUTCOME" != 'success' ]; then
+            echo "::error::Docker integration smoke test was $SMOKE_OUTCOME, not successful. Refusing to publish an unverified image."
+            exit 1
+          fi
+          echo 'Verified fresh Docker startup, API replicas, worker, healthy database/Redis and HTTP routes.' >> "$GITHUB_STEP_SUMMARY"
       - name: Log in to GitHub Container Registry
-        if: (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
+        if: success() && steps.integration_smoke.outcome == 'success' && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish verified image
-        if: (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
+        if: success() && steps.integration_smoke.outcome == 'success' && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         env:
           IMAGE: ${{ steps.repository.outputs.name }}
         run: |
@@ -282,7 +336,7 @@ jobs:
 
       - name: Resolve published Docker image digest
         id: digest
-        if: (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
+        if: success() && steps.integration_smoke.outcome == 'success' && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         env:
           IMAGE: ${{ steps.repository.outputs.name }}
         run: |
