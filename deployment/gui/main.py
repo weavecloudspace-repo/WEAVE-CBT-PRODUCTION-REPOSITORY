@@ -290,6 +290,7 @@ class ControlCenter(QMainWindow):
         self.status = None
         self.busy = False
         self.last_command = ""
+        self.last_arguments = []
         self.last_error = ""
         self.output_tail = ""
         self.operation_records = []
@@ -634,6 +635,17 @@ class ControlCenter(QMainWindow):
         info.addWidget(heading("LAN access", 17))
         self.network_details = label("Checking network configuration...", "muted", True)
         info.addWidget(self.network_details)
+        info.addWidget(label("Detected host interfaces (read-only)", "field"))
+        self.network_inventory = label(
+            "Click Detect IP and subnet to inspect the host's network interfaces.",
+            "muted", True,
+        )
+        info.addWidget(self.network_inventory)
+        info.addLayout(self.row(
+            action("Detect IP and subnet", lambda: self.run("network", ["info", "--json"]), "primary"),
+            action("Network doctor", lambda: self.run("network", ["doctor"])),
+            action("Copy student URL", self.copy_lan_url),
+        ))
         self.metric_lan = Metric("School network", compact=True)
         info.addWidget(self.metric_lan)
         info.addWidget(label(
@@ -736,6 +748,9 @@ class ControlCenter(QMainWindow):
         page, body = self.page("Service logs", "Review output from WEAVE CBT and individual Compose services.")
         card, layout = panel()
         layout.addWidget(heading("Logs viewer", 17))
+        self.log_mode = QComboBox()
+        self.log_mode.addItem("Live container output", "live")
+        self.log_mode.addItem("Archived error reports", "errors")
         self.log_service = QComboBox()
         self.log_service.setItemDelegate(QStyledItemDelegate(self.log_service))
         self.log_service.addItem("All services", "")
@@ -746,9 +761,11 @@ class ControlCenter(QMainWindow):
         self.log_view.setMinimumHeight(365)
         self.log_view.setPlaceholderText("Select a service and click Load logs.")
         layout.addLayout(self.row(
+            self.log_mode,
             self.log_service,
             action("Load logs", self.load_logs, "primary"),
             action("Save displayed logs", self.save_logs),
+            action("Open archive folder", self.open_archive_folder),
             action("Clear", self.log_view.clear),
         ))
         layout.addWidget(self.log_view)
@@ -1082,8 +1099,22 @@ class ControlCenter(QMainWindow):
 
     def load_logs(self):
         service = self.log_service.currentData()
+        archived = self.log_mode.currentData() == "errors"
         self.log_view.clear()
-        self.run("logs", [service] if service else [])
+        args = ([service] if service else [])
+        if archived:
+            args += ["--errors", "--last", "20"]
+        self.run("logs", args)
+
+    def open_archive_folder(self):
+        if not self.desktop.installation:
+            self._message("No installation", "The CBT server has not been installed.")
+            return
+        folder = Path(self.desktop.installation["data_directory"]) / "service-logs"
+        if not folder.is_dir():
+            self._message("No archive", "No local error archive directory is available yet.")
+            return
+        self.open_url(QUrl.fromLocalFile(str(folder)))
 
     def save_logs(self):
         if not self.log_view.toPlainText().strip():
@@ -1105,7 +1136,8 @@ class ControlCenter(QMainWindow):
             self._message("LAN not configured", "There is no saved WEAVE-managed LAN address. Configure it on the Network page.")
 
     def open_url(self, url):
-        if not QDesktopServices.openUrl(QUrl(url)):
+        target = url if isinstance(url, QUrl) else QUrl(url)
+        if not QDesktopServices.openUrl(target):
             self._message("Cannot open browser", "The system could not open the requested URL.", error=True)
 
     def toggle_refresh(self, enabled):
@@ -1118,12 +1150,20 @@ class ControlCenter(QMainWindow):
 
     def run(self, command, arguments=None):
         args = list(arguments or [])
-        if command not in MUTATIONS | {"status", "doctor", "logs", "release", "self-update"} or self.busy:
+        if command not in MUTATIONS | {"status", "doctor", "logs", "release", "self-update", "network"} or self.busy:
             return
         # Restrict the user-controlled GUI to known CLI arguments. All LAN
         # values are independently validated again by the CLI.
         if command == "lan" and args not in (["--refresh"], ["--remove"]):
             if len(args) != 4 or args[:1] != ["--listen-address"] or args[2] != "--client-subnet":
+                return
+        if command == "network" and args not in (["info", "--json"], ["doctor"], ["url"]):
+            return
+        if command == "logs":
+            allowed = [[], *[[s] for s in SERVICES]]
+            allowed += [[s, "--errors", "--last", "20"] for s in SERVICES]
+            allowed += [["--errors", "--last", "20"]]
+            if args not in allowed:
                 return
         if command == "update" and args != ["--yes"]:
             return
@@ -1155,6 +1195,7 @@ class ControlCenter(QMainWindow):
             return
         self.busy = True
         self.last_command = command
+        self.last_arguments = args
         self.last_error = ""
         self.output_tail = ""
         self._enable_actions()
@@ -1197,7 +1238,7 @@ class ControlCenter(QMainWindow):
             field.appendPlainText(data.rstrip("\r\n"))
             if field.document().blockCount() > 1100:
                 field.setPlainText("\n".join(field.toPlainText().splitlines()[-700:]))
-        if self.last_command == "doctor":
+        if self.last_command == "doctor" or (self.last_command == "network" and self.last_arguments == ["doctor"]):
             self.diagnostic_log.appendPlainText(data.rstrip("\r\n"))
         if self.last_command == "logs":
             self.navigate(5)
@@ -1221,6 +1262,24 @@ class ControlCenter(QMainWindow):
         if self.auto_refresh.isChecked():
             self.poll.start(20000)
         self.refresh()
+        if name == "network" and self.last_arguments == ["info", "--json"] and code == 0:
+            try:
+                payload = json.loads(self.output_tail)
+                interfaces = payload.get("interfaces", [])
+                lines = [
+                    f"{item['name']}: {item['address']} / {item['subnet_mask']} "
+                    f"({item['network']})  |  Gateway: {item['gateway']}"
+                    for item in interfaces
+                ]
+                self.network_inventory.setText(
+                    "\n".join(lines) if lines else "No active IPv4 interfaces detected."
+                )
+                selected = payload.get("recommended")
+                if selected and sys.platform == "win32":
+                    self.ip_input.setText(selected["address"])
+                    self.subnet_input.setText(selected["network"])
+            except (ValueError, TypeError, KeyError):
+                self.network_inventory.setText("Network results could not be read. Check Diagnostics.")
         if code == 10 and name == "install":
             self._message("Restart required", "Windows must restart to complete WSL setup. Save your work, reboot Windows and then resume installation.")
         elif code == 0:
