@@ -32,9 +32,26 @@ if [ "$incoming_channel" != production ] && [ "$incoming_channel" != staging ]; 
     exit 1
 fi
 
+# The DEB owns /usr/bin/weave and /usr/share/weave-cbt. The standalone
+# archive owns /usr/local/bin/weave and /usr/local/share/weave-cbt.
+# A mixed install could silently dispatch the wrong CLI or release image.
+if command -v dpkg-query >/dev/null 2>&1 &&
+   [ "$(dpkg-query -W -f='${Status}' weave-cbt-desktop 2>/dev/null || true)" = 'install ok installed' ]; then
+    echo '[ERROR] Refusing to mix Linux DEB and standalone CBT manager installations. Remove the DEB manager explicitly before installing the standalone CLI. Existing CBT exam data is not touched.' >&2
+    exit 1
+fi
+if [ -e /usr/bin/weave ] || [ -e /usr/share/weave-cbt/assets/release-manifest.json ]; then
+    echo '[ERROR] A system-level WEAVE CLI/package was detected. Refusing standalone installation until an administrator resolves the mixed package ownership.' >&2
+    exit 1
+fi
+
 destination=/usr/local/share/weave-cbt/assets
 if [ -f "$destination/release-manifest.json" ]; then
     existing_channel=$(manifest_channel "$destination/release-manifest.json")
+    if [ "$existing_channel" != production ] && [ "$existing_channel" != staging ]; then
+        echo '[ERROR] Existing manager manifest has an invalid release channel; refusing replacement.' >&2
+        exit 1
+    fi
     if [ "$incoming_channel" != "$existing_channel" ]; then
         printf '%s\n' "${RED}[ERROR] Installed manager channel is $existing_channel; refusing a $incoming_channel override.${RESET}" >&2
         exit 1
