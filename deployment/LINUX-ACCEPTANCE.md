@@ -28,3 +28,4 @@ Status: manual acceptance required before production promotion. CI packaging and
 ## Evidence required
 
 Record distro, kernel, CPU architecture, package names and checksums, installation logs, commands, actual user privileges, reboot results, GUI screenshots, client-side DNS/HTTPS checks, and any failures. Do not claim real-device Linux acceptance solely from GitHub Actions.
+
