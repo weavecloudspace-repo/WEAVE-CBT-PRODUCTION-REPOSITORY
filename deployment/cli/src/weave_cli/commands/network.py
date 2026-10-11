@@ -12,6 +12,8 @@ import typer
 
 from weave_cli.commands._shared import banner, error, get_stack, info, success, warning
 from weave_cli.commands.lan import LanError, _read_state, configure
+from weave_cli.installation import InstallationStateError
+from weave_cli.platforms.base import PlatformError
 
 app = typer.Typer(help="Show local IP/subnet details, check LAN readiness, or configure Windows forwarding.")
 
@@ -188,7 +190,7 @@ def network_configure(
         configure(stack.installation.data_directory,
                   listen_address=selected["address"], client_subnet=selected["network"])
         success("WEAVE LAN mapping configured; verify from another student device.")
-    except (LanError, OSError) as exc:
+    except (LanError, OSError, InstallationStateError, PlatformError) as exc:
         error(str(exc))
         raise typer.Exit(code=1) from exc
 
@@ -213,7 +215,7 @@ def network_url() -> None:
         typer.echo(f"http://{address}/student")
         warning("This is an HTTP address; use your verified HTTPS hostname when HTTPS is enabled.")
         warning("A working server-local URL does not prove student devices can connect.")
-    except (LanError, OSError) as exc:
+    except (LanError, OSError, InstallationStateError, PlatformError) as exc:
         error(str(exc))
         raise typer.Exit(code=1) from exc
 
@@ -254,7 +256,7 @@ def network_doctor() -> None:
                     else:
                         _verify_firewall(saved["listen_address"], saved["client_subnet"])
                         success("WEAVE-owned LAN firewall scope matches the saved configuration.")
-        except (LanError, OSError) as exc:
+        except (LanError, OSError, InstallationStateError, PlatformError) as exc:
             error(str(exc))
             failed = True
         warning("Final connectivity must be tested from a separate school computer.")
