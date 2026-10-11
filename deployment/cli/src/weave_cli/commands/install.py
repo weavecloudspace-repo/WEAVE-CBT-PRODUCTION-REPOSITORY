@@ -615,6 +615,35 @@ def _perform_install(
     for source, target in desired_files:
         _copy_staged_file(source, target, secret=(target.name == "runtime.env"))
 
+    # Log files live on the physical host drive, outside mutable program files.
+    from weave_cli.commands._shared import save_runtime_env
+    log_dir = data_directory / "service-logs"
+    log_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if os.name == "nt":
+        result = subprocess.run(
+            ["icacls", str(log_dir), "/inheritance:r", "/grant:r",
+             "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"],
+            capture_output=True, timeout=30, check=False,
+        )
+        if result.returncode:
+            raise InstallError("Could not secure Windows error archive directory.")
+    else:
+        os.chmod(log_dir, 0o700)
+    destination = runtime.translate_path(log_dir)
+    installed_env = data_directory / "runtime.env"
+    content = installed_env.read_text(encoding="utf-8")
+    configured = [
+        line.partition("=")[2].strip() for line in content.splitlines()
+        if line.startswith("WEAVE_SERVICE_LOGS_DIR=")
+    ]
+    if configured and configured != [destination]:
+        raise InstallError("Existing error archive location conflicts with selected CBT data directory.")
+    if not configured:
+        save_runtime_env(
+            installed_env,
+            (content.rstrip("\r\n") + "\nWEAVE_SERVICE_LOGS_DIR=" + destination + "\n").encode("utf-8"),
+        )
+
     compose = DockerCompose(
         compose_file=install_directory / "compose.yaml",
         env_file=data_directory / "runtime.env",
