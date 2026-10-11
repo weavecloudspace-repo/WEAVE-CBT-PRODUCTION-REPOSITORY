@@ -51,7 +51,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name WEAVE-CBT-Desktop --distpath build/gui --workpath build/gui/pyinstaller-work --specpath build/gui/pyinstaller-spec --add-data 'deployment/gui/resources;resources' deployment/gui/main.py
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name WEAVE-CBT-Desktop --distpath build/gui --workpath build/gui/pyinstaller-work --specpath build/gui/pyinstaller-spec --add-data "$((Resolve-Path 'deployment/gui/resources').Path);resources" deployment/gui/main.py
           if ($LASTEXITCODE -ne 0) { throw 'GUI compilation failed' }
       # Isolated PyInstaller validation trial; the release builder remains
       # unchanged until a Defender-clean compiled GUI passes every smoke gate.
