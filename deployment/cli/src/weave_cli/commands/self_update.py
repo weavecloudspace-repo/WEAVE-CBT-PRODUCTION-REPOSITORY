@@ -109,7 +109,8 @@ def _download_verified(release: dict, filename: str, checksum: str) -> Path:
                 raise ManagerUpdateError("Installer exceeds allowed download size.")
             progress = DownloadProgress(filename, declared_size)
             progress.start()
-            while chunk := source.read(1024 * 1024):
+            # Smaller reads make slow connections display progress promptly.
+            while chunk := source.read(64 * 1024):
                 downloaded += len(chunk)
                 if downloaded > max_bytes:
                     raise ManagerUpdateError("Installer exceeds allowed download size.")
