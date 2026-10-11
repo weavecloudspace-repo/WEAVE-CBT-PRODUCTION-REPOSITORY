@@ -163,13 +163,13 @@ class CommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             data = Path(directory)
             marker = data / "tls.enabled"
-            marker.write_text("enabled\\n", encoding="utf-8")
+            marker.write_text("enabled\n", encoding="utf-8")
             stack = stack_fixture(data)
             with (
                 patch.object(uninstall, "get_stack", return_value=stack),
                 patch.object(uninstall, "verify_purged_resources") as verify,
             ):
-                result = self.invoke(uninstall, ["--yes", "--purge-volumes"], input="DELETE DATA\\n")
+                result = self.invoke(uninstall, ["--yes", "--purge-volumes"], input="DELETE DATA\n")
             self.assertEqual(result.exit_code, 0, result.output)
             stack.compose.destroy.assert_called_once()
             verify.assert_called_once_with(stack.runtime)
@@ -180,13 +180,13 @@ class CommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             data = Path(directory)
             marker = data / "tls.enabled"
-            marker.write_text("enabled\\n", encoding="utf-8")
+            marker.write_text("enabled\n", encoding="utf-8")
             stack = stack_fixture(data)
             with (
                 patch.object(uninstall, "get_stack", return_value=stack),
                 patch.object(uninstall, "verify_purged_resources", side_effect=uninstall.PurgeSafetyError("Old TLS volume remains")),
             ):
-                result = self.invoke(uninstall, ["--yes", "--purge-volumes"], input="DELETE DATA\\n")
+                result = self.invoke(uninstall, ["--yes", "--purge-volumes"], input="DELETE DATA\n")
             self.assertEqual(result.exit_code, 1)
             self.assertTrue(marker.exists())
             stack.manager.delete.assert_not_called()
@@ -196,7 +196,7 @@ class CommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             data = Path(directory)
             marker = data / "tls.enabled"
-            marker.write_text("enabled\\n", encoding="utf-8")
+            marker.write_text("enabled\n", encoding="utf-8")
             stack = stack_fixture(data)
             with patch.object(uninstall, "get_stack", return_value=stack):
                 result = self.invoke(uninstall, ["--yes"])
