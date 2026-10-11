@@ -1,4 +1,6 @@
 import json
+import os
+import stat
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -11,6 +13,7 @@ from weave_cli.installation import (
     InstallationStateError,
 )
 from weave_cli.platforms.base import BasePlatform
+from weave_cli.platforms.linux import LinuxPlatform
 
 
 class TestPlatform(BasePlatform):
@@ -131,6 +134,65 @@ class InstallationManagerTests(unittest.TestCase):
         self.assertFalse(self.manager.exists())
         self.assertTrue(self.install_directory.is_dir())
         self.assertTrue(self.data_directory.is_dir())
+
+
+class IsolatedLinuxPlatform(LinuxPlatform):
+    """Use the production Linux filesystem contract with disposable paths."""
+
+    def __init__(self, root: Path):
+        self.root = root
+
+    @property
+    def default_install_directory(self):
+        return self.root / "install"
+
+    @property
+    def default_data_directory(self):
+        return self.root / "data"
+
+    @property
+    def public_installation_state_path(self):
+        return self.root / "weave-cbt-manager.json"
+
+
+@unittest.skipIf(os.name == "nt", "Linux public file mode uses os.fchmod")
+class LinuxPublicManagerStateTests(unittest.TestCase):
+    def test_public_metadata_tracks_lifecycle_without_exposing_secrets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            platform = IsolatedLinuxPlatform(Path(directory))
+            platform.default_install_directory.mkdir()
+            platform.default_data_directory.mkdir()
+            (platform.default_install_directory / "compose.yaml").touch()
+            private_env = platform.default_data_directory / "runtime.env"
+            private_env.write_text("POSTGRES_PASSWORD=super-secret\n", encoding="utf-8")
+            private_env.chmod(0o600)
+            manager = InstallationManager(platform)
+            timestamp = datetime.now(timezone.utc).isoformat()
+            state = InstallationState(
+                install_directory=platform.default_install_directory,
+                data_directory=platform.default_data_directory,
+                installed_version="1.0.0", runtime_type="native",
+                installed_at=timestamp,
+            )
+            manager.create(state)
+            public = platform.public_installation_state_path
+            self.assertTrue(public.is_file())
+            self.assertEqual(stat.S_IMODE(public.stat().st_mode), 0o644)
+            self.assertNotIn("super-secret", public.read_text(encoding="utf-8"))
+            self.assertNotIn("POSTGRES_PASSWORD", public.read_text(encoding="utf-8"))
+            self.assertEqual(json.loads(public.read_text())["installed_version"], "1.0.0")
+            newer = InstallationState(
+                install_directory=state.install_directory,
+                data_directory=state.data_directory,
+                installed_version="1.0.1", runtime_type="native",
+                installed_at=timestamp,
+            )
+            manager.update(newer)
+            self.assertEqual(json.loads(public.read_text())["installed_version"], "1.0.1")
+            self.assertEqual(stat.S_IMODE(private_env.stat().st_mode), 0o600)
+            manager.delete()
+            self.assertFalse(public.exists())
+            self.assertTrue(private_env.exists())
 
 
 if __name__ == "__main__":

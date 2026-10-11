@@ -181,11 +181,12 @@ docker_is_standardized() {
 
 
 remove_conflicting_packages() {
-    log_check "Checking for packages that conflict with Docker CE."
+    # The school may already host unrelated Docker/Podman services, images
+    # or volumes. A CBT installer must NEVER silently uninstall their runtime.
+    log_check "Checking for existing host container runtime packages."
 
     local package_name
-    local conflicts_found=0
-
+    local -a conflicts=()
     for package_name in \
         docker.io \
         docker-compose \
@@ -197,24 +198,22 @@ remove_conflicting_packages() {
         runc
     do
         if package_installed "$package_name"; then
-            conflicts_found=1
-            log_action "Removing conflicting package '$package_name'."
-            "${APT_GET[@]}" remove -y "$package_name"
+            conflicts+=("$package_name")
         fi
     done
 
-    if [ "$conflicts_found" -eq 0 ]; then
-        log_skip "No conflicting Docker packages are installed."
+    if [ "${#conflicts[@]}" -ne 0 ]; then
+        die "Existing container runtime packages detected: ${conflicts[*]}. Refusing automatic replacement; this host may run unrelated workloads. Have an administrator assess the existing engine, back up its data and explicitly plan any migration before installing WEAVE CBT."
     fi
+    log_skip "No conflicting host container runtime packages detected."
 }
 
 
 configure_docker_repository() {
     log_action "Configuring Docker's official package repository."
 
-    if [ -f "$DOCKER_SOURCES_FILE" ]; then
-        log_action "Resetting existing Docker apt source before repository bootstrap."
-        rm -f "$DOCKER_SOURCES_FILE"
+    if [ -e "$DOCKER_SOURCES_FILE" ] || [ -L "$DOCKER_SOURCES_FILE" ]; then
+        die "An existing Docker apt source is configured at $DOCKER_SOURCES_FILE. Refusing to overwrite host-managed package sources. Ask an administrator to verify the repository and migrate explicitly."
     fi
 
     log_action "Refreshing package metadata."
@@ -397,6 +396,15 @@ install_docker_engine() {
     fi
 
     log_action "Docker Engine needs provisioning."
+
+    # An existing but nonstandard Docker/containerd installation may support
+    # unrelated school services. Never upgrade it implicitly just to run CBT.
+    if command -v docker >/dev/null 2>&1 ||
+       command -v dockerd >/dev/null 2>&1 ||
+       systemctl cat docker.service >/dev/null 2>&1 ||
+       systemctl cat containerd.service >/dev/null 2>&1; then
+        die "An existing container runtime was detected but does not match the verified Docker CE package set. Refusing implicit repair or replacement of school-owned workloads."
+    fi
 
     remove_conflicting_packages
     configure_docker_repository

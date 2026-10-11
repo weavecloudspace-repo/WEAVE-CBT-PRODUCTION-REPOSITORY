@@ -41,6 +41,23 @@ class ReleaseManifestTests(unittest.TestCase):
             patch('weave_cli.commands.install.sys.executable', '/tmp/onefile-unpacked/weave'),
         ):
             self.assertEqual(_assets_root(None).resolve(), self.assets.resolve())
+    def test_assets_prefer_matching_linux_package_root_over_stale_channel(self):
+        from unittest.mock import patch
+        from weave_cli.commands.install import _assets_root
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cli = root / "usr" / "bin" / "weave"
+            cli.parent.mkdir(parents=True)
+            cli.touch()
+            correct = root / "usr" / "share" / "weave-cbt" / "assets"
+            correct.mkdir(parents=True)
+            (correct / "compose.yaml").write_text("services: {}")
+            with (
+                patch("weave_cli.commands.install.sys.argv", [str(cli), "release"]),
+                patch("weave_cli.commands.install.sys.executable", str(root / "tmp" / "weave")),
+            ):
+                self.assertEqual(_assets_root(None).resolve(), correct.resolve())
+
     def test_release_command_reports_channel_without_docker(self):
         from unittest.mock import patch
         from typer.testing import CliRunner

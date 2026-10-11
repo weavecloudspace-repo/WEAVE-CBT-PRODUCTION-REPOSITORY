@@ -220,10 +220,8 @@ jobs:
           cache-from: type=gha,scope=cbt-app
           cache-to: type=gha,mode=max,scope=cbt-app
       - name: Verify fresh bootstrap and browser routes
-        # TEMPORARY STAGING-ONLY BYPASS. Restore 2026-10-11 06:00 Africa/Lagos.
-        # The runtime integration smoke test is NOT passing/verified while skipped.
-        # This exception is for a staging image release blocked by ECR pull limits.
-        if: (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch') && github.ref != 'refs/heads/staging'
+        # Staging and production must pass the same fresh image + Compose smoke gate.
+        if: needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch'
         env:
           IMAGE: ${{ steps.repository.outputs.name }}:sha-${{ github.sha }}
         run: |
@@ -245,12 +243,6 @@ jobs:
           done
           curl --fail --retry 20 --retry-delay 3 --retry-all-errors http://localhost/openapi.json -o /tmp/openapi.json
           python3 -c 'import json; assert json.load(open("/tmp/openapi.json"))["paths"]'
-      - name: Temporary staging smoke-test bypass notice
-        if: github.ref == 'refs/heads/staging' && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
-        shell: bash
-        run: |
-          echo '::warning::TEMPORARY: staging image fresh-bootstrap/browser integration verification is bypassed until 2026-10-11 06:00 WAT. Do not treat this image as integration-verified.'
-          echo '⚠️ Staging image published without fresh bootstrap/browser smoke testing (temporary exception; restore 2026-10-11 06:00 Africa/Lagos).' >> "$GITHUB_STEP_SUMMARY"
       - name: Container diagnostics
         if: failure() && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         run: |
@@ -643,8 +635,14 @@ jobs:
           if (-not (Test-Path $manager) -or -not (Test-Path $desktop)) { throw 'Desktop and matching CLI were not installed together' }
           & $manager release
           if ($LASTEXITCODE -ne 0) { throw 'Bundled WEAVE CLI cannot load release information' }
-          & $desktop --smoke-test
-          if ($LASTEXITCODE -ne 0) { throw 'Installed GUI cannot start' }
+          # GUI-subsystem binaries may return control to PowerShell before
+          # terminating; $LASTEXITCODE is not authoritative for them.
+          foreach ($mode in @('--smoke-test', '--smoke-test-cli')) {
+            $guiRun = Start-Process -FilePath $desktop -ArgumentList $mode -Wait -PassThru -ErrorAction Stop
+            if ($null -eq $guiRun -or $guiRun.ExitCode -ne 0) {
+              throw "Installed Windows GUI failed $mode (exit code $($guiRun.ExitCode))."
+            }
+          }
           $manifest = Get-Content (Join-Path $folder 'assets/release-manifest.json') -Raw | ConvertFrom-Json
           if ($manifest.channel -ne $env:CHANNEL) { throw 'Desktop installer channel mismatch' }
           if ($manifest.cbt_image -notmatch '@sha256:[0-9a-f]{64}$') { throw 'Desktop installer image is not digest pinned' }

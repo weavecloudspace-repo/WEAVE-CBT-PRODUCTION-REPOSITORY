@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -236,6 +237,7 @@ class InstallationManager:
 
         try:
             self.state_path.unlink()
+            self._remove_public_metadata()
         except OSError as exc:
             raise InstallationStateError(
                 f"Failed to delete installation state file '{self.state_path}': {exc}"
@@ -278,6 +280,9 @@ class InstallationManager:
                 temporary_path = Path(temporary_file.name)
 
             os.replace(temporary_path, self.state_path)
+            # Authoritative state stays private; publish only safe metadata to
+            # let the regular-user Desktop Manager detect an installed server.
+            self._publish_public_metadata(state)
         except OSError as exc:
             raise InstallationStateError(
                 f"Failed to write installation state file '{self.state_path}': {exc}"
@@ -288,3 +293,50 @@ class InstallationManager:
                     temporary_path.unlink()
                 except OSError:
                     pass
+
+    def _public_metadata_path(self) -> Path | None:
+        """Only Linux defines the public (non-secret) manager projection."""
+        return getattr(self.platform, "public_installation_state_path", None)
+
+    def _publish_public_metadata(self, state: InstallationState) -> None:
+        path = self._public_metadata_path()
+        if path is None:
+            return
+        # This record never contains runtime.env or exam credentials.
+        payload = state.to_dict()
+        temporary: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=path.parent,
+                prefix=f".{path.name}.", suffix=".tmp", delete=False,
+            ) as record:
+                json.dump(payload, record, sort_keys=True)
+                record.write("\n")
+                record.flush()
+                os.fchmod(record.fileno(), 0o644)
+                os.fsync(record.fileno())
+                temporary = Path(record.name)
+            os.replace(temporary, path)
+        except OSError as exc:
+            # install.json is already durably committed. Failing the install
+            # here would invite an unsafe retry of a completed deployment.
+            warnings.warn(
+                f"Public CBT installation metadata was not updated: {type(exc).__name__}. "
+                "The CLI remains authoritative; GUI inspection may require elevation.",
+                RuntimeWarning, stacklevel=2,
+            )
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+    def _remove_public_metadata(self) -> None:
+        path = self._public_metadata_path()
+        if path is None:
+            return
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            warnings.warn(
+                f"Public CBT installation metadata could not be removed: {type(exc).__name__}.",
+                RuntimeWarning, stacklevel=2,
+            )

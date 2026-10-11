@@ -43,9 +43,36 @@ class LinuxBootstrapContractTests(unittest.TestCase):
         self.assertIn("--retry 5", self.script)
         self.assertIn("docker-ce candidate", self.script)
         self.assertIn(
-            "Resetting existing Docker apt source before repository bootstrap.",
+            "Refusing to overwrite host-managed package sources.",
             self.script,
         )
+
+    def test_nonstandard_existing_engine_fails_without_attempting_repair(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bin_dir = Path(directory)
+            docker = bin_dir / "docker"
+            docker.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            docker.chmod(0o755)
+            script = r"""
+source <(sed '$d' "$WEAVE_TEST_BOOTSTRAP")
+docker_is_standardized() { return 1; }
+remove_conflicting_packages() { echo DANGEROUS_REPLACEMENT_ATTEMPTED; }
+install_docker_engine
+"""
+            env = os.environ.copy()
+            env["PATH"] = directory + os.pathsep + env.get("PATH", "")
+            env["WEAVE_TEST_BOOTSTRAP"] = str(BOOTSTRAP_PATH)
+            run = subprocess.run(
+                ["bash", "-c", script], env=env,
+                capture_output=True, text=True, check=False, timeout=15,
+            )
+            self.assertNotEqual(run.returncode, 0)
+            self.assertIn("Refusing implicit repair or replacement", run.stderr)
+            self.assertNotIn("DANGEROUS_REPLACEMENT_ATTEMPTED", run.stdout)
+
+    def test_preserves_existing_package_sources(self):
+        self.assertIn('if [ -e "$DOCKER_SOURCES_FILE" ]', self.script)
+        self.assertIn("Refusing to overwrite host-managed package sources.", self.script)
 
     def test_candidate_probe_drains_long_apt_output_under_pipefail(self):
         # Reproduces a Docker CE policy listing long enough to trigger SIGPIPE

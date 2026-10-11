@@ -1,0 +1,84 @@
+name: CBT pull request image and Compose smoke
+
+on:
+  pull_request:
+    branches: [staging, master]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'deployment/docker/**'
+      - 'deployment/nginx/**'
+      - 'deployment/compose.yaml'
+      - 'deployment/ci-mirrors.yaml'
+      - '.github/workflows/ci-cd.yml'
+      - '.github/workflows/deployment-image-smoke.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cbt-pr-image-smoke-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  image-compose-smoke:
+    name: Build local image and verify fresh Compose startup
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=mirror.gcr.io/moby/buildkit:buildx-stable-1
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
+      - name: Build exact pull-request application image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deployment/docker/app/Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: weave-cbt-pr:smoke
+          # Reuse immutable content-cache layers from protected staging builds.
+          # The actual candidate image is still rebuilt and smoke-tested.
+          cache-from: type=gha,scope=cbt-app
+          cache-to: type=gha,mode=max,scope=cbt-pr-smoke
+      - name: Verify fresh bootstrap and browser routes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat > deployment/ci.env <<'EOF'
+          ENVIRONMENT=stg
+          WEAVE_API_BASE_URL=https://example.test
+          POSTGRES_DB=weave_cbt
+          POSTGRES_USER=weave
+          POSTGRES_PASSWORD=CI-only-credential-2026
+          DATABASE_URL=postgresql+asyncpg://weave:CI-only-credential-2026@postgres:5432/weave_cbt
+          REDIS_URL=redis://redis:6379/0
+          DEBUG=false
+          WEAVE_IMAGE=weave-cbt-pr:smoke
+          EOF
+          cleanup() {
+            docker compose -p weave-cbt-pr -f deployment/compose.yaml -f deployment/ci-mirrors.yaml --env-file deployment/ci.env down --volumes --remove-orphans || true
+          }
+          trap cleanup EXIT
+          docker compose -p weave-cbt-pr -f deployment/compose.yaml -f deployment/ci-mirrors.yaml --env-file deployment/ci.env up -d --wait --wait-timeout 240
+          for route in staff student; do
+            curl --fail --retry 20 --retry-delay 3 --retry-all-errors "http://localhost/$route" -o "/tmp/weave-$route.html"
+            grep -qi '<html' "/tmp/weave-$route.html"
+          done
+          curl --fail --retry 20 --retry-delay 3 --retry-all-errors http://localhost/openapi.json -o /tmp/weave-openapi.json
+          python3 -c 'import json; assert json.load(open("/tmp/weave-openapi.json"))["paths"]'
+      - name: Container diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          if test -f deployment/ci.env; then
+            docker compose -p weave-cbt-pr -f deployment/compose.yaml -f deployment/ci-mirrors.yaml --env-file deployment/ci.env logs --no-color --tail 100 || true
+            docker compose -p weave-cbt-pr -f deployment/compose.yaml -f deployment/ci-mirrors.yaml --env-file deployment/ci.env down --volumes --remove-orphans || true
+          fi

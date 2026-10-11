@@ -2,7 +2,8 @@
 
 import typer
 from urllib.error import HTTPError, URLError
-from urllib.request import urlopen
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, build_opener
 
 from weave_cli.commands.lan import _read_state, _mapped_destination, _firewall_exists, _verify_firewall, LanError
 
@@ -11,15 +12,33 @@ from weave_cli.commands._shared import (
 )
 
 
+class _NoRedirect(HTTPRedirectHandler):
+    """Inspect Nginx redirects without following the paired hostname."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def _probe_local_http() -> None:
-    """Check Nginx/browser routes without altering the installation."""
+    """Check browser routes locally without requiring external DNS."""
+    opener = build_opener(_NoRedirect())
     for route in ("staff", "student"):
         url = f"http://127.0.0.1/{route}"
         try:
-            with urlopen(url, timeout=5) as response:
-                if not 200 <= response.status < 400:
+            with opener.open(url, timeout=5) as response:
+                if not 200 <= response.status < 300:
                     raise RuntimeError(f"{url} returned HTTP {response.status}.")
-        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        except HTTPError as exc:
+            location = exc.headers.get("Location", "")
+            target = urlsplit(location)
+            if (exc.code == 308 and target.scheme == "https"
+                    and target.hostname and target.path == f"/{route}"
+                    and target.username is None and target.password is None
+                    and target.port in (None, 443)):
+                # HTTPS certificate trust must be checked by the actual client.
+                continue
+            raise RuntimeError(f"Unexpected browser redirect/status at {url}: {exc}.") from exc
+        except (URLError, TimeoutError, OSError) as exc:
             raise RuntimeError(
                 f"Local browser endpoint {url} is unreachable: {exc}. "
                 "Inspect 'weave logs nginx' and container health."
@@ -54,7 +73,7 @@ def doctor() -> None:
             raise typer.Exit(code=1)
 
         _probe_local_http()
-        success("Both staff and student HTTP endpoints respond locally.")
+        success("Both local browser routes respond or redirect to HTTPS; verify certificate trust from a student device.")
 
         if stack.installation.runtime_type == "wsl2":
             state = _read_state(stack.installation.data_directory)
