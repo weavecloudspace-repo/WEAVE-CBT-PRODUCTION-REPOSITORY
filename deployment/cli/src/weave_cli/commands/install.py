@@ -153,9 +153,22 @@ def _prepare_environment(data_directory: Path, manifest: dict[str, str] | None) 
         raise InstallError("Source checkout has no release manifest. Provide --env-file.")
     path = data_directory / "runtime.env"
     if path.exists():
+        # A previous first-install attempt may have generated runtime.env but
+        # failed before install.json was committed. Never rotate its database
+        # credentials or silently switch the running image/schema on retry.
         values = _read_environment(path)
-        if values["WEAVE_IMAGE"] != manifest["image"] or values["WEAVE_API_BASE_URL"] != manifest["api"]:
-            raise InstallError("Existing runtime configuration does not match this release; refusing to overwrite secrets.")
+        expected_env = "prod" if manifest["channel"] == "production" else "stg"
+        if values["ENVIRONMENT"] != expected_env or values["WEAVE_API_BASE_URL"] != manifest["api"]:
+            raise InstallError(
+                "Existing runtime configuration belongs to another release "
+                "channel or WEAVE API; refusing to overwrite credentials."
+            )
+        if values["WEAVE_IMAGE"] != manifest["image"]:
+            warning(
+                "Reusing existing pinned CBT image and database credentials "
+                "from an earlier installation attempt. After successful "
+                "installation, use 'weave update' to upgrade the server image."
+            )
         return path
 
     data_directory.mkdir(parents=True, exist_ok=True)
@@ -565,6 +578,10 @@ def _perform_install(
         )
     if install_directory == data_directory:
         raise InstallError("Program and data directories must be different.")
+    # Do not reinterpret an interrupted database/image update as first install.
+    # Recovery state must be resolved using the dedicated rollback workflow.
+    from weave_cli.commands.update_recovery import guard_pending_update
+    guard_pending_update(data_directory)
     if rootfs_archive is not None:
         rootfs_archive = rootfs_archive.expanduser().resolve()
         if not rootfs_archive.is_file():
