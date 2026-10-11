@@ -56,7 +56,7 @@ class ReleaseManifestTests(unittest.TestCase):
                 patch("weave_cli.commands.install.sys.argv", [str(cli), "release"]),
                 patch("weave_cli.commands.install.sys.executable", str(root / "tmp" / "weave")),
             ):
-                self.assertEqual(_assets_root(None), correct)
+                self.assertEqual(_assets_root(None).resolve(), correct.resolve())
 
     def test_release_command_reports_channel_without_docker(self):
         from unittest.mock import patch
