@@ -107,9 +107,14 @@ class ReleaseManifestTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
         original = path.read_bytes()
         self.assertEqual(_prepare_environment(self.data, release).read_bytes(), original)
+        # A partial installation may have persisted a different image before
+        # the manager was upgraded. Retrying must not rotate credentials or
+        # silently change the application's pinned image.
         release["image"] = IMAGE[:-1] + "b"
-        with self.assertRaises(InstallError):
-            _prepare_environment(self.data, release)
+        self.assertEqual(_prepare_environment(self.data, release), path)
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(_read_environment(path)["WEAVE_IMAGE"], IMAGE)
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
 
 if __name__ == "__main__":
