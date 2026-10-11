@@ -413,7 +413,7 @@ def lan(
             success("WEAVE-owned LAN forwarding removed.")
         else:
             success("Restricted LAN forwarding configured. Test from a separate student device.")
-            warning("Windows logon is still required to keep the WSL2 runtime alive.")
+            warning("A Windows user must remain signed in to keep the WSL2 runtime alive.")
     except (LanError, OSError) as exc:
         error(str(exc))
         raise typer.Exit(code=1) from exc
