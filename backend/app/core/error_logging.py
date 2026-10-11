@@ -148,7 +148,6 @@ def prune_own_service(root: Path, service: str) -> None:
             directory.rmdir()
 
 
-
 def enforce_archive_budget(root: Path) -> None:
     """Limit archive storage to 500 MiB by removing oldest regular log files."""
     if root.is_symlink() or not root.is_dir():
