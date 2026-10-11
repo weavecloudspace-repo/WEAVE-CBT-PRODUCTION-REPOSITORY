@@ -35,8 +35,8 @@ class DiscoveryTests(unittest.TestCase):
             marker = Path(directory) / "weave-cbt-manager.json"
             marker.write_text(json.dumps({
                 "schema_version": 1, "installed_version": "1.0",
-                "install_directory": "/opt/weave-cbt",
-                "data_directory": "/var/lib/weave-cbt",
+                "install_directory": str(Path(directory) / "install"),
+                "data_directory": str(Path(directory) / "data"),
             }))
             with patch.object(bridge, "PUBLIC_LINUX_STATE", marker):
                 with patch.object(Path, "lstat", return_value=Mock(
