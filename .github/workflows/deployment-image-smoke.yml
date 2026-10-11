@@ -44,6 +44,10 @@ jobs:
           load: true
           push: false
           tags: weave-cbt-pr:smoke
+          # Reuse immutable content-cache layers from protected staging builds.
+          # The actual candidate image is still rebuilt and smoke-tested.
+          cache-from: type=gha,scope=cbt-app
+          cache-to: type=gha,mode=max,scope=cbt-pr-smoke
       - name: Verify fresh bootstrap and browser routes
         shell: bash
         run: |

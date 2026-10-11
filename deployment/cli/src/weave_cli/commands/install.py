@@ -88,6 +88,10 @@ def _assets_root(assets_dir: Path | None) -> Path:
         # Nuitka onefile preserves the original executable path in argv[0].
         # sys.executable may refer to its temporary unpacked process instead.
         Path(sys.argv[0]).resolve().parent / "assets",
+        # Native Linux DEB stores assets under /usr/share/weave-cbt while
+        # the standalone CLI stores them under /usr/local/share/weave-cbt.
+        # Prefer assets owned by the invoked executable before legacy paths.
+        Path(sys.argv[0]).resolve().parent.parent / "share/weave-cbt/assets",
         Path(sys.executable).resolve().parent / "assets",
         Path("/usr/local/share/weave-cbt/assets"),
         Path("/usr/share/weave-cbt/assets"),
