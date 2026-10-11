@@ -20,6 +20,7 @@ import typer
 
 from weave_cli.commands._shared import banner, error, info, success, warning
 from weave_cli.commands.install import _assets_root, _read_release_manifest
+from weave_cli.progress import DownloadProgress
 
 _REPO = "weavecloudspace-repo/WEAVE-CBT-PRODUCTION-REPOSITORY"
 _RELEASES = f"https://api.github.com/repos/{_REPO}/releases?per_page=50"
@@ -93,25 +94,55 @@ def _expected_hash(release: dict, filename: str) -> str:
 
 
 def _download_verified(release: dict, filename: str, checksum: str) -> Path:
+    """Download with truthful progress; verify every byte before returning an installer."""
     folder = Path(tempfile.mkdtemp(prefix="weave-manager-update-"))
     target = folder / filename
     digest = hashlib.sha256()
-    total = 0
+    downloaded = 0
+    max_bytes = 500 * 1024 * 1024
+    progress: DownloadProgress | None = None
     req = Request(_official_asset(release, filename), headers={"User-Agent": "WEAVE-CBT-Manager/1"})
     try:
         with urlopen(req, timeout=60) as source, target.open("xb") as output:
+            declared_size = _declared_download_size(source)
+            if declared_size is not None and declared_size > max_bytes:
+                raise ManagerUpdateError("Installer exceeds allowed download size.")
+            progress = DownloadProgress(filename, declared_size)
+            progress.start()
             while chunk := source.read(1024 * 1024):
-                total += len(chunk)
-                if total > 500 * 1024 * 1024:
+                downloaded += len(chunk)
+                if downloaded > max_bytes:
                     raise ManagerUpdateError("Installer exceeds allowed download size.")
                 digest.update(chunk)
                 output.write(chunk)
-        if total == 0 or digest.hexdigest() != checksum:
+                progress.advance(len(chunk))
+            if declared_size is not None and downloaded != declared_size:
+                raise ManagerUpdateError(
+                    f"Incomplete installer download: received {downloaded} "
+                    f"of {declared_size} bytes."
+                )
+        if progress is not None:
+            progress.finish()
+        info("Verifying SHA-256 checksum...")
+        if downloaded == 0 or digest.hexdigest() != checksum:
             raise ManagerUpdateError("SHA-256 verification failed; update was not launched.")
         return target
     except BaseException:
+        if progress is not None:
+            progress.abort()
         target.unlink(missing_ok=True)
+        folder.rmdir()
         raise
+
+
+def _declared_download_size(response: object) -> int | None:
+    """Handle missing or malformed Content-Length without fabricating a percentage."""
+    headers = getattr(response, "headers", None)
+    raw = headers.get("Content-Length") if headers is not None else None
+    if raw is None:
+        return None
+    value = str(raw).strip()
+    return int(value) if value.isascii() and value.isdecimal() and int(value) > 0 else None
 
 
 def self_update(
@@ -149,7 +180,6 @@ def self_update(
         else:
             raise ManagerUpdateError("Only Windows and Ubuntu/Debian are supported.")
         expected = _expected_hash(release, filename)
-        info(f"Downloading and verifying {filename}...")
         installer = _download_verified(release, filename, expected)
         success("Official release checksum verified.")
         if sys.platform == "win32":
