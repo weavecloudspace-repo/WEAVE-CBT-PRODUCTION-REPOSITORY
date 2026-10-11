@@ -6,7 +6,7 @@ import os
 import re
 import sys
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -33,7 +33,7 @@ def segment(value: str) -> str:
 
 
 def format_error(record: logging.LogRecord, service: str) -> str:
-    at = datetime.fromtimestamp(record.created, timezone.utc)
+    at = datetime.fromtimestamp(record.created, UTC)
     try:
         local = at.astimezone(ZoneInfo("Africa/Lagos"))
     except (OSError, KeyError):
@@ -83,7 +83,7 @@ class ErrorArchiveHandler(logging.Handler):
             return
         try:
             data = format_error(record, self.service).encode("utf-8", "replace")
-            day = datetime.fromtimestamp(record.created, timezone.utc).strftime("%Y-%m-%d")
+            day = datetime.fromtimestamp(record.created, UTC).strftime("%Y-%m-%d")
             folder = self.root / self.service / day
             folder.mkdir(parents=True, mode=0o700, exist_ok=True)
             for part in range(MAX_PARTS):
@@ -102,25 +102,25 @@ class ErrorArchiveHandler(logging.Handler):
                 break
             else:
                 raise OSError("Daily error archive limit exceeded.")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - error archive must never crash the API
             # A missing/full disk must never fail an examination request or job.
             try:
                 sys.stderr.write(f"WEAVE CBT archive unavailable: {type(exc).__name__}\n")
                 sys.stderr.write(redact(record.getMessage()) + "\n")
-            except Exception:
-                pass
+            except Exception:  # noqa: BLE001 - even stderr can become unavailable
+                return
 
 
 def prune_own_service(root: Path, service: str) -> None:
     folder = root / segment(service)
     if folder.is_symlink() or not folder.is_dir():
         return
-    cutoff = datetime.now(timezone.utc).date() - timedelta(days=30)
+    cutoff = datetime.now(UTC).date() - timedelta(days=30)
     for directory in folder.iterdir():
         if directory.is_symlink() or not directory.is_dir():
             continue
         try:
-            day = datetime.strptime(directory.name, "%Y-%m-%d").date()
+            day = date.fromisoformat(directory.name)
         except ValueError:
             continue
         if day >= cutoff:
