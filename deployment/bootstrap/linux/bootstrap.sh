@@ -212,9 +212,8 @@ remove_conflicting_packages() {
 configure_docker_repository() {
     log_action "Configuring Docker's official package repository."
 
-    if [ -f "$DOCKER_SOURCES_FILE" ]; then
-        log_action "Resetting existing Docker apt source before repository bootstrap."
-        rm -f "$DOCKER_SOURCES_FILE"
+    if [ -e "$DOCKER_SOURCES_FILE" ] || [ -L "$DOCKER_SOURCES_FILE" ]; then
+        die "An existing Docker apt source is configured at $DOCKER_SOURCES_FILE. Refusing to overwrite host-managed package sources. Ask an administrator to verify the repository and migrate explicitly."
     fi
 
     log_action "Refreshing package metadata."
@@ -397,6 +396,15 @@ install_docker_engine() {
     fi
 
     log_action "Docker Engine needs provisioning."
+
+    # An existing but nonstandard Docker/containerd installation may support
+    # unrelated school services. Never upgrade it implicitly just to run CBT.
+    if command -v docker >/dev/null 2>&1 ||
+       command -v dockerd >/dev/null 2>&1 ||
+       systemctl cat docker.service >/dev/null 2>&1 ||
+       systemctl cat containerd.service >/dev/null 2>&1; then
+        die "An existing container runtime was detected but does not match the verified Docker CE package set. Refusing implicit repair or replacement of school-owned workloads."
+    fi
 
     remove_conflicting_packages
     configure_docker_repository
