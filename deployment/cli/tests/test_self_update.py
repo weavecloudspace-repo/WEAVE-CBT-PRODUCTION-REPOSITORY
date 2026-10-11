@@ -3,9 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import io
-import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 from weave_cli.commands import self_update

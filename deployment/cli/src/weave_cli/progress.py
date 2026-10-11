@@ -43,7 +43,7 @@ class DownloadProgress:
         self.downloaded = 0
         self.started: float | None = None
         self.last_render = 0.0
-        self.last_report_percent = -10
+        self.last_report_percent = 0
         self.last_report_time = 0.0
         self.frame = 0
         self.line_width = 0
@@ -71,7 +71,7 @@ class DownloadProgress:
             percent = min(100, int(100 * self.downloaded / self.total_bytes))
             if percent >= self.last_report_percent + 10 or now - self.last_report_time >= 5:
                 self._report(now)
-                self.last_report_percent = percent
+                self.last_report_percent = (percent // 10) * 10
                 self.last_report_time = now
         elif now - self.last_report_time >= 5:
             self._report(now)
