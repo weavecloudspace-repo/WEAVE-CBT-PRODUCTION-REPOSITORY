@@ -35,7 +35,7 @@ jobs:
       - name: Test CLI detection and local state
         run: python -m unittest discover -s deployment/gui/tests -v
       - name: Install PySide6 and Nuitka
-        run: python -m pip install 'PySide6>=6.7,<7' nuitka zstandard
+        run: python -m pip install 'PySide6>=6.7,<7' nuitka zstandard 'pyinstaller>=6.10,<7'
       - name: Smoke-test Qt window
         env:
           QT_QPA_PLATFORM: offscreen
@@ -51,17 +51,16 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          python -m nuitka --mode=standalone --enable-plugin=pyside6 --windows-console-mode=attach --assume-yes-for-downloads --include-data-dir=deployment/gui/resources=resources --output-dir=build/gui --output-filename=WEAVE-CBT-Desktop.exe deployment/gui/main.py
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name WEAVE-CBT-Desktop --distpath build/gui --workpath build/gui/pyinstaller-work --specpath build/gui/pyinstaller-spec --add-data 'deployment/gui/resources;resources' deployment/gui/main.py
           if ($LASTEXITCODE -ne 0) { throw 'GUI compilation failed' }
-      # Diagnostics: isolate console-subsystem behavior while keeping the
-      # real GUI smoke check. Production still compiles with console disabled.
-      # This trial must not be merged unless packaging and validation align.
+      # Isolated PyInstaller validation trial; the release builder remains
+      # unchanged until a Defender-clean compiled GUI passes every smoke gate.
       # GUI-subsystem executables require explicit waiting and exit-code checks.
       - name: Scan and smoke-test compiled Windows desktop
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $gui = (Resolve-Path build/gui/main.dist/WEAVE-CBT-Desktop.exe).Path
+          $gui = (Resolve-Path build/gui/WEAVE-CBT-Desktop.exe).Path
           if (-not (Get-Command Start-MpScan -ErrorAction SilentlyContinue) -or
               -not (Get-Command Get-MpThreatDetection -ErrorAction SilentlyContinue)) {
             throw 'Microsoft Defender scanning is unavailable; Windows desktop verification cannot continue.'
@@ -103,7 +102,7 @@ jobs:
           python deployment/distribution/make_manifest.py --channel staging --image $digest --version 0.0.test --destination build/gui/assets/release-manifest.json
           if ($LASTEXITCODE -ne 0) { throw 'Test manifest creation failed' }
           $cli = (Resolve-Path build/gui/weave.exe).Path
-          $gui = (Resolve-Path build/gui/main.dist/WEAVE-CBT-Desktop.exe).Path
+          $gui = (Resolve-Path build/gui/WEAVE-CBT-Desktop.exe).Path
           if (-not (Get-Command Start-MpScan -ErrorAction SilentlyContinue) -or
               -not (Get-Command Get-MpThreatDetection -ErrorAction SilentlyContinue)) {
             throw 'Microsoft Defender scanning is unavailable; compiled integration cannot proceed.'
