@@ -1,4 +1,5 @@
 """Best-effort, human-readable local error archives. Live Compose logging is retained."""
+
 from __future__ import annotations
 
 import logging
@@ -13,7 +14,9 @@ from zoneinfo import ZoneInfo
 RULE = "=" * 48
 MAX_FILE_BYTES = 5 * 1024 * 1024
 MAX_PARTS = 12
-SECRET = re.compile(r"(?i)(password|token|secret|api[_-]?key|authorization|access[_-]?code)(\s*[:=]\s*)([^\s,;]+)")
+SECRET = re.compile(
+    r"(?i)(password|token|secret|api[_-]?key|authorization|access[_-]?code)(\s*[:=]\s*)([^\s,;]+)"
+)
 BEARER = re.compile(r"(?i)\bBearer\s+\S+")
 CREDENTIAL = re.compile(r"(://[^:/@\s]+:)[^@\s/]+(@)")
 SQL_PARAMS = re.compile(r"(?is)\[parameters:\s*.*?\]")
@@ -43,13 +46,18 @@ def format_error(record: logging.LogRecord, service: str) -> str:
     trace = "No traceback provided."
     if record.exc_info:
         import traceback
+
         frames = traceback.extract_tb(record.exc_info[2])
         if frames:
             last = frames[-1]
             location = f"{last.filename}:{last.lineno} ({last.name})"
         trace = redact("".join(traceback.format_exception(*record.exc_info)))
     identifier = f"ERR-{at.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
-    reason = redact(f"{type(failure).__name__}: {failure}") if failure else "No exception details supplied."
+    reason = (
+        redact(f"{type(failure).__name__}: {failure}")
+        if failure
+        else "No exception details supplied."
+    )
     return (
         f"{RULE}\nWEAVE CBT  |  ERROR REPORT\n{RULE}\n\n"
         f"Timestamp:    {at.isoformat()} (UTC)\n"
@@ -105,7 +113,9 @@ class ErrorArchiveHandler(logging.Handler):
         except Exception as exc:  # noqa: BLE001 - error archive must never crash the API
             # A missing/full disk must never fail an examination request or job.
             try:
-                sys.stderr.write(f"WEAVE CBT archive unavailable: {type(exc).__name__}\n")
+                sys.stderr.write(
+                    f"WEAVE CBT archive unavailable: {type(exc).__name__}\n"
+                )
                 sys.stderr.write(redact(record.getMessage()) + "\n")
             except Exception:  # noqa: BLE001 - even stderr can become unavailable
                 return
@@ -141,8 +151,14 @@ def configure_error_logging(service: str) -> None:
         sys.stderr.write("WEAVE CBT archive directory must be absolute.\n")
         return
     handler = ErrorArchiveHandler(root, service)
-    for logger in (logging.getLogger(), logging.getLogger("uvicorn.error"), logging.getLogger("arq.worker")):
-        if not any(isinstance(existing, ErrorArchiveHandler) for existing in logger.handlers):
+    for logger in (
+        logging.getLogger(),
+        logging.getLogger("uvicorn.error"),
+        logging.getLogger("arq.worker"),
+    ):
+        if not any(
+            isinstance(existing, ErrorArchiveHandler) for existing in logger.handlers
+        ):
             logger.addHandler(handler)
     try:
         prune_own_service(root, service)
