@@ -1108,6 +1108,13 @@ class ControlCenter(QMainWindow):
     def load_logs(self):
         service = self.log_service.currentData()
         archived = self.log_mode.currentData() == "errors"
+        if archived and service in {"postgres", "redis", "nginx"}:
+            self._message(
+                "Infrastructure logs",
+                "PostgreSQL, Redis and NGINX currently retain bounded Docker logs. "
+                "Select Live container output for these services.",
+            )
+            return
         self.log_view.clear()
         args = ([service] if service else [])
         if archived:

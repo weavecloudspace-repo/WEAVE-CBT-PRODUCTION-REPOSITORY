@@ -43,7 +43,10 @@ def logs(
         if errors:
             reports = get_error_records(stack.installation.data_directory,
                                         service=service, day=day, limit=last)
-            typer.echo("\n\n".join(reports) if reports else "No archived errors found.")
+            if service in {"postgres", "redis", "nginx"} and not reports:
+                info("This service retains rotated Docker logs, not formatted host error reports.")
+                info(f"Use 'weave logs {service}' to inspect its live/retained output.")
+            typer.echo("\n\n".join(reports) if reports else "No archived application errors found.")
             return
         info("Press Ctrl+C to stop following." if follow else "Retrieving logs...")
         result = stack.compose.logs(service=service, follow=follow)
