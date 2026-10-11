@@ -123,6 +123,35 @@ jobs:
             throw "Compiled GUI-to-CLI discovery and QProcess failed (exit code $($process.ExitCode))."
           }
           Write-Host 'Compiled GUI-to-CLI integration verified by explicit process exit code.'
-      # Standalone compiler isolation trial only; do not publish binaries
-      # until a shipped onefile build or complete standalone package passes.
+      - name: Create isolated Windows diagnostic artifact
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $artifact = 'build/windows-cli-discovery-test-only'
+          New-Item -ItemType Directory -Force -Path $artifact | Out-Null
+          Copy-Item build/gui/WEAVE-CBT-Desktop.exe $artifact/
+          Copy-Item build/gui/weave.exe $artifact/
+          Copy-Item build/gui/assets/release-manifest.json $artifact/
+          @'
+          WEAVE CBT compiled GUI-to-CLI diagnostic ONLY.
+          The included manifest contains a synthetic, INVALID application image.
+          Do not install, update or start an examination server with these files.
+          Run from an isolated Windows test directory:
+            WEAVE-CBT-Desktop.exe --smoke-test-cli
+          Exit code 0 checks GUI-to-CLI integration, not live server readiness.
+          Validate SHA256SUMS before running and allow Microsoft Defender to scan.
+          '@ | Set-Content -Path "$artifact/README.txt" -Encoding utf8
+          $names = @('WEAVE-CBT-Desktop.exe', 'weave.exe', 'release-manifest.json')
+          $hashes = foreach ($name in $names) {
+            $hash = (Get-FileHash -LiteralPath "$artifact/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $name"
+          }
+          $hashes | Set-Content -Path "$artifact/SHA256SUMS" -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: windows-gui-cli-diagnostic-${{ github.run_id }}
+          path: build/windows-cli-discovery-test-only/
+          retention-days: 7
+          if-no-files-found: error
 

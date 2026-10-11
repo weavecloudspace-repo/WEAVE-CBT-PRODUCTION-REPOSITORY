@@ -72,6 +72,22 @@ class DiscoveryTests(unittest.TestCase):
         self.assertFalse(found.manager_installed)
         self.assertEqual(found.installation["installed_version"], "1.0")
 
+    def test_manifest_uses_cli_owned_deb_asset_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cli = root / "usr" / "bin" / "weave"
+            cli.parent.mkdir(parents=True)
+            cli.touch()
+            assets = root / "usr" / "share" / "weave-cbt" / "assets"
+            assets.mkdir(parents=True)
+            (assets / "release-manifest.json").write_text(
+                json.dumps({"channel": "staging", "manager_version": "1.2.3"}),
+                encoding="utf-8",
+            )
+            data = bridge.read_manager_release_manifest(cli)
+            self.assertEqual(data["manager_version"], "1.2.3")
+            self.assertEqual(data["channel"], "staging")
+
     def test_state_requires_real_compose_and_env(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

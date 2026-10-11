@@ -129,6 +129,24 @@ def verify_cli(path: Path, *, windows: bool) -> CliVerification:
 
 
 
+def read_manager_release_manifest(cli: Path | None) -> dict:
+    """Load manager metadata from the CLI's own package root, not stale assets."""
+    if cli is None:
+        return {}
+    directories = (
+        cli.parent / "assets",
+        cli.parent.parent / "share" / "weave-cbt" / "assets",
+    )
+    for root in directories:
+        try:
+            payload = json.loads((root / "release-manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(payload, dict) and payload.get("channel") in {"staging", "production"}:
+            return payload
+    return {}
+
+
 PUBLIC_LINUX_STATE = Path("/var/lib/weave-cbt-manager.json")
 
 

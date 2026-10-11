@@ -12,7 +12,7 @@ from datetime import datetime
 from itertools import pairwise
 from pathlib import Path
 
-from bridge import cli_subprocess_environment, discover, elevate_gui, is_admin, state_path
+from bridge import cli_subprocess_environment, discover, elevate_gui, is_admin, read_manager_release_manifest, state_path
 from PySide6.QtCore import QPointF, QProcess, QProcessEnvironment, QRectF, QSettings, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QColor,
@@ -799,14 +799,7 @@ class ControlCenter(QMainWindow):
         return ""
 
     def _read_manifest(self):
-        if not self.desktop.cli:
-            return {}
-        path = self.desktop.cli.parent / "assets" / "release-manifest.json"
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            return data if isinstance(data, dict) else {}
-        except (OSError, ValueError):
-            return {}
+        return read_manager_release_manifest(self.desktop.cli)
 
     def _lan(self):
         if not self.desktop.server_installed:
