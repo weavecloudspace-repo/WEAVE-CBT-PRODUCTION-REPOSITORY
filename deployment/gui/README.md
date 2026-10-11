@@ -23,3 +23,10 @@ QT_QPA_PLATFORM=offscreen python deployment/gui/main.py --smoke-test
 The compiled executable includes the exact uploaded WEAVE logo recolored with the standard blue palette. Building the GUI is separate from generating a distributable setup wizard; release CI handles both. CI also verifies a fresh-installed GUI and CLI on Windows and Linux, the immutable digest-pinned release manifest, and includes SHA256SUMS for all release packages.
 
 **Safety:** Staging never silently overwrites a production manager. Existing examination records in the data directory are not removed by desktop setup. An unknown/legacy CLI installation without a valid manifest must be repaired or migrated before it can be overwritten. The Windows desktop uninstaller leaves the CLI and assets in place so uninstalling the GUI does not strand an existing CBT server. Hands-on Windows WSL reboot, actual LAN student connectivity and Linux desktop Polkit flows still require acceptance testing on supported school machines.
+
+
+## Windows administrator launch and CLI discovery
+
+The Windows Desktop Manager requests native UAC elevation immediately on a normal interactive launch. It does not show an unelevated manager and wait until a privileged operation is clicked. If UAC is refused, the application exits without running actions. CI-only smoke-test switches bypass interactive elevation so they can run unattended.
+
+The installer installs `weave.exe` beside `WEAVE-CBT-Desktop.exe`. The Desktop Manager checks that exact installed location and launches the absolute executable path, so it does **not** depend on the updated machine PATH propagating into an already-running installer process. A new PowerShell terminal is still needed to run `weave` by its short name after first installation.

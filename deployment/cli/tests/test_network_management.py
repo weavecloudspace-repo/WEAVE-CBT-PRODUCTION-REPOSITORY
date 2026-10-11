@@ -61,6 +61,14 @@ class NetworkManagementTests(unittest.TestCase):
             with self.assertRaisesRegex(network_dns.DNSError, "activate HTTPS"):
                 network_dns._get_ip_and_hostname(self.stack)
 
+    def test_linux_dns_setup_is_dispatched_to_native_systemd(self):
+        self.stack.installation.runtime_type = "native"
+        with patch.object(network_dns.sys, "platform", "linux"), \
+             patch("weave_cli.commands.network_dns_linux.setup_linux", return_value={"configured": True}) as setup:
+            result = network_dns.setup(self.stack, interface="eth0")
+        self.assertTrue(result["configured"])
+        setup.assert_called_once_with(self.stack, interface="eth0")
+
     def test_dns_config_not_claimed_router_verified(self):
         with patch.object(network_dns, "_service_exists", return_value=False):
             state = network_dns._status(self.stack)

@@ -237,6 +237,33 @@ def is_admin() -> bool:
     return hasattr(os, "geteuid") and os.geteuid() == 0
 
 
+def request_windows_elevation(arguments: list[str] | None = None) -> bool:
+    """Ensure interactive Windows manager launches via the native UAC prompt.
+
+    Returns True when an unelevated process successfully launched an elevated
+    replacement; the caller must exit rather than show a normal-user manager.
+    """
+    if sys.platform != "win32" or is_admin():
+        return False
+    import ctypes
+    import subprocess as sp
+    launcher = Path(sys.argv[0]).resolve()
+    args = list(arguments if arguments is not None else sys.argv[1:])
+    if launcher.suffix.lower() != ".exe":
+        # Source checkout: ask UAC to elevate the interpreter running the script.
+        executable = sys.executable
+        parameters = sp.list2cmdline([str(launcher), *args])
+    else:
+        executable = str(launcher)
+        parameters = sp.list2cmdline(args)
+    result = ctypes.windll.shell32.ShellExecuteW(
+        None, "runas", executable, parameters, None, 1
+    )
+    if int(result) <= 32:
+        raise PermissionError("Administrator permission was not granted. WEAVE CBT Desktop Manager cannot open.")
+    return True
+
+
 def elevate_gui(operation: str, arguments: list[str] | None = None) -> bool:
     """Relaunch only when user requests an administrative action; no silent elevation."""
     if is_admin():

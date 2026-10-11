@@ -12,6 +12,33 @@ import bridge
 
 
 class DiscoveryTests(unittest.TestCase):
+    def test_windows_manager_launch_requests_native_uac(self):
+        with patch.object(bridge.sys, "platform", "win32"), \
+             patch.object(bridge, "is_admin", return_value=False), \
+             patch("ctypes.windll", create=True) as win:
+            win.shell32.ShellExecuteW.return_value = 42
+            with patch.object(bridge.sys, "argv", [r"C:\Program Files\WeaveCBT\WEAVE-CBT-Desktop.exe"]):
+                self.assertTrue(bridge.request_windows_elevation())
+            win.shell32.ShellExecuteW.assert_called_once()
+            self.assertEqual(win.shell32.ShellExecuteW.call_args.args[1], "runas")
+
+    def test_windows_manager_exits_if_uac_declined(self):
+        with patch.object(bridge.sys, "platform", "win32"), \
+             patch.object(bridge, "is_admin", return_value=False), \
+             patch("ctypes.windll", create=True) as win:
+            win.shell32.ShellExecuteW.return_value = 5
+            with patch.object(bridge.sys, "argv", [r"C:\Program Files\WeaveCBT\WEAVE-CBT-Desktop.exe"]):
+                with self.assertRaises(PermissionError):
+                    bridge.request_windows_elevation()
+
+    def test_cli_first_launch_does_not_depend_on_path_refresh(self):
+        with patch.object(bridge.sys, "argv", [r"C:\Program Files\WeaveCBT\WEAVE-CBT-Desktop.exe"]), \
+             patch.object(bridge.shutil, "which", return_value=None), \
+             patch.dict(bridge.os.environ, {"ProgramFiles": r"C:\Program Files"}):
+            found = bridge.candidates(windows=True)
+        self.assertEqual(found[0].name.lower(), "weave.exe")
+        self.assertTrue(any("WeaveCBT" in str(path) for path in found))
+
     def test_absent_manager_is_not_server(self):
         with patch.object(bridge, "candidates", return_value=[]), \
              patch.object(bridge, "state_path", return_value=Path("/nonexistent/weave-cbt/install.json")):

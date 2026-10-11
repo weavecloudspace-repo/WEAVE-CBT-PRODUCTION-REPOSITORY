@@ -26,6 +26,10 @@ class DashboardContracts(unittest.TestCase):
         self.assertIn("color: #10213b", THEME)
         self.assertIn("QMessageBox, QDialog { background: #ffffff;", THEME)
 
+    def test_normal_windows_launch_elevates_before_creating_qapplication(self):
+        self.assertLess(MAIN.index("if request_windows_elevation():"), MAIN.index("app = QApplication(sys.argv)"))
+        self.assertIn('{"--smoke-test", "--smoke-test-cli"}', MAIN)
+
     def test_official_brand_used_on_window_and_taskbar(self):
         self.assertIn('weave-logo-blue.png', MAIN)
         self.assertIn("SetCurrentProcessExplicitAppUserModelID", MAIN)

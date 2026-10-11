@@ -1,4 +1,4 @@
-"""Opt-in CoreDNS for the Windows school host. No router or DHCP settings are changed."""
+"""Opt-in CoreDNS for WEAVE school hosts on Windows and native Linux."""
 from __future__ import annotations
 
 import hashlib
@@ -116,17 +116,36 @@ def _get_ip_and_hostname(stack) -> tuple[str, str, str]:
     return hostname, mapped["listen_address"], mapped["client_subnet"]
 
 
-def _dns_answer(address: str, name: str, *, timeout: float = 2.5) -> bool:
+def _read_exact(sock: socket.socket, length: int) -> bytes:
+    chunks = bytearray()
+    while len(chunks) < length:
+        block = sock.recv(length - len(chunks))
+        if not block:
+            raise OSError("DNS server closed the connection before replying.")
+        chunks.extend(block)
+    return bytes(chunks)
+
+
+def _dns_answer(address: str, name: str, *, timeout: float = 2.5, tcp: bool = False) -> bool:
     """Query the configured resolver directly; never use the Windows hosts file."""
     query_id = 0x493B
     qname = b"".join(bytes([len(chunk)]) + chunk.encode("ascii") for chunk in name.split(".")) + b"\0"
     packet = struct.pack("!HHHHHH", query_id, 0x0100, 1, 0, 0, 0) + qname + struct.pack("!HH", 1, 1)
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.settimeout(timeout)
-            sock.sendto(packet, (address, 53))
-            reply, source = sock.recvfrom(4096)
-        if source[0] != address or len(reply) < 12 or reply[:2] != struct.pack("!H", query_id):
+        if tcp:
+            with socket.create_connection((address, 53), timeout=timeout) as sock:
+                sock.settimeout(timeout)
+                sock.sendall(struct.pack("!H", len(packet)) + packet)
+                size = _read_exact(sock, 2)
+                reply = _read_exact(sock, struct.unpack("!H", size)[0])
+            source_address = address
+        else:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.settimeout(timeout)
+                sock.sendto(packet, (address, 53))
+                reply, source = sock.recvfrom(4096)
+            source_address = source[0]
+        if source_address != address or len(reply) < 12 or reply[:2] != struct.pack("!H", query_id):
             return False
         if reply[3] & 0x0F or int.from_bytes(reply[6:8], "big") < 1:
             return False
@@ -172,6 +191,9 @@ def _service_action(*args: str) -> None:
 
 
 def _status(stack) -> dict:
+    if stack.installation.runtime_type == "native" and sys.platform.startswith("linux"):
+        from weave_cli.commands.network_dns_linux import _snapshot
+        return _snapshot(stack)
     root, _, _, state_file = _paths(stack)
     try:
         saved = json.loads(state_file.read_text(encoding="utf-8")) if state_file.is_file() else None
@@ -184,7 +206,12 @@ def _status(stack) -> dict:
             "router_verified": False}
 
 
-def setup(stack) -> dict:
+def setup(stack, *, interface: str | None = None) -> dict:
+    if stack.installation.runtime_type == "native" and sys.platform.startswith("linux"):
+        from weave_cli.commands.network_dns_linux import setup_linux
+        return setup_linux(stack, interface=interface)
+    if interface is not None:
+        raise DNSError("--interface is used only for native Linux CoreDNS setup.")
     if not stack.platform.is_admin():
         raise DNSError("Run from Administrator PowerShell.")
     hostname, address, subnet = _get_ip_and_hostname(stack)
@@ -262,6 +289,10 @@ def setup(stack) -> dict:
 
 
 def remove_if_configured(stack) -> None:
+    if stack.installation.runtime_type == "native" and sys.platform.startswith("linux"):
+        from weave_cli.commands.network_dns_linux import remove_linux
+        remove_linux(stack)
+        return
     root, _, _, state_file = _paths(stack)
     if not state_file.exists():
         return
@@ -283,6 +314,10 @@ def remove_if_configured(stack) -> None:
 
 def reconcile_if_configured(stack) -> None:
     """Do not alter CoreDNS or HTTPS if the school has never opted into DNS."""
+    if stack.installation.runtime_type == "native" and sys.platform.startswith("linux"):
+        from weave_cli.commands.network_dns_linux import reconcile_linux
+        reconcile_linux(stack)
+        return
     _, _, _, state_file = _paths(stack)
     if not state_file.exists():
         return
@@ -313,14 +348,16 @@ def dns_status(json_output: bool = typer.Option(False, "--json")) -> None:
 
 
 @app.command("setup")
-def dns_setup() -> None:
+def dns_setup(
+    interface: str | None = typer.Option(None, "--interface", help="Linux: exact school Ethernet/Wi-Fi adapter name."),
+) -> None:
     try:
-        state = setup(get_stack())
+        state = setup(get_stack(), interface=interface)
         banner("Local school DNS")
         success("CoreDNS is answering the paired hostname on the school server.")
         info(f"Configure the router DHCP DNS server as: {state['address']}")
-        warning("Do not change the router until a second computer can query this DNS service.")
-    except (DNSError, OSError, lan.LanError, RuntimeError) as exc:
+        warning("Do not change the router until a second computer can query DNS over UDP and TCP 53.")
+    except (DNSError, OSError, lan.LanError, RuntimeError, ValueError) as exc:
         error(str(exc))
         raise typer.Exit(code=1) from exc
 

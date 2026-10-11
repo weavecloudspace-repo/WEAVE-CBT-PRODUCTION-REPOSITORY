@@ -12,7 +12,7 @@ from datetime import date, datetime
 from itertools import pairwise
 from pathlib import Path
 
-from bridge import cli_subprocess_environment, discover, elevate_gui, is_admin, read_manager_release_manifest, state_path
+from bridge import cli_subprocess_environment, discover, elevate_gui, is_admin, read_manager_release_manifest, request_windows_elevation, state_path
 from PySide6.QtCore import QPointF, QProcess, QProcessEnvironment, QRectF, QSettings, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QColor,
@@ -659,7 +659,7 @@ class ControlCenter(QMainWindow):
         body.addWidget(description)
 
         settings, form = panel()
-        form.addWidget(heading("Windows LAN configuration", 17))
+        form.addWidget(heading("School network and local DNS", 17))
         form.addWidget(label("Windows host IPv4 address", "field"))
         self.ip_input = QLineEdit()
         self.ip_input.setPlaceholderText("192.168.1.12")
@@ -1238,7 +1238,8 @@ class ControlCenter(QMainWindow):
             self._message("Already installed", "This CBT server is already registered. An installation will not overwrite examination data.")
             return
         privileged = (command in MUTATIONS or
-                      (command == "network" and (args[0] in {"setup", "trust", "refresh", "remove"} or args[:2] == ["dns", "setup"])) or
+                      (command == "network" and (args[0] in {"setup", "trust", "refresh", "remove"} or args[:2] == ["dns", "setup"]
+                          or (sys.platform.startswith("linux") and args[:2] == ["dns", "status"]))) or
                       (command == "self-update" and args == ["--yes"]) or (sys.platform.startswith("linux") and command in {"doctor", "status", "logs"}))
         if privileged and not is_admin() and sys.platform == "win32":
             if self.confirm("Administrator permission", "This operation requires Administrator privileges. Relaunch the manager elevated?"):
@@ -1372,6 +1373,16 @@ class ControlCenter(QMainWindow):
 
 
 def main():
+    # The normal Desktop Manager never opens with a limited Windows token.
+    # Smoke-test mode is a noninteractive CI-only validation path.
+    if sys.platform == "win32" and not {"--smoke-test", "--smoke-test-cli"}.intersection(sys.argv[1:]):
+        try:
+            if request_windows_elevation():
+                return
+        except PermissionError as exc:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, str(exc), "WEAVE CBT Administrator access", 0x10)
+            raise SystemExit(1) from exc
     if sys.platform == "win32":
         try:
             import ctypes
