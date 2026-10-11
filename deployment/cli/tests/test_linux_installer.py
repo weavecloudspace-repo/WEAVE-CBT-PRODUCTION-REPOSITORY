@@ -13,6 +13,22 @@ class LinuxManagerInstallerTests(unittest.TestCase):
         result = subprocess.run(["bash", "-n", str(INSTALLER)], capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_mixed_package_ownership_is_rejected(self):
+        script = INSTALLER.read_text(encoding="utf-8")
+        self.assertIn("dpkg-query -W", script)
+        self.assertIn("/usr/bin/weave", script)
+        self.assertIn("/usr/share/weave-cbt/assets/release-manifest.json", script)
+        self.assertIn("Existing manager manifest has an invalid release channel", script)
+
+    def test_deb_preinstall_guard_is_generated(self):
+        builder = INSTALLER.parents[2] / "packaging" / "linux" / "build-deb.sh"
+        script = builder.read_text(encoding="utf-8")
+        self.assertIn('"$ROOT/DEBIAN/preinst"', script)
+        self.assertIn('/usr/local/bin/weave', script)
+        self.assertIn('__INCOMING_CHANNEL__', script)
+        result = subprocess.run(["bash", "-n", str(builder)], capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_channel_guard_and_atomic_binary_replace(self):
         script = INSTALLER.read_text(encoding="utf-8")
         self.assertIn('manifest_channel()', script)
