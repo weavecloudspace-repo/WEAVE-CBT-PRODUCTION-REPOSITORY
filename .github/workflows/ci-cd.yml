@@ -220,10 +220,8 @@ jobs:
           cache-from: type=gha,scope=cbt-app
           cache-to: type=gha,mode=max,scope=cbt-app
       - name: Verify fresh bootstrap and browser routes
-        # TEMPORARY STAGING-ONLY BYPASS. Restore 2026-10-11 06:00 Africa/Lagos.
-        # The runtime integration smoke test is NOT passing/verified while skipped.
-        # This exception is for a staging image release blocked by ECR pull limits.
-        if: (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch') && github.ref != 'refs/heads/staging'
+        # Staging and production must pass the same fresh image + Compose smoke gate.
+        if: needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch'
         env:
           IMAGE: ${{ steps.repository.outputs.name }}:sha-${{ github.sha }}
         run: |
@@ -245,12 +243,6 @@ jobs:
           done
           curl --fail --retry 20 --retry-delay 3 --retry-all-errors http://localhost/openapi.json -o /tmp/openapi.json
           python3 -c 'import json; assert json.load(open("/tmp/openapi.json"))["paths"]'
-      - name: Temporary staging smoke-test bypass notice
-        if: github.ref == 'refs/heads/staging' && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
-        shell: bash
-        run: |
-          echo '::warning::TEMPORARY: staging image fresh-bootstrap/browser integration verification is bypassed until 2026-10-11 06:00 WAT. Do not treat this image as integration-verified.'
-          echo '⚠️ Staging image published without fresh bootstrap/browser smoke testing (temporary exception; restore 2026-10-11 06:00 Africa/Lagos).' >> "$GITHUB_STEP_SUMMARY"
       - name: Container diagnostics
         if: failure() && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
         run: |
