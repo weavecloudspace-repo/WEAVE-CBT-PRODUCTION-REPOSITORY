@@ -7,6 +7,7 @@ from weave_cli.commands._shared import (
 )
 
 from weave_cli.commands.lan import configure, LanError, _state_path
+from weave_cli.commands.purge_safety import PurgeSafetyError, verify_purged_resources
 
 
 def uninstall(
@@ -27,7 +28,7 @@ def uninstall(
             return
 
         if purge_volumes:
-            warning("PostgreSQL and application Docker volumes will be deleted permanently.")
+            warning("PostgreSQL, CBT identity and TLS certificate Docker volumes will be deleted permanently.")
             if typer.prompt("Type DELETE DATA to confirm") != "DELETE DATA":
                 warning("Data deletion cancelled.")
                 return
@@ -35,6 +36,9 @@ def uninstall(
         info("Removing application containers...")
         if purge_volumes:
             stack.compose.destroy()
+            # Compose normally removes TLS/ACME volumes, but verify before
+            # unregistering so the next machine identity cannot reuse them.
+            verify_purged_resources(stack.runtime)
         else:
             stack.compose.stop()
 
@@ -42,17 +46,25 @@ def uninstall(
         if stack.installation.runtime_type == "wsl2" and _state_path(stack.installation.data_directory).exists():
             configure(stack.installation.data_directory, remove=True)
 
+        if purge_volumes:
+            # This host marker activates the TLS renewal profile. It must not
+            # survive removal of the associated Certbot certificate volume.
+            marker = stack.installation.data_directory / "tls.enabled"
+            if marker.is_symlink() or (marker.exists() and not marker.is_file()):
+                raise PurgeSafetyError("Unexpected TLS marker type; inspect before completing purge.")
+            marker.unlink(missing_ok=True)
+
         # Registration is deleted only after Compose succeeds. Do not erase
         # runtime.env, data directories, distro, or unrelated Docker resources.
         stack.platform.remove_runtime_persistence()
         stack.manager.delete()
         success("WEAVE CBT unregistered; application files were retained.")
         if purge_volumes:
-            warning("Compose-managed volumes were removed.")
+            warning("Compose-managed volumes, TLS certificates and TLS activation marker were removed.")
         else:
             success("Persistent school data volumes were preserved.")
         info("Docker Engine and WSL were not removed.")
-    except (*COMMAND_ERRORS, PermissionError, LanError) as exc:
+    except (*COMMAND_ERRORS, PermissionError, LanError, PurgeSafetyError) as exc:
         error(str(exc))
         raise typer.Exit(code=1) from exc
 

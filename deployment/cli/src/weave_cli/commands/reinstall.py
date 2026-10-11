@@ -17,6 +17,7 @@ from weave_cli.commands.install import (
     MINIMUM_FREE_GIB, PROJECT_NAME,
 )
 from weave_cli.commands.lan import configure, _state_path, LanError
+from weave_cli.commands.purge_safety import PurgeSafetyError, verify_purged_resources
 from weave_cli.commands.update_recovery import guard_pending_update
 from weave_cli.docker.compose import DockerCompose, DockerComposeError
 from weave_cli.docker.runtime import DockerRuntimeError
@@ -129,8 +130,9 @@ def reinstall(
                 )
                 info("Removing only WEAVE CBT project containers and named data volumes...")
                 stack.destroy()
-            if any(_project_resources(runtime)):
-                raise InstallError("WEAVE project resources remain after purge; refusing reinstall.")
+            # Also detect stale or unlabeled TLS volumes with known WEAVE
+            # names. Refuse to reuse old certificates during first start.
+            verify_purged_resources(runtime)
             platform.remove_runtime_persistence()
             if manager.exists():
                 manager.delete()
@@ -149,7 +151,7 @@ def reinstall(
         info(f"Image: {state.installed_version}")
         info("Open http://localhost/ to pair this fresh server with WEAVE Cloud.")
     except (InstallError, InstallationStateError, DockerRuntimeError,
-            DockerComposeError, PlatformError, LanError, OSError) as exc:
+            DockerComposeError, PlatformError, LanError, PurgeSafetyError, OSError) as exc:
         error(str(exc))
         raise typer.Exit(code=1) from exc
 

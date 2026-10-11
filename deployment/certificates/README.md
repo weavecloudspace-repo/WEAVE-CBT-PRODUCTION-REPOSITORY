@@ -40,6 +40,27 @@ certificate. Internet access is needed again before the certificate expires.
 
 TLS enrollment is opt-in for existing installations and cannot automatically
 issue a certificate until the CBT machine is paired and local DNS is configured.
+
+## Certificate handling during purge
+
+The explicit destructive commands `weave uninstall --purge-volumes` and
+`weave reinstall --purge-data` must remove the WEAVE Compose project volumes,
+including `weave-cbt_tls_certificates` (private keys, ACME account, and renewal
+state) and `weave-cbt_tls_snippets` (Nginx HTTPS vhost configuration). The CLI
+verifies that no project-labeled resources or known TLS volume names remain
+before declaring purge complete or starting a fresh installation; unexpected
+volumes block the operation rather than being adopted or force-deleted.
+
+`uninstall --purge-volumes` also clears the host's `tls.enabled` marker so a
+later installation does not inherit the old TLS renewal profile. Non-purge
+uninstall, server restart, and image updates preserve certificate state.
+`reinstall --purge-data` archives prior host configuration privately and
+keeps the archived TLS marker outside the active deployment.
+
+Removing local certificates **does not revoke a certificate already issued by
+Let's Encrypt**, nor does it remove an assigned hostname from WEAVE Cloud.
+Cloud-side decommissioning/revocation is a separate authorized operation,
+particularly when a private key may have been compromised.
 Never store certificates, machine credentials or private keys in GitHub or logs.
 
 ## Validation before release

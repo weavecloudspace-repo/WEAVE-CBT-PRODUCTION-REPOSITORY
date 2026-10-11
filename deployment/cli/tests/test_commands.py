@@ -159,6 +159,51 @@ class CommandTests(unittest.TestCase):
         stack.compose.destroy.assert_not_called()
         stack.manager.delete.assert_called_once()
 
+    def test_uninstall_purge_clears_tls_marker_after_verified_docker_removal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            marker = data / "tls.enabled"
+            marker.write_text("enabled\\n", encoding="utf-8")
+            stack = stack_fixture(data)
+            with (
+                patch.object(uninstall, "get_stack", return_value=stack),
+                patch.object(uninstall, "verify_purged_resources") as verify,
+            ):
+                result = self.invoke(uninstall, ["--yes", "--purge-volumes"], input="DELETE DATA\\n")
+            self.assertEqual(result.exit_code, 0, result.output)
+            stack.compose.destroy.assert_called_once()
+            verify.assert_called_once_with(stack.runtime)
+            self.assertFalse(marker.exists())
+            stack.manager.delete.assert_called_once()
+
+    def test_uninstall_purge_blocks_registration_deletion_if_tls_volumes_remain(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            marker = data / "tls.enabled"
+            marker.write_text("enabled\\n", encoding="utf-8")
+            stack = stack_fixture(data)
+            with (
+                patch.object(uninstall, "get_stack", return_value=stack),
+                patch.object(uninstall, "verify_purged_resources", side_effect=uninstall.PurgeSafetyError("Old TLS volume remains")),
+            ):
+                result = self.invoke(uninstall, ["--yes", "--purge-volumes"], input="DELETE DATA\\n")
+            self.assertEqual(result.exit_code, 1)
+            self.assertTrue(marker.exists())
+            stack.manager.delete.assert_not_called()
+            self.assertIn("Old TLS volume remains", result.output)
+
+    def test_uninstall_without_purge_keeps_tls_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            marker = data / "tls.enabled"
+            marker.write_text("enabled\\n", encoding="utf-8")
+            stack = stack_fixture(data)
+            with patch.object(uninstall, "get_stack", return_value=stack):
+                result = self.invoke(uninstall, ["--yes"])
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertTrue(marker.exists())
+            stack.compose.destroy.assert_not_called()
+
     def test_purge_requires_specific_confirmation_phrase(self):
         stack = stack_fixture()
         with patch.object(uninstall, "get_stack", return_value=stack):
