@@ -8,7 +8,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from itertools import pairwise
 from pathlib import Path
 
@@ -751,6 +751,13 @@ class ControlCenter(QMainWindow):
         self.log_mode = QComboBox()
         self.log_mode.addItem("Live container output", "live")
         self.log_mode.addItem("Archived error reports", "errors")
+        self.log_date = QLineEdit()
+        self.log_date.setPlaceholderText("YYYY-MM-DD (optional, UTC)")
+        self.log_date.setToolTip("Filter the persistent error archive by date; leave blank for recent errors.")
+        self.log_date.setEnabled(False)
+        self.log_mode.currentIndexChanged.connect(
+            lambda _index: self.log_date.setEnabled(self.log_mode.currentData() == "errors")
+        )
         self.log_service = QComboBox()
         self.log_service.setItemDelegate(QStyledItemDelegate(self.log_service))
         self.log_service.addItem("All services", "")
@@ -768,6 +775,7 @@ class ControlCenter(QMainWindow):
             action("Open archive folder", self.open_archive_folder),
             action("Clear", self.log_view.clear),
         ))
+        layout.addLayout(self.row(label("Archived error date:", "field"), self.log_date))
         layout.addWidget(self.log_view)
         layout.addWidget(label("Exported logs may contain diagnostic or confidential data; share only with trusted administrators.", "muted", True))
         body.addWidget(card)
@@ -1104,6 +1112,15 @@ class ControlCenter(QMainWindow):
         args = ([service] if service else [])
         if archived:
             args += ["--errors", "--last", "20"]
+            day = self.log_date.text().strip()
+            if day:
+                try:
+                    if date.fromisoformat(day).isoformat() != day:
+                        raise ValueError("Invalid date")
+                except ValueError:
+                    self._message("Invalid date", "Use YYYY-MM-DD, for example 2026-10-11.", error=True)
+                    return
+                args += ["--date", day]
         self.run("logs", args)
 
     def open_archive_folder(self):
@@ -1163,7 +1180,15 @@ class ControlCenter(QMainWindow):
             allowed = [[], *[[s] for s in SERVICES]]
             allowed += [[s, "--errors", "--last", "20"] for s in SERVICES]
             allowed += [["--errors", "--last", "20"]]
-            if args not in allowed:
+            if len(args) >= 2 and args[-2] == "--date":
+                date_arg = args[-1]
+                try:
+                    valid_date = date.fromisoformat(date_arg).isoformat() == date_arg
+                except ValueError:
+                    valid_date = False
+                if not valid_date or args[:-2] not in allowed or "--errors" not in args:
+                    return
+            elif args not in allowed:
                 return
         if command == "update" and args != ["--yes"]:
             return
