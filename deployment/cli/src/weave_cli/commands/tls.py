@@ -100,6 +100,10 @@ def tls(
             from weave_cli.commands.lan_tls import reconcile
 
             reconcile(stack.installation.data_directory)
+        # A previously opted-in DNS service follows the currently activated
+        # HTTPS hostname. TLS never silently changes a school's router DNS.
+        from weave_cli.commands.network_dns import reconcile_if_configured
+        reconcile_if_configured(stack)
         success("TLS is configured. Verify LAN DNS and HTTPS from another computer.")
     except (*COMMAND_ERRORS, RuntimeError, OSError) as exc:
         fail(exc)

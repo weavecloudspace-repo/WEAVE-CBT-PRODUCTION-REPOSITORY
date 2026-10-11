@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 import socket
 import subprocess
 import sys
@@ -11,7 +12,7 @@ from pathlib import Path
 import typer
 
 from weave_cli.commands._shared import banner, error, get_stack, info, success, warning
-from weave_cli.commands.lan import PRIVATE_RANGES, LanError, _read_state, configure
+from weave_cli.commands.lan import PRIVATE_RANGES, LanError, _read_state, configure, _powershell
 from weave_cli.installation import InstallationStateError
 from weave_cli.platforms.base import PlatformError
 
@@ -147,13 +148,13 @@ def network_info(
         raise typer.Exit(code=1) from exc
 
 
-@app.command("interfaces")
+@app.command("interfaces", hidden=True)
 def network_interfaces() -> None:
     """List active host IPv4 network adapters."""
     network_info(json_output=False)
 
 
-@app.command("recommend")
+@app.command("recommend", hidden=True)
 def network_recommend() -> None:
     """Show a safe suggested Windows LAN address and subnet, without changing settings."""
     try:
@@ -174,7 +175,7 @@ def network_recommend() -> None:
         raise typer.Exit(code=1) from exc
 
 
-@app.command("configure")
+@app.command("configure", hidden=True)
 def network_configure(
     auto: bool = typer.Option(False, "--auto", help="Use the single unambiguous private school adapter."),
 ) -> None:
@@ -205,26 +206,236 @@ def network_configure(
         raise typer.Exit(code=1) from exc
 
 
+HOSTNAME = re.compile(r"(?<![a-z0-9-])([a-z0-9-]+\.[a-z0-9-]+\.cbt(?:-staging)?\.weavecloudspace\.com)(?![a-z0-9-])")
+
+
+def _https_hostname(stack) -> str | None:
+    """Read the exact paired hostname from Nginx's activated HTTPS configuration.
+
+    Never read the secret-bearing installation identity file or guess a hostname.
+    """
+    if not (stack.installation.data_directory / "tls.enabled").is_file():
+        return None
+    response = stack.compose._run_compose_command(
+        command=["exec", "-T", "nginx", "cat", "/etc/nginx/weave-conf/node.conf"]
+    )
+    configuration = response.stdout
+    found = re.search(r"\bserver_name\s+([a-z0-9.-]+)\s*;", configuration)
+    hostname = found.group(1) if found else ""
+    if not HOSTNAME.fullmatch(hostname) or "listen 443 ssl" not in configuration:
+        raise LanError("HTTPS is marked active, but the paired Nginx hostname is unavailable.")
+    return hostname
+
+
+def _student_url(stack, address: str) -> dict:
+    hostname = _https_hostname(stack)
+    return {
+        "url": f"https://{hostname}/student" if hostname else f"http://{address}/student",
+        "scheme": "https" if hostname else "http",
+        "hostname": hostname,
+        "address": address,
+        "tls_enabled": bool(hostname),
+    }
+
+
 @app.command("url")
-def network_url() -> None:
-    """Display a student URL, distinguishing configured Windows forwarding from a suggestion."""
+def network_url(
+    json_output: bool = typer.Option(False, "--json", help="Output the student URL as JSON for the Desktop Manager."),
+) -> None:
+    """Display the paired HTTPS hostname once activated, otherwise the LAN HTTP URL."""
     try:
         stack = get_stack()
-        selected = recommend(inventory())
         if stack.installation.runtime_type == "wsl2":
             saved = _read_state(stack.installation.data_directory)
             if not saved:
-                warning("No WEAVE-owned school LAN mapping is configured. Use 'weave network recommend'.")
-                raise typer.Exit(code=1)
+                raise LanError("Set up the school network first: weave network setup.")
             address = saved["listen_address"]
         else:
+            selected = recommend(inventory())
             if not selected:
-                raise LanError("Select an adapter explicitly; automatic LAN URL is ambiguous.")
+                raise LanError("Choose an unambiguous school network before requesting a student URL.")
             address = selected["address"]
+        result = _student_url(stack, address)
+        if json_output:
+            typer.echo(json.dumps(result, separators=(",", ":")))
+            return
         banner("Student access link")
-        typer.echo(f"http://{address}/student")
-        warning("This is an HTTP address; use your verified HTTPS hostname when HTTPS is enabled.")
-        warning("A working server-local URL does not prove student devices can connect.")
+        typer.echo(result["url"])
+        if not result["tls_enabled"]:
+            warning("HTTPS has not been activated; pair the server and run weave tls.")
+        else:
+            warning("School DNS must resolve this hostname to the server LAN IP.")
+        warning("Verify student access from a separate school computer.")
+    except (LanError, OSError, InstallationStateError, PlatformError, RuntimeError) as exc:
+        error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("status")
+def network_status(
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable network inventory and saved setup."),
+) -> None:
+    """Show network identity, approved mapping, and TLS state without changing the host."""
+    try:
+        adapters = inventory()
+        selected = recommend(adapters)
+        try:
+            stack = get_stack()
+            mapping = _read_state(stack.installation.data_directory) if stack.installation.runtime_type == "wsl2" else None
+            tls_active = (stack.installation.data_directory / "tls.enabled").is_file()
+        except (InstallationStateError, PlatformError, OSError):
+            mapping, tls_active = None, False
+        snapshot = {"interfaces": adapters, "recommended": selected,
+                    "school_network": mapping, "tls_enabled": tls_active}
+        if json_output:
+            typer.echo(json.dumps(snapshot, separators=(",", ":")))
+            return
+        banner("School network")
+        _display(adapters)
+        if mapping:
+            info(f"Saved school listener: {mapping['listen_address']} ({mapping['client_subnet']})")
+        else:
+            warning("School forwarding is not configured on Windows, or not required on Linux.")
+        info("HTTPS activation: " + ("configured" if tls_active else "not configured"))
+    except (LanError, ValueError, OSError) as exc:
+        error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+def _candidate(adapters: list[dict], interface: str) -> dict:
+    candidates = [a for a in adapters if a["name"].casefold() == interface.casefold()]
+    if len(candidates) != 1:
+        raise LanError("Select exactly one connected network adapter by its displayed name.")
+    chosen = candidates[0]
+    if (not chosen["private"] or chosen["name"].lower().startswith(
+        ("vethernet", "docker", "wsl", "virtualbox", "vmware")
+    ) or not any(ipaddress.IPv4Network(chosen["network"]).subnet_of(parent)
+                 for parent in PRIVATE_RANGES)
+            or ipaddress.IPv4Network(chosen["network"]).prefixlen < 24):
+        raise LanError("Choose a physical school adapter with a private /24-or-narrower subnet.")
+    return chosen
+
+
+@app.command("trust")
+def network_trust(
+    interface: str = typer.Option(..., "--interface", help="Exact school Wi-Fi/Ethernet adapter name."),
+    yes: bool = typer.Option(False, "--yes", help="Confirm this network is owned or trusted by the school."),
+) -> None:
+    """Approve one school network before changing its Windows profile to Private."""
+    try:
+        stack = get_stack()
+        if stack.installation.runtime_type != "wsl2" or sys.platform != "win32":
+            raise LanError("Changing Windows network profiles is supported on Windows WSL2 only.")
+        if not stack.platform.is_admin():
+            raise LanError("Run this command from Administrator PowerShell.")
+        chosen = _candidate(inventory(), interface)
+        if chosen["category"] in ("Private", "DomainAuthenticated"):
+            success("The selected school network is already trusted.")
+            return
+        if chosen["category"] != "Public":
+            raise LanError("The selected network has an unsupported profile.")
+        if not yes and not typer.confirm(
+            f"Trust school network '{chosen['name']}' ({chosen['network']}) and change its Windows profile to Private?",
+            default=False,
+        ):
+            warning("No network settings changed.")
+            return
+        # Use the verified host IP to resolve interface index; never interpolate user text.
+        address = chosen["address"]
+        _powershell(
+            "$ip=Get-NetIPAddress -AddressFamily IPv4 -IPAddress '" + address + "' -ErrorAction Stop; "
+            "if (@($ip).Count -ne 1) { throw 'Ambiguous school IP' }; "
+            "$p=Get-NetConnectionProfile -InterfaceIndex $ip.InterfaceIndex -ErrorAction Stop; "
+            "if ($p.NetworkCategory -ne 'Public') { throw 'Network profile changed; retry after inspection' }; "
+            "Set-NetConnectionProfile -InterfaceIndex $ip.InterfaceIndex -NetworkCategory Private -ErrorAction Stop",
+            context="Approve trusted school network",
+        )
+        success("Approved school network is now Private. Run weave network setup.")
+    except (LanError, OSError, InstallationStateError, PlatformError, ValueError) as exc:
+        error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("setup")
+def network_setup(
+    listen_address: str | None = typer.Option(None, "--listen-address", help="Server IPv4 address."),
+    client_subnet: str | None = typer.Option(None, "--client-subnet", help="Allowed school subnet."),
+    auto: bool = typer.Option(False, "--auto", help="Use the only eligible trusted school interface."),
+    yes: bool = typer.Option(False, "--yes", help="Skip the LAN setup confirmation."),
+) -> None:
+    """Configure WEAVE-owned Windows forwarding; Linux needs no WSL forwarding."""
+    try:
+        stack = get_stack()
+        if stack.installation.runtime_type != "wsl2":
+            banner("School network")
+            success("Native Linux does not require Windows-to-WSL forwarding.")
+            warning("Verify firewall and student access on the actual school network.")
+            return
+        if not stack.platform.is_admin():
+            raise LanError("Run from Administrator PowerShell.")
+        if auto and (listen_address is not None or client_subnet is not None):
+            raise LanError("Use either --auto or explicit address/subnet options.")
+        if auto:
+            selected = recommend(inventory())
+            if not selected:
+                raise LanError("No single trusted school network found. Use weave network status and, if necessary, weave network trust.")
+            listen_address, client_subnet = selected["address"], selected["network"]
+        if not listen_address or not client_subnet:
+            raise LanError("Supply --auto or both --listen-address and --client-subnet.")
+        if not yes and not typer.confirm(
+            f"Configure WEAVE network access at {listen_address} for {client_subnet}?", default=False
+        ):
+            warning("No network settings changed.")
+            return
+        configure(stack.installation.data_directory, listen_address=listen_address, client_subnet=client_subnet)
+        if (stack.installation.data_directory / "tls-lan.json").exists():
+            from weave_cli.commands.lan_tls import reconcile
+            reconcile(stack.installation.data_directory)
+        success("School networking configured. Test from a student device.")
+    except (LanError, OSError, InstallationStateError, PlatformError, ValueError) as exc:
+        error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("refresh")
+def network_refresh() -> None:
+    """Refresh only the saved WEAVE-owned forwarding rules after WSL restarts."""
+    try:
+        stack = get_stack()
+        if stack.installation.runtime_type != "wsl2":
+            info("Native Linux does not need Windows forwarding.")
+            return
+        if not stack.platform.is_admin():
+            raise LanError("Administrator permissions are required.")
+        if not configure(stack.installation.data_directory, refresh=True):
+            warning("No school network mapping is configured.")
+            return
+        if (stack.installation.data_directory / "tls-lan.json").exists():
+            from weave_cli.commands.lan_tls import reconcile
+            reconcile(stack.installation.data_directory)
+        success("WEAVE network forwarding refreshed.")
+    except (LanError, OSError, InstallationStateError, PlatformError) as exc:
+        error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("remove")
+def network_remove(
+    yes: bool = typer.Option(False, "--yes", help="Confirm removal of only WEAVE-owned forwarding."),
+) -> None:
+    """Remove WEAVE-owned Windows LAN mappings, without touching unrelated rules."""
+    try:
+        stack = get_stack()
+        if stack.installation.runtime_type != "wsl2":
+            raise LanError("Windows port forwarding is not used on native Linux.")
+        if not stack.platform.is_admin():
+            raise LanError("Administrator permissions are required.")
+        if not yes and not typer.confirm("Remove WEAVE school LAN access? Student connections will stop.", default=False):
+            return
+        if configure(stack.installation.data_directory, remove=True):
+            success("WEAVE-owned LAN access removed.")
+        else:
+            warning("No WEAVE forwarding rules were configured.")
     except (LanError, OSError, InstallationStateError, PlatformError) as exc:
         error(str(exc))
         raise typer.Exit(code=1) from exc
@@ -258,7 +469,7 @@ def network_doctor() -> None:
                 else:
                     from weave_cli.commands.lan import _mapped_destination, _firewall_exists, _verify_firewall
                     if _mapped_destination(saved["listen_address"]) != f"{saved['wsl_address']}/80":
-                        error("Windows portproxy differs from the saved mapping; run 'weave lan --refresh'.")
+                        error("Windows portproxy differs from the saved mapping; run 'weave network refresh'.")
                         failed = True
                     if not _firewall_exists():
                         error("The WEAVE-owned Windows Firewall rule is missing.")
@@ -278,4 +489,6 @@ def network_doctor() -> None:
 
 
 def register(root: typer.Typer) -> None:
+    from weave_cli.commands.network_dns import register as register_dns
+    register_dns(app)
     root.add_typer(app, name="network")

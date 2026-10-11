@@ -57,7 +57,7 @@ def cli_qprocess_environment() -> QProcessEnvironment:
         environment.insert(name, value)
     return environment
 
-MUTATIONS = {"install", "start", "stop", "restart", "update", "lan", "tls"}
+MUTATIONS = {"install", "start", "stop", "restart", "update", "tls"}
 SERVICES = ("api", "worker", "postgres", "redis", "nginx", "bootstrap")
 SERVICE_DETAILS = {
     "api": ("FastAPI", "Examination API", "services/fastapi.svg"),
@@ -643,7 +643,7 @@ class ControlCenter(QMainWindow):
         )
         info.addWidget(self.network_inventory)
         info.addLayout(self.row(
-            action("Detect IP and subnet", lambda: self.run("network", ["info", "--json"]), "primary"),
+            action("Detect IP and subnet", lambda: self.run("network", ["status", "--json"]), "primary"),
             action("Network doctor", lambda: self.run("network", ["doctor"])),
             action("Copy student URL", self.copy_lan_url),
         ))
@@ -665,10 +665,15 @@ class ControlCenter(QMainWindow):
         self.subnet_input = QLineEdit()
         self.subnet_input.setPlaceholderText("192.168.1.0/24")
         form.addWidget(self.subnet_input)
-        self.lan_configure = action("Configure LAN", self.configure_lan, "primary")
-        self.lan_refresh = action("Refresh forwarding", lambda: self.run("lan", ["--refresh"]))
+        self.lan_configure = action("Configure school network", self.configure_lan, "primary")
+        self.lan_refresh = action("Refresh forwarding", lambda: self.run("network", ["refresh"]))
         self.lan_remove = action("Remove WEAVE rule", self.remove_lan, "danger")
         form.addLayout(self.row(self.lan_configure, self.lan_refresh, self.lan_remove))
+        form.addLayout(self.row(
+            action("Trust selected network", self.trust_network),
+            action("Configure local DNS", lambda: self.run("network", ["dns", "setup"]), "primary"),
+            action("DNS status", lambda: self.run("network", ["dns", "status"])),
+        ))
         body.addWidget(settings)
 
         certificate, tls_options = panel()
@@ -1091,7 +1096,18 @@ class ControlCenter(QMainWindow):
             self._message("Invalid LAN scope", str(exc), error=True)
             return
         if self.confirm("Configure school LAN", f"Allow school subnet {subnet} to reach {ip}:80 via the WEAVE-managed Windows firewall rule?"):
-            self.run("lan", ["--listen-address", ip, "--client-subnet", subnet])
+            self.run("network", ["setup", "--listen-address", ip, "--client-subnet", subnet, "--yes"])
+
+    def trust_network(self):
+        interface = self.selected_network_name()
+        if not interface:
+            self._message("Select a school network", "Detect adapters first and select the correct school Wi-Fi or Ethernet network.", error=True)
+            return
+        if self.confirm("Trust school network", f"Is '{interface}' a private, school-controlled network? Windows will change it from Public to Private."):
+            self.run("network", ["trust", "--interface", interface, "--yes"])
+
+    def selected_network_name(self):
+        return (self.network_suggestion or {}).get("name", "")
 
     def enable_https(self):
         if self.confirm(
@@ -1104,7 +1120,7 @@ class ControlCenter(QMainWindow):
 
     def remove_lan(self):
         if self.confirm("Remove WEAVE LAN forwarding", "Remove only the LAN forwarding and firewall rule owned by WEAVE CBT? This interrupts student LAN access."):
-            self.run("lan", ["--remove"])
+            self.run("network", ["remove", "--yes"])
 
     def load_logs(self):
         service = self.log_service.currentData()
@@ -1153,24 +1169,8 @@ class ControlCenter(QMainWindow):
                 self._message("Export failed", str(exc), error=True)
 
     def copy_lan_url(self):
-        lan = self._lan()
-        if lan:
-            QApplication.clipboard().setText(f"http://{lan['listen_address']}/student")
-            self._message("Address copied", "LAN student address copied. Verify it from a school computer.")
-        elif sys.platform.startswith("linux") and self.network_suggestion:
-            address = self.network_suggestion["address"]
-            QApplication.clipboard().setText(f"http://{address}/student")
-            self._message(
-                "Linux student address copied",
-                "Suggested native LAN URL copied. Confirm the server is reachable "
-                "from a separate student computer before using it.",
-            )
-        else:
-            self._message(
-                "LAN address unavailable",
-                "Detect the host IP/subnet on the Network page first, or configure "
-                "WEAVE-owned forwarding on Windows.",
-            )
+        # Read the verified, HTTPS-aware URL from the CLI, not from a saved LAN IP.
+        self.run("network", ["url", "--json"])
 
     def open_url(self, url):
         target = url if isinstance(url, QUrl) else QUrl(url)
@@ -1191,11 +1191,15 @@ class ControlCenter(QMainWindow):
             return
         # Restrict the user-controlled GUI to known CLI arguments. All LAN
         # values are independently validated again by the CLI.
-        if command == "lan" and args not in (["--refresh"], ["--remove"]):
-            if len(args) != 4 or args[:1] != ["--listen-address"] or args[2] != "--client-subnet":
+        if command == "network":
+            simple = (["status", "--json"], ["doctor"], ["url", "--json"], ["refresh"],
+                      ["remove", "--yes"], ["dns", "status"], ["dns", "setup"])
+            manual = (len(args) == 6 and args[0:2] == ["setup", "--listen-address"]
+                      and args[3] == "--client-subnet" and args[5] == "--yes")
+            trust = (len(args) == 4 and args[0:2] == ["trust", "--interface"]
+                     and args[3] == "--yes")
+            if args not in simple and not manual and not trust:
                 return
-        if command == "network" and args not in (["info", "--json"], ["doctor"], ["url"]):
-            return
         if command == "logs":
             allowed = [[], *[[s] for s in SERVICES]]
             allowed += [[s, "--errors", "--last", "20"] for s in SERVICES]
@@ -1230,7 +1234,9 @@ class ControlCenter(QMainWindow):
         if command == "install" and self.desktop.server_installed:
             self._message("Already installed", "This CBT server is already registered. An installation will not overwrite examination data.")
             return
-        privileged = command in MUTATIONS or (command == "self-update" and args == ["--yes"]) or (sys.platform.startswith("linux") and command in {"doctor", "status", "logs"})
+        privileged = (command in MUTATIONS or
+                      (command == "network" and (args[0] in {"setup", "trust", "refresh", "remove"} or args[:2] == ["dns", "setup"])) or
+                      (command == "self-update" and args == ["--yes"]) or (sys.platform.startswith("linux") and command in {"doctor", "status", "logs"})
         if privileged and not is_admin() and sys.platform == "win32":
             if self.confirm("Administrator permission", "This operation requires Administrator privileges. Relaunch the manager elevated?"):
                 if elevate_gui(command, args):
@@ -1307,7 +1313,15 @@ class ControlCenter(QMainWindow):
         if self.auto_refresh.isChecked():
             self.poll.start(20000)
         self.refresh()
-        if name == "network" and self.last_arguments == ["info", "--json"] and code == 0:
+        if name == "network" and self.last_arguments == ["url", "--json"] and code == 0:
+            try:
+                result = json.loads(self.output_tail)
+                url = result["url"]
+                QApplication.clipboard().setText(url)
+                self._message("Student URL copied", f"Copied {url}. Verify access from a school computer.")
+            except (ValueError, KeyError, TypeError):
+                self._message("Cannot copy URL", "Could not read the verified student URL.", error=True)
+        if name == "network" and self.last_arguments == ["status", "--json"] and code == 0:
             try:
                 payload = json.loads(self.output_tail)
                 interfaces = payload.get("interfaces", [])
@@ -1329,7 +1343,7 @@ class ControlCenter(QMainWindow):
         if code == 10 and name == "install":
             self._message("Restart required", "Windows must restart to complete WSL setup. Save your work, reboot Windows and then resume installation.")
         elif code == 0:
-            if name in {"install", "update", "lan"}:
+            if name in {"install", "update"} or (name == "network" and self.last_arguments and self.last_arguments[0] in {"setup", "trust", "refresh", "remove", "dns"}):
                 self._message("Operation successful", f"WEAVE {name} completed. Check Diagnostics and test the CBT endpoints before an examination.")
         elif name == "self-update" and code == 0:
             self._message("Manager update", "The official manager installer has been launched, or this release is already current. Complete the installer if prompted.")

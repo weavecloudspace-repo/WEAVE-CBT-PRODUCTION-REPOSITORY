@@ -420,4 +420,4 @@ def lan(
 
 
 def register(app: typer.Typer) -> None:
-    app.command(name="lan")(lan)
+    app.command(name="lan", hidden=True)(lan)

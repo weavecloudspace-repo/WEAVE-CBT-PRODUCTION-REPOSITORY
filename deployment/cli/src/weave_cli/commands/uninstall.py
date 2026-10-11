@@ -42,6 +42,9 @@ def uninstall(
         else:
             stack.compose.stop()
 
+        from weave_cli.commands.network_dns import remove_if_configured
+        remove_if_configured(stack)
+
         # Remove only opted-in WEAVE-owned LAN exposure before unregistering.
         if stack.installation.runtime_type == "wsl2" and _state_path(stack.installation.data_directory).exists():
             configure(stack.installation.data_directory, remove=True)

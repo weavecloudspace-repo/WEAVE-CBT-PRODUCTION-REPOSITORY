@@ -246,3 +246,21 @@ It requires that user to be signed in; it does not provide service availability
 before sign-in or after sign-out. `uninstall` removes the task, while `stop`
 stops application containers and leaves runtime management in place. Native
 Linux continues to use its existing systemd Docker service.
+
+
+## Unified school network management (staging)
+
+The supported technician commands live beneath `weave network`:
+
+- `weave network status --json` inspects adapters and recorded school settings.
+- `weave network trust --interface "Wi-Fi"` asks the administrator to approve an owned school network before changing its Windows profile from Public to Private.
+- `weave network setup --auto` configures one unambiguous approved school adapter. Use `--listen-address IP --client-subnet CIDR` for an explicitly selected adapter.
+- `weave network refresh` restores the saved Windows-to-WSL forwarding after WSL restarts; `weave network remove` removes only WEAVE-owned forwarding.
+- `weave network url` shows the paired HTTPS hostname after TLS activation, otherwise it warns and displays the HTTP LAN URL. The Desktop Manager copies the same CLI result.
+- `weave network dns setup` optionally downloads a SHA-256-pinned CoreDNS executable and registers a headless Windows service **after pairing and HTTPS activation**. It does not alter router settings or install another DHCP server. `weave network dns status` reports local configuration and `weave network dns remove` removes the WEAVE-owned service.
+
+The old `weave lan` command remains as a hidden compatibility entry point. Existing saved LAN state (`lan.json`, `tls-lan.json`) is retained. The runtime keeper now calls `weave network refresh`.
+
+**Router configuration remains manual:** reserve the CBT host LAN IP; after a local DNS test from another school device, configure the router's DHCP DNS server to point to that IP. DNS is not proven school-wide by a successful server-local check. Never enable the router's DNS pointing at the CBT server before UDP and TCP 53 reachability and ordinary DNS forwarding are verified. A DNS service outage can affect all DHCP clients using it. CoreDNS is optional and currently managed on Windows WSL2 installations only. Restoring the router's previous DNS setting is required before removing the local DNS service.
+
+Never trust unknown hotspots, overwrite a non-WEAVE DNS service or change another application's firewall rules. All network changes require explicit administrator approval. The paired HTTPS certificate and examination volumes are unaffected by DNS setup.

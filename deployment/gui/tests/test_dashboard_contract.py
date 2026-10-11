@@ -17,8 +17,8 @@ class DashboardContracts(unittest.TestCase):
     def test_actions_use_cli_not_placeholder_status(self):
         self.assertIn('["status", "--json"]', MAIN)
         self.assertIn('self.run("update", ["--yes"])', MAIN)
-        self.assertIn('self.run("lan", ["--remove"])', MAIN)
-        self.assertIn('self.run("lan", ["--refresh"])', MAIN)
+        self.assertIn('self.run("network", ["remove", "--yes"])', MAIN)
+        self.assertIn('self.run("network", ["refresh"])', MAIN)
         self.assertIn('self.run("doctor")', MAIN)
 
     def test_dialog_readability(self):
