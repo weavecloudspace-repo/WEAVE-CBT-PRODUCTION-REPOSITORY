@@ -89,6 +89,70 @@ The WSL keeper remains an interactive-logon task and cannot serve schools
 before sign-in or after sign-out. A reboot and sign-in acceptance test is
 required before claiming reliable overnight hosting.
 
+### Troubleshooting: `weave network recommend` cannot select a school adapter
+
+If the CLI reports `Cannot safely select one adapter`, start with the
+read-only commands below in **Windows PowerShell**:
+
+```powershell
+weave network interfaces
+Get-NetConnectionProfile
+```
+
+An active physical Wi-Fi/Ethernet adapter can have a private IPv4 address
+(e.g. `172.21.222.123`) yet still have a **Public** Windows network
+profile. WEAVE intentionally excludes Public profiles and virtual VMware/WSL
+adapters from automatic recommendations. It accepts only one unambiguous,
+active, trusted private school subnet (/24 or narrower); it does not guess
+between multiple candidates.
+
+**Only on a network you own and trust** (such as a dedicated school LAN),
+run PowerShell **as Administrator** and set the relevant physical adapter
+to Private. Replace `Wi-Fi` with the exact interface alias reported on your
+machine; do not use this on public/shared Wi-Fi or an untrusted hotspot:
+
+```powershell
+Set-NetConnectionProfile -InterfaceAlias "Wi-Fi" -NetworkCategory Private
+Get-NetConnectionProfile -InterfaceAlias "Wi-Fi"
+weave network recommend
+```
+
+If exactly one safe adapter is recommended, configure forwarding only after
+reviewing the listener address and allowed client subnet:
+
+```powershell
+weave network configure --auto
+weave network doctor
+weave network url
+```
+
+The configure command requires Administrator privileges and explicit
+confirmation; it changes WEAVE-owned Windows portproxy and restricted firewall
+rules. `network recommend` and `network interfaces` do not modify the
+network. Confirm reachability from a **separate student device** on the
+authorized subnet. If no adapter is safely recommended, inspect the
+physical connection and subnet instead of forcing a public network into
+Private or selecting VMware/WSL addresses. For deliberate manual Windows WSL2
+NAT mappings, use `weave lan --listen-address <HOST_IP> --client-subnet
+<SCHOOL_CIDR>` with verified values.
+
+**Native Linux does not have Windows network profile categories.** The
+Private/Domain rule and `weave network configure --auto` are Windows WSL2
+specific. On an Ubuntu/Debian CBT host, run:
+
+```bash
+weave network info
+weave network doctor
+sudo ufw status verbose
+```
+
+Check the selected host interface, Docker's published TCP ports, and whether
+the host firewall, router/VLAN and (for cloud servers) cloud security-group
+rules permit traffic **only from the trusted school subnet**. Never disable
+the firewall to diagnose reachability, and do not change UFW rules without
+preserving SSH access. A reachable localhost URL does not guarantee students
+can connect.
+
 ## Database initialization
 
 The compiled one-shot `bootstrap` command exclusively applies `alembic upgrade head`
