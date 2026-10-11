@@ -93,6 +93,33 @@ class InstallationRetryEnvironmentTests(unittest.TestCase):
         self.assertEqual(parsed["WEAVE_API_BASE_URL"], "https://weave.example.test")
         self.assertGreaterEqual(len(parsed["POSTGRES_PASSWORD"]), 16)
 
+    def test_pending_update_does_not_allow_install_to_proceed(self):
+        import json
+        from unittest.mock import MagicMock
+
+        (self.data / "update-recovery.json").write_text(json.dumps({
+            "previous_image": IMAGE_OLD,
+            "target_image": IMAGE_NEW,
+            "previous_version": "staging-old",
+            "snapshot_database": "weave_cbt_rollback_mock",
+            "failed_database": "weave_cbt_failed_mock",
+            "phase": "pending",
+        }), encoding="utf-8")
+        platform = MagicMock()
+        platform.is_admin.return_value = True
+        platform.default_install_directory = self.data / "program"
+        platform.default_data_directory = self.data
+        platform.installation_state_path = self.data / "install.json"
+        (self.data / "program").mkdir()
+        with patch.object(install, "_detect_platform", return_value=(platform, "native", MagicMock())), \
+             patch.object(install, "_assets_root", return_value=self.data):
+            with self.assertRaisesRegex(install.InstallError, "rollback"):
+                install._perform_install(
+                    env_file=None, assets_dir=None, install_dir=None, data_dir=None,
+                    rootfs_archive=None, version=None, min_free_gib=1,
+                )
+        self.assertFalse((self.data / "runtime.env").exists())
+
     def test_source_checkout_without_manifest_is_still_rejected(self):
         with self.assertRaisesRegex(install.InstallError, "release manifest"):
             install._prepare_environment(self.data, None)

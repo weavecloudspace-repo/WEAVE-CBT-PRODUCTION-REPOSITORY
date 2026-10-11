@@ -581,7 +581,10 @@ def _perform_install(
     # Do not reinterpret an interrupted database/image update as first install.
     # Recovery state must be resolved using the dedicated rollback workflow.
     from weave_cli.commands.update_recovery import guard_pending_update
-    guard_pending_update(data_directory)
+    try:
+        guard_pending_update(data_directory)
+    except RuntimeError as exc:
+        raise InstallError(str(exc)) from exc
     if rootfs_archive is not None:
         rootfs_archive = rootfs_archive.expanduser().resolve()
         if not rootfs_archive.is_file():
