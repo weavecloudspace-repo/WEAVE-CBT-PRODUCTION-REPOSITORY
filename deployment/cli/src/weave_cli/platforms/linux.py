@@ -46,6 +46,15 @@ class LinuxPlatform(BasePlatform):
 
         return self.default_data_directory / "install.json"
 
+    @property
+    def public_installation_state_path(self) -> Path:
+        """Unprivileged GUI reads metadata only; runtime.env stays protected.
+
+        /var/lib is root-owned and traversable. This file must be installed
+        with root ownership and mode 0644, never into the private data folder.
+        """
+        return Path("/var/lib/weave-cbt-manager.json")
+
     def is_admin(self) -> bool:
         """
         Return True when the current Linux process is running
