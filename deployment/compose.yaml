@@ -30,12 +30,14 @@ services:
     # This avoids concurrent copy-up of the image's identity/media/branding.
     volumes:
       - weave_data:/var/lib/weave-cbt
+      - ${WEAVE_SERVICE_LOGS_DIR:-./service-logs}:/var/log/weave-cbt
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
       ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
       DEBUG: ${DEBUG:-false}
       WEAVE_API_BASE_URL: ${WEAVE_API_BASE_URL:?WEAVE_API_BASE_URL is required}
+      WEAVE_LOG_DIR: /var/log/weave-cbt
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,8 +53,10 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
       DEBUG: ${DEBUG:-false}
       WEAVE_API_BASE_URL: ${WEAVE_API_BASE_URL:?WEAVE_API_BASE_URL is required}
+      WEAVE_LOG_DIR: /var/log/weave-cbt
     volumes:
       - weave_data:/var/lib/weave-cbt
+      - ${WEAVE_SERVICE_LOGS_DIR:-./service-logs}:/var/log/weave-cbt
     expose: ["8000"]
     depends_on:
       postgres:
@@ -73,8 +77,10 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
       DEBUG: ${DEBUG:-false}
       WEAVE_API_BASE_URL: ${WEAVE_API_BASE_URL:?WEAVE_API_BASE_URL is required}
+      WEAVE_LOG_DIR: /var/log/weave-cbt
     volumes:
       - weave_data:/var/lib/weave-cbt
+      - ${WEAVE_SERVICE_LOGS_DIR:-./service-logs}:/var/log/weave-cbt
     depends_on:
       postgres:
         condition: service_healthy

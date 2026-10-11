@@ -56,7 +56,17 @@ def main() -> None:
         commands = " | ".join(COMMANDS)
         raise SystemExit(f"Usage: weave-cbt <{commands}>")
 
-    COMMANDS[sys.argv[1]]()
+    mode = sys.argv[1]
+    from app.core.error_logging import configure_error_logging
+    configure_error_logging(mode)
+    try:
+        COMMANDS[mode]()
+    except Exception:
+        import logging
+        logging.getLogger("weave.runtime").exception(
+            "Service terminated unexpectedly", extra={"operation": mode}
+        )
+        raise
 
 
 if __name__ == "__main__":
