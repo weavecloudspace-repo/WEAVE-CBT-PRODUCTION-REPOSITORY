@@ -12,8 +12,8 @@ from datetime import datetime
 from itertools import pairwise
 from pathlib import Path
 
-from bridge import discover, elevate_gui, is_admin, state_path
-from PySide6.QtCore import QPointF, QProcess, QRectF, QSettings, QSize, Qt, QTimer, QUrl
+from bridge import cli_subprocess_environment, discover, elevate_gui, is_admin, state_path
+from PySide6.QtCore import QPointF, QProcess, QProcessEnvironment, QRectF, QSettings, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
@@ -49,6 +49,14 @@ from setup_wizard import SetupWizard
 ROOT = Path(__file__).resolve().parent
 RELEASES_URL = "https://github.com/weavecloudspace-repo/WEAVE-CBT-PRODUCTION-REPOSITORY/releases"
 PAGES = ["Overview", "Server", "Network", "Updates", "Diagnostics", "Logs", "Settings"]
+
+
+def cli_qprocess_environment() -> QProcessEnvironment:
+    environment = QProcessEnvironment()
+    for name, value in cli_subprocess_environment().items():
+        environment.insert(name, value)
+    return environment
+
 MUTATIONS = {"install", "start", "stop", "restart", "update", "lan", "tls"}
 SERVICES = ("api", "worker", "postgres", "redis", "nginx", "bootstrap")
 SERVICE_DETAILS = {
@@ -905,6 +913,7 @@ class ControlCenter(QMainWindow):
         elif manager and self.probe.state() == QProcess.NotRunning:
             self.probe.setProgram(str(self.desktop.cli))
             self.probe.setArguments(["status", "--json"])
+            self.probe.setProcessEnvironment(cli_qprocess_environment())
             self.probe.start()
         else:
             self.connection.setText("STATUS UNAVAILABLE")
@@ -1133,7 +1142,12 @@ class ControlCenter(QMainWindow):
             return
         self.desktop = discover(packaged=ROOT)
         if not self.desktop.cli:
-            self._message("CLI unavailable", "The WEAVE management CLI is missing or failed validation. Repair the desktop package.", error=True)
+            self._message(
+                "CLI unavailable",
+                "The WEAVE management CLI is missing or failed validation.",
+                error=True,
+                details=self.desktop.problem or "No CLI candidate was found.",
+            )
             return
         if command == "install" and self.desktop.server_installed:
             self._message("Already installed", "This CBT server is already registered. An installation will not overwrite examination data.")
@@ -1176,6 +1190,7 @@ class ControlCenter(QMainWindow):
         else:
             self.process.setProgram(str(self.desktop.cli))
             self.process.setArguments([command, *args])
+        self.process.setProcessEnvironment(cli_qprocess_environment())
         self.process.start()
         if not self.process.waitForStarted(2500):
             self.finished(1, QProcess.CrashExit)
@@ -1253,11 +1268,24 @@ def main():
     if brand.is_file():
         app.setWindowIcon(QIcon(str(brand)))
     ui = ControlCenter()
-    if "--smoke-test" in sys.argv:
+    if "--smoke-test" in sys.argv or "--smoke-test-cli" in sys.argv:
         wizard = SetupWizard(ui, resource("theme.qss").parent)
         if len(wizard.pageIds()) != 3 or ui.pages.count() != len(PAGES):
             raise RuntimeError("WEAVE GUI pages or setup wizard are incomplete")
         wizard.close()
+        if "--smoke-test-cli" in sys.argv:
+            if not ui.desktop.manager_installed:
+                raise RuntimeError("CLI discovery failed: " + (ui.desktop.problem or "no executable found"))
+            process = QProcess()
+            process.setProgram(str(ui.desktop.cli))
+            process.setArguments(["release"])
+            process.setProcessEnvironment(cli_qprocess_environment())
+            process.start()
+            if not process.waitForStarted(15000) or not process.waitForFinished(30000):
+                raise RuntimeError("Compiled GUI could not launch bundled CLI: " + process.errorString())
+            if process.exitCode() != 0:
+                raise RuntimeError(f"Compiled GUI CLI release check exited {process.exitCode()}.")
+            print("Compiled GUI -> CLI discovery and QProcess verified", flush=True)
         print("WEAVE desktop control center and setup wizard ready", flush=True)
         ui.close()
         return
