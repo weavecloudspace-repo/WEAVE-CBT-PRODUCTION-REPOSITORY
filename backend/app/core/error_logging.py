@@ -14,6 +14,8 @@ from zoneinfo import ZoneInfo
 RULE = "=" * 48
 MAX_FILE_BYTES = 5 * 1024 * 1024
 MAX_PARTS = 12
+MAX_ARCHIVE_BYTES = 500 * 1024 * 1024
+ARCHIVE_SERVICES = frozenset({"api", "worker", "bootstrap"})
 SECRET = re.compile(
     r"(?i)(password|token|secret|api[_-]?key|authorization|access[_-]?code)(\s*[:=]\s*)([^\s,;]+)"
 )
@@ -85,6 +87,7 @@ class ErrorArchiveHandler(logging.Handler):
         self.root = root
         self.service = segment(service)
         self.instance = segment(os.environ.get("HOSTNAME", "local"))
+        self.write_count = 0
 
     def emit(self, record: logging.LogRecord) -> None:
         if record.levelno < logging.ERROR:
@@ -107,6 +110,9 @@ class ErrorArchiveHandler(logging.Handler):
                 descriptor = os.open(file, flags, 0o600)
                 with os.fdopen(descriptor, "ab") as output:
                     output.write(data)
+                self.write_count += 1
+                if self.write_count % 64 == 0:
+                    enforce_archive_budget(self.root)
                 break
             else:
                 raise OSError("Daily error archive limit exceeded.")
@@ -142,6 +148,46 @@ def prune_own_service(root: Path, service: str) -> None:
             directory.rmdir()
 
 
+
+def enforce_archive_budget(root: Path) -> None:
+    """Limit archive storage to 500 MiB by removing oldest regular log files."""
+    if root.is_symlink() or not root.is_dir():
+        return
+    entries: list[tuple[int, Path, int]] = []
+    for service in root.iterdir():
+        if (
+            service.name not in ARCHIVE_SERVICES
+            or service.is_symlink()
+            or not service.is_dir()
+        ):
+            continue
+        for directory in service.iterdir():
+            if directory.is_symlink() or not directory.is_dir():
+                continue
+            try:
+                date.fromisoformat(directory.name)
+            except ValueError:
+                continue
+            for file in directory.iterdir():
+                if (
+                    file.is_symlink()
+                    or not file.is_file()
+                    or not file.name.endswith(".log")
+                ):
+                    continue
+                metadata = file.stat()
+                entries.append((metadata.st_mtime_ns, file, metadata.st_size))
+    total = sum(size for _, _, size in entries)
+    for _, file, size in sorted(entries):
+        if total <= MAX_ARCHIVE_BYTES:
+            break
+        try:
+            file.unlink()
+        except OSError:
+            continue
+        total -= size
+
+
 def configure_error_logging(service: str) -> None:
     location = os.environ.get("WEAVE_LOG_DIR", "").strip()
     if not location:
@@ -162,5 +208,6 @@ def configure_error_logging(service: str) -> None:
             logger.addHandler(handler)
     try:
         prune_own_service(root, service)
+        enforce_archive_budget(root)
     except OSError:
         sys.stderr.write("WEAVE CBT could not prune old error archives.\n")
