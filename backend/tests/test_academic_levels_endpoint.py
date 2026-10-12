@@ -1,4 +1,5 @@
 """Independent local academic-level catalog endpoint tests (no database required)."""
+
 from __future__ import annotations
 
 import os
@@ -21,7 +22,10 @@ from app.domains.academics.schemas import AcademicLevelResponse
 class AcademicLevelsEndpointTests(unittest.IsolatedAsyncioTestCase):
     async def test_admin_catalog_does_not_require_curriculum_subjects(self) -> None:
         level = SimpleNamespace(
-            id=uuid4(), name="JSS 1", category="junior_secondary", position=1,
+            id=uuid4(),
+            name="JSS 1",
+            category="junior_secondary",
+            position=1,
         )
         with patch.object(
             AcademicRepository,
@@ -32,15 +36,19 @@ class AcademicLevelsEndpointTests(unittest.IsolatedAsyncioTestCase):
                 db=object(),  # type: ignore[arg-type]
                 _admin=SimpleNamespace(role="admin"),  # type: ignore[arg-type]
             )
+
         list_levels.assert_awaited_once()
-        self.assertEqual(output, [
-            AcademicLevelResponse(
-                id=level.id,
-                name=level.name,
-                category=level.category,
-                position=level.position,
-            )
-        ])
+        self.assertEqual(
+            output,
+            [
+                AcademicLevelResponse(
+                    id=level.id,
+                    name=level.name,
+                    category=level.category,
+                    position=level.position,
+                )
+            ],
+        )
 
 
 if __name__ == "__main__":
