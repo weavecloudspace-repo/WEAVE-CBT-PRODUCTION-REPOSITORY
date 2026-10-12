@@ -149,6 +149,7 @@ def _declared_download_size(response: object) -> int | None:
 def self_update(
     check: bool = typer.Option(False, "--check", help="Check only; do not download or install."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm starting the official package installer."),
+    manager_pid: int | None = typer.Option(None, "--manager-pid", hidden=True),
 ) -> None:
     """Check or install the latest channel-matched manager and CLI release."""
     banner("Desktop and CLI manager update")
@@ -173,6 +174,8 @@ def self_update(
         ):
             warning("Manager update cancelled.")
             return
+        if manager_pid is not None and (sys.platform != "win32" or check or not yes or not 1 <= manager_pid <= 0xFFFFFFFF):
+            raise ManagerUpdateError("Invalid Desktop Manager update handoff.")
         if sys.platform == "win32":
             filename = ("WEAVE-CBT-Staging-Desktop-Setup.exe" if channel == "staging"
                         else "WEAVE-CBT-Desktop-Setup.exe")
@@ -184,10 +187,16 @@ def self_update(
         installer = _download_verified(release, filename, expected)
         success("Official release checksum verified.")
         if sys.platform == "win32":
-            # The signed-in user approves UAC. The external Inno Setup process
-            # replaces the binaries after this CLI/GUI process terminates.
-            os.startfile(str(installer), "runas")
-            success("Installer launched. Complete the setup wizard; close the Desktop Manager.")
+            # Inno Setup requires Administrator mode and waits for the exact
+            # running Desktop Manager process to exit before replacing files.
+            # For CLI-only updates, wait for this running CLI process instead.
+            # Never run the installer from within the installed app directory.
+            wait_pid = manager_pid if manager_pid is not None else os.getpid()
+            os.startfile(str(installer), "runas", f"/WEAVEPID={wait_pid}")
+            success("Installer launched. The CBT exam server remains running.")
+            # The GUI uses this success-only handoff signal to close after its
+            # QProcess child has exited; a check/no-update never emits it.
+            info("WEAVE_MANAGER_INSTALLER_LAUNCHED")
         else:
             if os.geteuid() != 0:
                 raise ManagerUpdateError("Run as root (sudo) to install the verified .deb package.")

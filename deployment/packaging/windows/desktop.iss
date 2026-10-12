@@ -52,6 +52,8 @@ WizardSizePercent=110
 SetupIconFile={#BrandIcon}
 UninstallDisplayIcon={app}\WEAVE-CBT-Desktop.exe
 CloseApplications=yes
+; Do not force-kill a CLI that might be performing an exam operation.
+; A manager-initiated update waits for its own GUI to exit voluntarily.
 RestartApplications=no
 AlwaysRestart=no
 ChangesEnvironment=yes
@@ -86,11 +88,67 @@ Name: desktopicon; Description: "Create a desktop shortcut"; GroupDescription: "
 Filename: "{app}\WEAVE-CBT-Desktop.exe"; Description: "Launch WEAVE CBT Desktop Manager"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [Code]
+const
+  SYNCHRONIZE_ACCESS = $00100000;
+  ERROR_INVALID_PARAMETER = 87;
+
+function WinOpenProcess(Access: Cardinal; InheritHandle: Cardinal; ProcessId: Cardinal): Cardinal;
+  external 'OpenProcess@kernel32.dll stdcall';
+function WinWaitForSingleObject(Handle: Cardinal; Milliseconds: Cardinal): Cardinal;
+  external 'WaitForSingleObject@kernel32.dll stdcall';
+function WinCloseHandle(Handle: Cardinal): Boolean;
+  external 'CloseHandle@kernel32.dll stdcall';
+function WinGetLastError(): Cardinal;
+  external 'GetLastError@kernel32.dll stdcall';
+
 var
   CheckPage: TWizardPage;
   ManagerStatus: TNewStaticText;
   ServerStatus: TNewStaticText;
   ChannelStatus: TNewStaticText;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  I, ManagerPid: Integer;
+  Argument, PidText: String;
+  ProcessHandle, WaitResult: Cardinal;
+begin
+  Result := '';
+  // The signed-in CLI only supplies /WEAVEPID after launching this elevated
+  // installer from a verified release. Downloads launched manually omit it.
+  for I := 1 to ParamCount do
+  begin
+    Argument := ParamStr(I);
+    if Pos('/WEAVEPID=', Uppercase(Argument)) <> 1 then
+      Continue;
+    PidText := Copy(Argument, 11, MaxInt);
+    ManagerPid := StrToIntDef(PidText, 0);
+    if ManagerPid <= 0 then
+    begin
+      Result := 'Invalid WEAVE manager process identifier. Restart the installer.';
+      Exit;
+    end;
+
+    // Wait on a real Windows process handle, not an unreliable tasklist
+    // snapshot. The installer must not replace the running manager EXE.
+    ProcessHandle := WinOpenProcess(SYNCHRONIZE_ACCESS, 0, Cardinal(ManagerPid));
+    if ProcessHandle = 0 then
+    begin
+      // The process may have exited before the setup wizard reached this
+      // page. Any other access failure is reported rather than ignored.
+      if WinGetLastError() <> ERROR_INVALID_PARAMETER then
+        Result := 'Cannot verify that the previous WEAVE manager exited. ' +
+          'Close WEAVE CBT Desktop Manager and retry setup.';
+      Exit;
+    end;
+    WaitResult := WinWaitForSingleObject(ProcessHandle, 30000);
+    WinCloseHandle(ProcessHandle);
+    if WaitResult <> 0 then
+      Result := 'The previous WEAVE Desktop Manager is still running. ' +
+        'Close its window and retry setup; no application files were replaced.';
+    Exit;
+  end;
+end;
 
 function NeedsPathEntry(): Boolean;
 var
