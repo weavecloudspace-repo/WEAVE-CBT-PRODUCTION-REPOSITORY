@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import typer
 
@@ -16,7 +17,9 @@ from weave_cli.commands.install import (
     _detect_platform, _perform_install, InstallError,
     MINIMUM_FREE_GIB, PROJECT_NAME,
 )
-from weave_cli.commands.lan import configure, _state_path, LanError
+from weave_cli.commands.lan import LanError
+from weave_cli.commands.purge_cleanup import preflight, cleanup_host, verify_host, clear_dns_artifacts
+from weave_cli.commands.network_dns import DNSError
 from weave_cli.commands.purge_safety import PurgeSafetyError, verify_purged_resources
 from weave_cli.commands.update_recovery import guard_pending_update
 from weave_cli.docker.compose import DockerCompose, DockerComposeError
@@ -46,6 +49,8 @@ def _archive_stale_files(install_dir: Path, data_dir: Path) -> Path | None:
         (data_dir / "tls.enabled", "tls.enabled"),
         (data_dir / "lan.json", "lan.json"),
         (data_dir / "tls-lan.json", "tls-lan.json"),
+        (data_dir / "update-recovery.json", "update-recovery.json"),
+        (data_dir / ".cbt-update.lock", ".cbt-update.lock"),
         (install_dir / "compose.yaml", "compose.yaml"),
         (install_dir / "nginx" / "nginx.conf", "nginx.conf"),
         (install_dir / "nginx" / "reload-watch.sh", "reload-watch.sh"),
@@ -88,7 +93,8 @@ def reinstall(
             state = manager.load()
             if state.install_directory != install_dir or state.data_directory != data_dir:
                 raise InstallError("Installation uses custom paths. Back it up and uninstall explicitly.")
-        guard_pending_update(data_dir)
+        if not purge_data:
+            guard_pending_update(data_dir)
         leftovers = any(p.exists() for p in (
             data_dir / "runtime.env",
             install_dir / "compose.yaml",
@@ -113,10 +119,16 @@ def reinstall(
             raise InstallError("Docker Engine is not available.")
         containers, volumes = _project_resources(runtime)
         if purge_data:
-            if _state_path(data_dir).exists() and runtime_type == "wsl2":
-                configure(data_dir, remove=True)
-            elif (data_dir / "tls-lan.json").exists():
-                raise InstallError("Unowned TLS forwarding state exists; inspect before reset.")
+            # Reuse exactly the host cleanup contract of 'uninstall --purge-volumes'.
+            host = SimpleNamespace(
+                installation=SimpleNamespace(
+                    runtime_type=runtime_type, data_directory=data_dir,
+                    install_directory=install_dir,
+                ),
+                runtime=runtime, platform=platform,
+            )
+            snapshot = preflight(host)
+            cleanup_host(host)
             if containers or volumes:
                 if not (install_dir / "compose.yaml").is_file() or not (data_dir / "runtime.env").is_file():
                     raise InstallError(
@@ -133,6 +145,10 @@ def reinstall(
             # Also detect stale or unlabeled TLS volumes with known WEAVE
             # names. Refuse to reuse old certificates during first start.
             verify_purged_resources(runtime)
+            verify_host(host, snapshot)
+            # An earlier normal uninstall could leave CoreDNS files after
+            # its ownership marker and service were removed.
+            clear_dns_artifacts(data_dir, install_dir)
             platform.remove_runtime_persistence()
             if manager.exists():
                 manager.delete()
@@ -151,7 +167,7 @@ def reinstall(
         info(f"Image: {state.installed_version}")
         info("Open http://localhost/ to pair this fresh server with WEAVE Cloud.")
     except (InstallError, InstallationStateError, DockerRuntimeError,
-            DockerComposeError, PlatformError, LanError, PurgeSafetyError, OSError) as exc:
+            DockerComposeError, PlatformError, LanError, DNSError, PurgeSafetyError, OSError) as exc:
         error(str(exc))
         raise typer.Exit(code=1) from exc
 

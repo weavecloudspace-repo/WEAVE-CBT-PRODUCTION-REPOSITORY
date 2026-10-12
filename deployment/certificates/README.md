@@ -41,6 +41,40 @@ certificate. Internet access is needed again before the certificate expires.
 TLS enrollment is opt-in for existing installations and cannot automatically
 issue a certificate until the CBT machine is paired and local DNS is configured.
 
+## Manual school hostname resolution (current default)
+
+For now, add the **paired CBT hostname** to the operating-system hosts file
+on **each student computer**. Keep the optional CoreDNS commands/configuration
+available for advanced school DNS deployments; they are not the default.
+
+On Windows, open an elevated PowerShell window and run:
+
+```powershell
+notepad C:\\Windows\\System32\\drivers\\etc\\hosts
+```
+
+Add (substitute the actual private school LAN IPv4 and paired hostname):
+
+```text
+192.168.1.12 test-server1.testschool1.cbt.weavecloudspace.com
+```
+
+Save without a `.txt` extension, then clear the cache with:
+
+```powershell
+ipconfig /flushdns
+```
+
+On Linux student computers, run `sudo nano /etc/hosts`, add the **same**
+mapping, and save. Linux generally uses the updated hosts file immediately;
+on systemd-resolved hosts, optionally run `sudo resolvectl flush-caches`.
+Verify with `getent hosts test-server1.testschool1.cbt.weavecloudspace.com`.
+
+The Windows server's hosts file does **not** configure student devices.
+Use the exact hostname returned after pairing (staging may use
+`.cbt-staging.weavecloudspace.com`); ensure that HTTPS is already activated
+and TCP/443 is reachable. Do not disable certificate verification.
+
 ## Certificate handling during purge
 
 The explicit destructive commands `weave uninstall --purge-volumes` and
