@@ -8,6 +8,7 @@ from app.core.database import DbSession
 from app.core.exceptions import AcademicAuthorizationError, AcademicScopeError
 from app.domains.academics.repository import AcademicRepository
 from app.domains.academics.schemas import (
+    AcademicLevelResponse,
     AcademicSessionResponse,
     AcademicTermResponse,
     AssessmentComponentResponse,
@@ -17,12 +18,25 @@ from app.domains.academics.schemas import (
     TeacherAssignmentResponse,
 )
 from app.domains.academics.service import AcademicQueryService
-from app.domains.auth.dependencies import CurrentLocalActor
+from app.domains.auth.dependencies import CurrentLocalActor, CurrentLocalAdmin
 
 router = APIRouter(
     prefix="/academics",
     tags=["Academics"],
 )
+
+
+@router.get(
+    "/levels",
+    response_model=list[AcademicLevelResponse],
+)
+async def list_academic_levels(
+    db: DbSession,
+    _admin: CurrentLocalAdmin,
+) -> list[AcademicLevelResponse]:
+    """Return all active school levels independent of curriculum configuration."""
+    levels = await AcademicRepository.list_levels(db)
+    return [AcademicLevelResponse.model_validate(level) for level in levels]
 
 
 @router.get(
