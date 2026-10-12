@@ -56,6 +56,23 @@ class NetworkManagementTests(unittest.TestCase):
             listen_address="192.168.1.12", client_subnet="192.168.1.0/24",
         )
 
+    def test_auto_setup_passes_detected_22_subnet_without_modifying_router(self):
+        adapter = {
+            "name": "Ethernet", "address": "192.168.10.10",
+            "network": "192.168.8.0/22", "category": "Private", "private": True,
+        }
+        with (
+            patch.object(network, "get_stack", return_value=self.stack),
+            patch.object(network, "inventory", return_value=[adapter]),
+            patch.object(network, "configure", return_value=True) as configured,
+        ):
+            result = CliRunner().invoke(app, ["network", "setup", "--auto", "--yes"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        configured.assert_called_once_with(
+            self.stack.installation.data_directory,
+            listen_address="192.168.10.10", client_subnet="192.168.8.0/22",
+        )
+
     def test_core_dns_setup_requires_https(self):
         with patch.object(network_dns.sys, "platform", "win32"):
             with self.assertRaisesRegex(network_dns.DNSError, "activate HTTPS"):
