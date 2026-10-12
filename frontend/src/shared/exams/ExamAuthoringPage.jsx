@@ -92,7 +92,10 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
   ) : null
   const openExam = (id) => dispatch({ type: 'staff', patch: { section: 'exam-history', selectedExamId: id, examAuthoringNotice: '' } })
 
-  const levels = useMemo(() => buildAcademicLevels(teacherData.subjects), [teacherData.subjects])
+  const levels = useMemo(
+    () => buildAcademicLevels(teacherData.subjects, teacherData.levels),
+    [teacherData.subjects, teacherData.levels],
+  )
   const subjectsForLevel = useMemo(
     () => listSubjectsForLevel(teacherData.subjects, levelId),
     [levelId, teacherData.subjects],

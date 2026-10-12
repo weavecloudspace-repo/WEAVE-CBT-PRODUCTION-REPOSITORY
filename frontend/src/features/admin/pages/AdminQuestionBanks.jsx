@@ -11,6 +11,7 @@ import {
   RiSearchLine,
 } from '@remixicon/react'
 import { Icon } from '../../../shared/icons/Icon'
+import { buildAcademicLevels } from '../../../shared/academics/authoringScope'
 import { getAnchoredPopoverPosition } from '../../../shared/ui/anchoredPopover'
 import { Notice, PageTitle, SelectControl, StatusBadge } from '../../../shared/ui'
 import { QuestionRows } from '../../teacher/components'
@@ -171,7 +172,7 @@ export function AdminQuestionBanksPage({ adminData, gateway, onNavigate, createR
         <div className="teacher-reference-empty teacher-reference-empty--compact"><div><strong>No matching banks</strong><p>Try a different bank, level, or subject name.</p></div></div>
       )}
 
-      {editor && <BankEditorModal editor={editor} subjects={adminData.subjects} gateway={gateway} onClose={closeEditor} onSaved={async () => { closeEditor(); await adminData.refresh() }} />}
+      {editor && <BankEditorModal editor={editor} subjects={adminData.subjects} levels={adminData.levels} gateway={gateway} onClose={closeEditor} onSaved={async () => { closeEditor(); await adminData.refresh() }} />}
       {pendingAction && <BankLifecycleModal pending={pendingAction} busy={busy} error={error} onCancel={() => { if (!busy) { setPendingAction(null); setError('') } }} onConfirm={confirmLifecycle} />}
     </div>
   )
@@ -208,10 +209,10 @@ export function AdminBankDetailPage({ state, adminData, onNavigate }) {
   )
 }
 
-function BankEditorModal({ editor, subjects, gateway, onClose, onSaved }) {
+function BankEditorModal({ editor, subjects, levels: schoolLevels, gateway, onClose, onSaved }) {
   const editing = editor.mode === 'edit'
   const subjectLocked = editing && Number(editor.bank?.count || 0) > 0
-  const levels = buildAcademicLevels(subjects)
+  const levels = buildAcademicLevels(subjects, schoolLevels)
   const existingSubject = subjects.find((subject) => subject.id === editor.bank?.curriculumSubjectId)
   const initialLevelId = existingSubject?.academicLevelId || levels[0]?.id || ''
   const initialSubjectId = existingSubject?.id || subjects.find((subject) => subject.academicLevelId === initialLevelId)?.id || ''
@@ -333,21 +334,6 @@ function BankLifecycleModal({ pending, busy, error, onCancel, onConfirm }) {
   )
 }
 
-function buildAcademicLevels(subjects) {
-  const levels = new Map()
-  subjects.forEach((subject) => {
-    if (!subject.academicLevelId || !subject.academicLevelName) return
-    if (!levels.has(subject.academicLevelId)) {
-      levels.set(subject.academicLevelId, {
-        id: subject.academicLevelId,
-        name: subject.academicLevelName,
-        category: subject.academicLevelCategory,
-        position: subject.academicLevelPosition ?? 0,
-      })
-    }
-  })
-  return [...levels.values()].sort((left, right) => left.position - right.position || left.name.localeCompare(right.name))
-}
 
 function humanize(value) {
   return String(value || '').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())

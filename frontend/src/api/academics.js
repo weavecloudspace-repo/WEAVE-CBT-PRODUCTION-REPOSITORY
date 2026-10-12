@@ -1,5 +1,6 @@
 import { queryString, weaveRequest } from './client'
 
+export const listAcademicLevels = () => weaveRequest('/academics/levels')
 export const getCurrentAcademicSession = () => weaveRequest('/academics/session/current')
 export const getCurrentAcademicTerm = () => weaveRequest('/academics/term/current')
 export const listAuthorableCurriculumSubjects = () => weaveRequest('/academics/curriculum-subjects/authorable')
