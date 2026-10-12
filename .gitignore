@@ -54,6 +54,10 @@ test-results/
 *.sqlite3
 dump.rdb
 appendonlydir/
+.weave-cbt/
+.weave-storage/
+.uv-cache/
+.kilo/
 
 # Logs
 logs/
@@ -68,7 +72,6 @@ lerna-debug.log*
 .idea/
 .vscode/*
 !.vscode/extensions.json
-!.vscode/settings.json
 *.code-workspace
 *.suo
 *.ntvs*
@@ -90,3 +93,6 @@ $RECYCLE.BIN/
 *.bak
 *.orig
 *~
+
+# Local database backups
+.local-backups/

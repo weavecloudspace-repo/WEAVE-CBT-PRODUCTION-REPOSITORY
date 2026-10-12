@@ -4,16 +4,24 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "npm run dev:staff",
+    "dev:staff": "vite --config vite.staff.config.js",
+    "dev:student": "vite --config vite.student.config.js",
+    "build": "npm run build:staff && npm run build:student",
+    "build:staff": "vite build --config vite.staff.config.js",
+    "build:student": "vite build --config vite.student.config.js",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "preview": "vite preview"
+    "preview": "npm run preview:staff",
+    "preview:staff": "vite preview --config vite.staff.config.js",
+    "preview:student": "vite preview --config vite.student.config.js"
   },
   "dependencies": {
+    "@remixicon/react": "^4.9.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

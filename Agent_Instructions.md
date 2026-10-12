@@ -545,17 +545,16 @@ When implementing a feature:
 * avoid dead code;
 * remove replaced code when the migration is intentionally complete.
 
-## 33. Migrations Must Be Real
+## 33. Database Initialization and Schema Changes
 
-When schema changes are required:
+Fresh installations create the current schema from the complete model registry
+through `app.core.database_bootstrap`, including exam contributor triggers.
+API and worker startup must initialize or validate the database before work begins.
 
-* create a proper Alembic migration;
-* inspect generated SQL;
-* add missing constraints/indexes manually;
-* run the migration against the development database;
-* verify Alembic reaches head.
-
-Do not merely generate migrations and claim the database was migrated.
+Automatic creation is not an upgrade mechanism. Do not change existing school
+tables, discard data, or attempt partial schema repairs during startup. Model
+changes for existing installations require an explicit, reviewed data-preserving
+upgrade procedure and validation against a disposable PostgreSQL database.
 
 ## 34. Tests Are Part of the Implementation
 
@@ -584,7 +583,7 @@ Before reporting completion:
 * remove dead imports;
 * run formatting/lint;
 * run relevant tests;
-* run migration checks where schema changed;
+* run database bootstrap checks where schema changed;
 * report what was actually validated.
 
 Never claim tests passed unless they were run successfully.

@@ -1,0 +1,2 @@
+# The production Docker build uses the repository root as its build context.
+# The authoritative ignore rules therefore live in /.dockerignore.

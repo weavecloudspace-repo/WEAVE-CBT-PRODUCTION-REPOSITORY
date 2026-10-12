@@ -1,0 +1,301 @@
+"""Command handlers are tested without running Docker or touching host installations."""
+from __future__ import annotations
+
+import tempfile
+import unittest
+from datetime import datetime, timezone
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import typer
+from typer.testing import CliRunner
+from weave_cli.installation import InstallationState
+from weave_cli.commands import doctor, logs, restart, rollback, start, status, stop, uninstall, update
+from weave_cli.platforms.base import PlatformError
+
+
+def stack_fixture(data_dir: Path | None = None):
+    stack = MagicMock()
+    stack.runtime.docker_engine_running.return_value = True
+    stack.runtime.docker_cli_available.return_value = True
+    stack.runtime.docker_compose_available.return_value = True
+    stack.platform.is_admin.return_value = True
+    stack.compose.status.return_value.stdout = "api-1  api  Up"
+    stack.compose.logs.return_value.stdout = "test log"
+    stack.compose.logs.return_value.stderr = ""
+    stack.installation = InstallationState(
+        install_directory=data_dir or Path("/fake/install"),
+        data_directory=data_dir or Path("/fake/data"),
+        installed_version="v1",
+        runtime_type="native",
+        installed_at=datetime.now(timezone.utc).isoformat(),
+    )
+    return stack
+
+
+class CommandTests(unittest.TestCase):
+    runner = CliRunner()
+
+    def invoke(self, module, args=(), input=None):
+        app = typer.Typer()
+        module.register(app)
+        return self.runner.invoke(app, list(args), input=input)
+
+    def test_start_configures_persistence_even_when_docker_is_running(self):
+        stack = stack_fixture()
+        with patch.object(start, "get_stack", return_value=stack):
+            result = self.invoke(start)
+        self.assertEqual(result.exit_code, 0, result.output)
+        stack.platform.ensure_runtime_persistence.assert_called_once()
+        stack.compose.start.assert_called_once()
+
+    def test_start_does_not_continue_when_persistence_fails(self):
+        stack = stack_fixture()
+        stack.platform.ensure_runtime_persistence.side_effect = PlatformError("Task failed")
+        with patch.object(start, "get_stack", return_value=stack):
+            result = self.invoke(start)
+        self.assertEqual(result.exit_code, 1, result.output)
+        stack.compose.start.assert_not_called()
+
+    def test_uninstall_removes_session_task(self):
+        stack = stack_fixture()
+        with patch.object(uninstall, "get_stack", return_value=stack):
+            result = self.invoke(uninstall, ["--yes"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        stack.platform.remove_runtime_persistence.assert_called_once()
+        stack.manager.delete.assert_called_once()
+
+    def test_uninstall_retains_registration_when_task_removal_fails(self):
+        stack = stack_fixture()
+        stack.platform.remove_runtime_persistence.side_effect = PlatformError("Task failed")
+        with patch.object(uninstall, "get_stack", return_value=stack):
+            result = self.invoke(uninstall, ["--yes"])
+        self.assertEqual(result.exit_code, 1, result.output)
+        stack.manager.delete.assert_not_called()
+
+    def test_all_commands_register(self):
+        app = typer.Typer()
+        for module in (start, stop, restart, status, logs, doctor, update, rollback, uninstall):
+            module.register(app)
+        result = self.runner.invoke(app, ["--help"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        for name in ("start", "stop", "restart", "status", "logs", "doctor", "update", "rollback", "uninstall"):
+            self.assertIn(name, result.output)
+
+    def test_start_recovers_stopped_engine(self):
+        stack = stack_fixture()
+        stack.runtime.docker_engine_running.side_effect = [False, True]
+        with patch.object(start, "get_stack", return_value=stack):
+            result = self.invoke(start)
+        self.assertEqual(result.exit_code, 0, result.output)
+        stack.platform.start_docker_engine.assert_called_once()
+        stack.compose.start.assert_called_once()
+
+    def test_stop_preserves_volumes(self):
+        stack = stack_fixture()
+        with patch.object(stop, "get_stack", return_value=stack):
+            result = self.invoke(stop)
+        self.assertEqual(result.exit_code, 0, result.output)
+        stack.compose.stop.assert_called_once()
+        stack.compose.destroy.assert_not_called()
+
+    def test_restart_uses_restart(self):
+        stack = stack_fixture()
+        with patch.object(restart, "get_stack", return_value=stack):
+            result = self.invoke(restart)
+        self.assertEqual(result.exit_code, 0, result.output)
+        stack.compose.restart.assert_called_once()
+
+    def test_unknown_logs_service_is_rejected(self):
+        with patch.object(logs, "get_stack") as dependency:
+            result = self.invoke(logs, ["invalid"])
+        self.assertEqual(result.exit_code, 2, result.output)
+        dependency.assert_not_called()
+
+    def test_logs_are_sent_to_compose(self):
+        stack = stack_fixture()
+        with patch.object(logs, "get_stack", return_value=stack):
+            result = self.invoke(logs, ["api"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        stack.compose.logs.assert_called_once_with(service="api", follow=False)
+
+    def test_status_is_read_only(self):
+        stack = stack_fixture()
+        with patch.object(status, "get_stack", return_value=stack):
+            result = self.invoke(status)
+        self.assertEqual(result.exit_code, 0, result.output)
+        stack.compose.status.assert_called_once()
+        stack.compose.start.assert_not_called()
+
+    def test_doctor_is_read_only(self):
+        stack = stack_fixture()
+        with (
+            patch.object(doctor, "get_stack", return_value=stack),
+            patch.object(doctor, "_probe_local_http") as http,
+        ):
+            result = self.invoke(doctor)
+        self.assertEqual(result.exit_code, 0, result.output)
+        http.assert_called_once()
+        stack.compose.config.assert_called_once()
+        stack.compose.start.assert_not_called()
+
+    def test_doctor_detects_failed_local_browser_route(self):
+        stack = stack_fixture()
+        with (
+            patch.object(doctor, "get_stack", return_value=stack),
+            patch.object(doctor, "_probe_local_http", side_effect=RuntimeError("HTTP failed")),
+        ):
+            result = self.invoke(doctor)
+        self.assertEqual(result.exit_code, 1, result.output)
+        self.assertIn("HTTP failed", result.output)
+        stack.compose.start.assert_not_called()
+
+    def test_uninstall_without_purge_preserves_volumes(self):
+        stack = stack_fixture()
+        with patch.object(uninstall, "get_stack", return_value=stack):
+            result = self.invoke(uninstall, ["--yes"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        stack.compose.stop.assert_called_once()
+        stack.compose.destroy.assert_not_called()
+        stack.manager.delete.assert_called_once()
+
+    def test_uninstall_purge_clears_tls_marker_after_verified_docker_removal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            marker = data / "tls.enabled"
+            marker.write_text("enabled\n", encoding="utf-8")
+            stack = stack_fixture(data)
+            with (
+                patch.object(uninstall, "get_stack", return_value=stack),
+                patch.object(uninstall, "verify_purged_resources") as verify,
+            ):
+                result = self.invoke(uninstall, ["--yes", "--purge-volumes"], input="DELETE DATA\n")
+            self.assertEqual(result.exit_code, 0, result.output)
+            stack.compose.destroy.assert_called_once()
+            verify.assert_called_once_with(stack.runtime)
+            self.assertFalse(marker.exists())
+            stack.manager.delete.assert_called_once()
+
+    def test_uninstall_purge_blocks_registration_deletion_if_tls_volumes_remain(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            marker = data / "tls.enabled"
+            marker.write_text("enabled\n", encoding="utf-8")
+            stack = stack_fixture(data)
+            with (
+                patch.object(uninstall, "get_stack", return_value=stack),
+                patch.object(uninstall, "verify_purged_resources", side_effect=uninstall.PurgeSafetyError("Old TLS volume remains")),
+            ):
+                result = self.invoke(uninstall, ["--yes", "--purge-volumes"], input="DELETE DATA\n")
+            self.assertEqual(result.exit_code, 1)
+            self.assertTrue(marker.exists())
+            stack.manager.delete.assert_not_called()
+            self.assertIn("Old TLS volume remains", result.output)
+
+    def test_uninstall_without_purge_keeps_tls_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            marker = data / "tls.enabled"
+            marker.write_text("enabled\n", encoding="utf-8")
+            stack = stack_fixture(data)
+            with patch.object(uninstall, "get_stack", return_value=stack):
+                result = self.invoke(uninstall, ["--yes"])
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertTrue(marker.exists())
+            stack.compose.destroy.assert_not_called()
+
+    def test_purge_requires_specific_confirmation_phrase(self):
+        stack = stack_fixture()
+        with patch.object(uninstall, "get_stack", return_value=stack):
+            result = self.invoke(uninstall, ["--yes", "--purge-volumes"], input="NO\n")
+        self.assertEqual(result.exit_code, 0, result.output)
+        stack.compose.destroy.assert_not_called()
+        stack.manager.delete.assert_not_called()
+
+    def test_update_without_image_uses_bundled_release(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            image = "ghcr.io/weave/cbt@sha256:" + "a" * 64
+            (data / "runtime.env").write_text(
+                f"WEAVE_IMAGE={image}\nENVIRONMENT=stg\n"
+                "WEAVE_API_BASE_URL=https://staging.example.com\n", encoding="utf-8"
+            )
+            stack = stack_fixture(data)
+            manifest = {
+                "channel": "staging", "version": "1.0.1",
+                "image": image, "api": "https://staging.example.com",
+            }
+            with (
+                patch.object(update, "get_stack", return_value=stack),
+                patch.object(update, "_assets_root", return_value=data),
+                patch.object(update, "_read_release_manifest", return_value=manifest),
+            ):
+                result = self.invoke(update)
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertIn("already configured", result.output)
+            stack.compose.pull_weave_image.assert_not_called()
+
+    def test_update_rejects_wrong_channel_without_modifying_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            (data / "runtime.env").write_text(
+                "WEAVE_IMAGE=ghcr.io/weave/cbt:v1\nENVIRONMENT=prod\n"
+                "WEAVE_API_BASE_URL=https://api.example.com\n", encoding="utf-8"
+            )
+            stack = stack_fixture(data)
+            with (
+                patch.object(update, "get_stack", return_value=stack),
+                patch.object(update, "_assets_root", return_value=data),
+                patch.object(update, "_read_release_manifest", return_value={
+                    "channel": "staging", "version": "1.0.1",
+                    "image": "ghcr.io/weave/cbt:v2", "api": "https://staging.example.com",
+                }),
+            ):
+                result = self.invoke(update)
+            self.assertEqual(result.exit_code, 1)
+            self.assertIn("release channel", result.output)
+            stack.compose.snapshot_database.assert_not_called()
+            stack.compose.pull_weave_image.assert_not_called()
+
+    def test_update_rejects_latest(self):
+        with patch.object(update, "get_stack") as loader:
+            result = self.invoke(update, ["--image", "weave:latest"])
+        self.assertEqual(result.exit_code, 1, result.output)
+        loader.assert_not_called()
+
+    def test_update_pull_failure_restores_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / "runtime.env"
+            original = b"WEAVE_IMAGE=ghcr.io/weave/cbt:v1\nOTHER=preserved\n"
+            env.write_bytes(original)
+            stack = stack_fixture(Path(directory))
+            stack.compose.pull_weave_image.side_effect = RuntimeError("pull failed")
+            with (
+                patch.object(update, "get_stack", return_value=stack),
+                patch.object(update, "save_runtime_env", side_effect=lambda path, data: path.write_bytes(data)),
+            ):
+                result = self.invoke(update, ["--image", "ghcr.io/weave/cbt:v2"], input="y\n")
+            self.assertEqual(result.exit_code, 1, result.output)
+            self.assertEqual(env.read_bytes(), original)
+            stack.manager.update.assert_not_called()
+            stack.compose.start.assert_called_once()
+
+    def test_update_commits_metadata_after_ready(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / "runtime.env"
+            env.write_bytes(b"WEAVE_IMAGE=ghcr.io/weave/cbt:v1\n")
+            stack = stack_fixture(Path(directory))
+            with (
+                patch.object(update, "get_stack", return_value=stack),
+                patch.object(update, "save_runtime_env", side_effect=lambda path, data: path.write_bytes(data)),
+                patch.object(update, "_verify_started_stack") as verify,
+            ):
+                result = self.invoke(update, ["--image", "ghcr.io/weave/cbt:v2"], input="y\n")
+            self.assertEqual(result.exit_code, 0, result.output)
+            verify.assert_called_once()
+            stack.manager.update.assert_called_once()
+            self.assertIn(b"ghcr.io/weave/cbt:v2", env.read_bytes())
+
+
+if __name__ == "__main__":
+    unittest.main()

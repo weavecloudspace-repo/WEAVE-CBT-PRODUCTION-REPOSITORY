@@ -1,0 +1,1088 @@
+.teacher-exams-page,
+.teacher-exam-builder-page {
+  container-type: inline-size;
+  container-name: teacher-exam-workspace;
+}
+
+.teacher-exams-heading {
+  align-items: flex-start;
+}
+
+.teacher-exams-heading > div:first-child,
+.teacher-exam-builder-header > div:first-child {
+  min-width: 0;
+}
+
+.teacher-exams-heading p,
+.teacher-exam-builder-header p {
+  max-width: 720px;
+}
+
+.teacher-exam-tabs {
+  scrollbar-width: none;
+}
+
+.teacher-exam-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.teacher-exam-filters--refined {
+  display: grid;
+  grid-template-columns: minmax(250px, 1.35fr) minmax(190px, .7fr) minmax(190px, .7fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.teacher-exam-filters--refined .weave-select,
+.teacher-exam-filters--refined .teacher-search-control {
+  width: 100%;
+  min-width: 0;
+}
+
+.teacher-exam-collection {
+  position: relative;
+  min-width: 0;
+  overflow: visible;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 15px;
+  background: rgb(var(--color-surface));
+  box-shadow: 0 12px 34px rgb(var(--color-primary) / .05);
+}
+
+.teacher-exam-collection__header,
+.teacher-exam-entity {
+  display: grid;
+  grid-template-columns: minmax(250px, 1.8fr) minmax(150px, 1fr) minmax(115px, .72fr) minmax(140px, .9fr) 100px 96px 52px;
+  column-gap: 18px;
+  align-items: center;
+}
+
+.teacher-exam-collection__header {
+  min-height: 48px;
+  padding: 0 18px;
+  border-bottom: 1px solid rgb(var(--color-border));
+  border-radius: 15px 15px 0 0;
+  background: color-mix(in srgb, rgb(var(--color-primary-soft)) 24%, rgb(var(--color-surface)));
+  color: rgb(var(--color-text-muted));
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.teacher-exam-collection__header span:last-child {
+  text-align: right;
+}
+
+.teacher-exam-entity {
+  min-height: 94px;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgb(var(--color-border));
+  transition: background 150ms ease, box-shadow 150ms ease;
+}
+
+.teacher-exam-entity:hover,
+.teacher-exam-entity.is-selected {
+  background: color-mix(in srgb, rgb(var(--color-primary-soft)) 18%, rgb(var(--color-surface)));
+}
+
+.teacher-exam-entity:last-of-type {
+  border-bottom: 0;
+}
+
+.teacher-exam-entity__title {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.teacher-exam-entity__icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: rgb(var(--color-primary-soft));
+  color: rgb(var(--color-primary));
+}
+
+.teacher-exam-entity__title h2 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  margin: 0;
+  color: rgb(var(--color-text));
+  font-size: 14.5px;
+  font-weight: 780;
+  line-height: 1.4;
+  letter-spacing: -.01em;
+}
+
+.teacher-exam-entity__title p {
+  margin: 4px 0 0;
+  color: rgb(var(--color-text-muted));
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.teacher-exam-entity__stack {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.teacher-exam-entity__stack strong {
+  overflow: hidden;
+  color: rgb(var(--color-text));
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teacher-exam-entity__stack span,
+.teacher-exam-entity__updated {
+  overflow: hidden;
+  color: rgb(var(--color-text-muted));
+  font-size: 11.5px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teacher-exam-entity__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.teacher-exam-lifecycle {
+  position: relative;
+}
+
+.teacher-exam-lifecycle__trigger {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 9px;
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-primary));
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.teacher-exam-lifecycle__trigger:hover,
+.teacher-exam-lifecycle__trigger:focus-visible {
+  border-color: rgb(var(--color-primary) / .35);
+  background: rgb(var(--color-primary-soft));
+}
+
+.teacher-exam-lifecycle__trigger:focus-visible {
+  outline: 3px solid rgb(var(--color-primary) / .12);
+  outline-offset: 2px;
+}
+
+.teacher-exam-lifecycle__menu {
+  position: fixed;
+  z-index: 1250;
+  display: grid;
+  gap: 7px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 14px;
+  background: rgb(var(--color-surface));
+  padding: 8px;
+  box-shadow: 0 24px 64px rgb(15 23 42 / .18);
+}
+
+.teacher-exam-lifecycle__heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 9px 10px;
+  border-bottom: 1px solid rgb(var(--color-border));
+}
+
+.teacher-exam-lifecycle__heading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.teacher-exam-lifecycle__heading strong {
+  color: rgb(var(--color-text));
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.teacher-exam-lifecycle__heading span,
+.teacher-exam-lifecycle__heading small {
+  color: rgb(var(--color-text-muted));
+  font-size: 10.5px;
+}
+
+.teacher-exam-lifecycle__menu > button {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: rgb(var(--color-primary));
+  padding: 10px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.teacher-exam-lifecycle__menu > button:hover,
+.teacher-exam-lifecycle__menu > button:focus-visible {
+  background: rgb(var(--color-primary-soft));
+}
+
+.teacher-exam-lifecycle__menu > button:focus-visible {
+  outline: 2px solid rgb(var(--color-primary) / .18);
+  outline-offset: -2px;
+}
+
+.teacher-exam-lifecycle__menu button span {
+  display: grid;
+  gap: 3px;
+}
+
+.teacher-exam-lifecycle__menu button strong {
+  color: rgb(var(--color-text));
+  font-size: 12.5px;
+  font-weight: 760;
+}
+
+.teacher-exam-lifecycle__menu button small {
+  color: rgb(var(--color-text-muted));
+  font-size: 10.5px;
+  line-height: 1.42;
+}
+
+.teacher-exam-lifecycle__menu > button.teacher-exam-lifecycle__danger {
+  margin-top: 3px;
+  border: 1px solid rgb(220 38 38 / .12);
+  background: rgb(254 242 242);
+  color: rgb(185 28 28);
+}
+
+.teacher-exam-lifecycle__menu > button.teacher-exam-lifecycle__danger:hover {
+  background: rgb(254 226 226);
+}
+
+.teacher-exam-lifecycle__menu > button.teacher-exam-lifecycle__danger strong,
+.teacher-exam-lifecycle__menu > button.teacher-exam-lifecycle__danger small {
+  color: rgb(153 27 27);
+}
+
+.teacher-exam-lifecycle__info {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  margin: 3px;
+  border-radius: 10px;
+  background: rgb(var(--color-primary-soft) / .5);
+  color: rgb(var(--color-primary));
+  padding: 12px;
+}
+
+.teacher-exam-lifecycle__info p {
+  margin: 0;
+  color: rgb(var(--color-text-soft));
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.teacher-exam-collection__empty {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  padding: 32px;
+  text-align: center;
+}
+
+.teacher-exam-collection__empty > span {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 3px;
+  border-radius: 13px;
+  background: rgb(var(--color-primary-soft));
+  color: rgb(var(--color-primary));
+}
+
+.teacher-exam-collection__empty strong {
+  color: rgb(var(--color-text));
+  font-size: 15px;
+}
+
+.teacher-exam-collection__empty p {
+  max-width: 420px;
+  margin: 0;
+  color: rgb(var(--color-text-muted));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.teacher-exam-pagination--refined {
+  min-height: 52px;
+  padding: 0 18px;
+  font-size: 11.5px;
+}
+
+/* Builder */
+.teacher-exam-builder-page {
+  gap: 20px;
+}
+
+.teacher-exam-builder-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-end;
+}
+
+.teacher-exam-builder-header h1 {
+  margin: 7px 0 5px;
+}
+
+.teacher-exam-builder-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.teacher-exam-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: rgb(var(--color-primary));
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.teacher-exam-back:focus-visible {
+  outline: 3px solid rgb(var(--color-primary) / .12);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.teacher-exam-builder {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(285px, .72fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.teacher-exam-builder__main {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.teacher-exam-section {
+  overflow: visible;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 15px;
+  background: rgb(var(--color-surface));
+  box-shadow: 0 10px 30px rgb(var(--color-primary) / .04);
+}
+
+.teacher-exam-section__heading {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  border-bottom: 1px solid rgb(var(--color-border));
+  padding: 18px 20px;
+}
+
+.teacher-exam-section__heading > span {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: rgb(var(--color-primary-soft));
+  color: rgb(var(--color-primary));
+  font-size: 10.5px;
+  font-weight: 850;
+}
+
+.teacher-exam-section__heading h2 {
+  margin: 0;
+  color: rgb(var(--color-text));
+  font-size: 15.5px;
+  font-weight: 800;
+}
+
+.teacher-exam-section__heading p {
+  margin: 4px 0 0;
+  color: rgb(var(--color-text-muted));
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.teacher-exam-section__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 20px;
+}
+
+.teacher-exam-field {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+}
+
+.teacher-exam-field--wide {
+  grid-column: 1 / -1;
+}
+
+.teacher-exam-field > span,
+.teacher-exam-selection > legend {
+  color: rgb(var(--color-text));
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.teacher-exam-field > span small {
+  color: rgb(var(--color-text-muted));
+  font-weight: 560;
+}
+
+.teacher-exam-field > small,
+.teacher-exam-selection > small {
+  color: rgb(var(--color-text-muted));
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.teacher-exam-field > small.teacher-exam-field__error {
+  color: rgb(185 28 28);
+}
+
+.teacher-exam-field input,
+.teacher-exam-field textarea {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 10px;
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-text));
+  padding: 0 13px;
+  font: inherit;
+  font-size: 13px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.teacher-exam-field textarea {
+  min-height: 112px;
+  padding: 12px 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.teacher-exam-field input:focus,
+.teacher-exam-field textarea:focus {
+  outline: 0;
+  border-color: rgb(var(--color-primary));
+  box-shadow: 0 0 0 3px rgb(var(--color-primary) / .09);
+}
+
+.teacher-exam-field input:disabled {
+  background: rgb(var(--color-surface-muted));
+  color: rgb(var(--color-text-muted));
+  cursor: not-allowed;
+}
+
+.teacher-exam-input-suffix {
+  position: relative;
+}
+
+.teacher-exam-input-suffix input {
+  padding-right: 74px;
+}
+
+.teacher-exam-input-suffix > span {
+  position: absolute;
+  right: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgb(var(--color-text-muted));
+  font-size: 10.5px;
+  pointer-events: none;
+}
+
+.teacher-exam-selection {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.teacher-exam-selection > legend {
+  margin-bottom: 8px;
+}
+
+.teacher-exam-selection > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.teacher-exam-selection-card {
+  position: relative;
+  min-height: 92px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 11px;
+  background: rgb(var(--color-surface));
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.teacher-exam-selection-card:hover {
+  border-color: rgb(var(--color-primary) / .35);
+}
+
+.teacher-exam-selection-card.is-selected {
+  border-color: rgb(var(--color-primary));
+  background: rgb(var(--color-primary-soft) / .45);
+  box-shadow: 0 0 0 2px rgb(var(--color-primary) / .06);
+}
+
+.teacher-exam-selection-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.teacher-exam-selection-card__indicator {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgb(var(--color-border));
+  border-radius: 50%;
+  margin-top: 1px;
+}
+
+.teacher-exam-selection-card.is-selected .teacher-exam-selection-card__indicator {
+  border: 5px solid rgb(var(--color-primary));
+  background: rgb(var(--color-surface));
+}
+
+.teacher-exam-selection-card strong {
+  display: block;
+  color: rgb(var(--color-text));
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.teacher-exam-selection-card small {
+  display: block;
+  margin-top: 4px;
+  color: rgb(var(--color-text-muted));
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.teacher-exam-selection:disabled .teacher-exam-selection-card {
+  cursor: not-allowed;
+  opacity: .62;
+}
+
+.teacher-exam-switches {
+  display: grid;
+  gap: 8px;
+}
+
+.teacher-exam-switch {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 10px;
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-text));
+  padding: 0 11px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.teacher-exam-switch:hover,
+.teacher-exam-switch:focus-visible {
+  border-color: rgb(var(--color-primary) / .35);
+}
+
+.teacher-exam-switch:focus-visible {
+  outline: 3px solid rgb(var(--color-primary) / .1);
+  outline-offset: 2px;
+}
+
+.teacher-exam-switch__track {
+  position: relative;
+  width: 34px;
+  height: 19px;
+  flex: 0 0 34px;
+  border-radius: 999px;
+  background: rgb(var(--color-border));
+  transition: background 150ms ease;
+}
+
+.teacher-exam-switch__track i {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 4px rgb(15 23 42 / .22);
+  transition: transform 150ms ease;
+}
+
+.teacher-exam-switch.is-on .teacher-exam-switch__track {
+  background: rgb(var(--color-primary));
+}
+
+.teacher-exam-switch.is-on .teacher-exam-switch__track i {
+  transform: translateX(15px);
+}
+
+.teacher-exam-switch strong {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.teacher-exam-summary {
+  position: sticky;
+  top: 82px;
+  overflow: hidden;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 15px;
+  background: rgb(var(--color-surface));
+  box-shadow: 0 14px 38px rgb(var(--color-primary) / .07);
+}
+
+.teacher-exam-summary__header {
+  border-bottom: 1px solid rgb(var(--color-border));
+  background: color-mix(in srgb, rgb(var(--color-primary-soft)) 30%, rgb(var(--color-surface)));
+  padding: 16px;
+}
+
+.teacher-exam-summary__header > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.teacher-exam-summary__header > div > span {
+  color: rgb(var(--color-text));
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.teacher-exam-summary__header p {
+  margin: 5px 0 0;
+  color: rgb(var(--color-text-muted));
+  font-size: 10.5px;
+}
+
+.teacher-exam-summary__title {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  padding: 17px 16px;
+  border-bottom: 1px solid rgb(var(--color-border));
+}
+
+.teacher-exam-summary__title > span {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: rgb(var(--color-primary-soft));
+  color: rgb(var(--color-primary));
+}
+
+.teacher-exam-summary__title strong {
+  display: block;
+  overflow: hidden;
+  color: rgb(var(--color-text));
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teacher-exam-summary__title small {
+  display: block;
+  margin-top: 3px;
+  color: rgb(var(--color-text-muted));
+  font-size: 10px;
+}
+
+.teacher-exam-summary__row {
+  display: grid;
+  grid-template-columns: 94px minmax(0, 1fr);
+  gap: 12px;
+  padding: 11px 16px;
+  border-bottom: 1px solid rgb(var(--color-border));
+}
+
+.teacher-exam-summary__row > span {
+  color: rgb(var(--color-text-muted));
+  font-size: 10.5px;
+}
+
+.teacher-exam-summary__row strong {
+  display: block;
+  color: rgb(var(--color-text));
+  font-size: 11.5px;
+  font-weight: 720;
+  line-height: 1.4;
+}
+
+.teacher-exam-summary__row small {
+  display: block;
+  margin-top: 3px;
+  color: rgb(var(--color-text-muted));
+  font-size: 9.8px;
+  line-height: 1.4;
+}
+
+.teacher-exam-summary__score {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px;
+  border-radius: 11px;
+  background: rgb(var(--color-primary-soft));
+  padding: 12px 13px;
+}
+
+.teacher-exam-summary__score span {
+  color: rgb(var(--color-primary));
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.teacher-exam-summary__score strong {
+  color: rgb(var(--color-primary));
+  font-size: 17px;
+  font-weight: 850;
+}
+
+.teacher-exam-form-loading {
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 15px;
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-text-muted));
+}
+
+/* Lifecycle confirmation */
+.teacher-exam-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(15 23 42 / .45);
+  backdrop-filter: blur(3px);
+}
+
+.teacher-exam-confirm-modal {
+  width: min(470px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  border: 1px solid #E2E8F0;
+  border-radius: 18px;
+  background: #FFFFFF;
+  padding: 24px;
+  box-shadow: 0 30px 80px rgb(0 0 0 / .28);
+}
+
+.teacher-exam-confirm-modal__heading {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.teacher-exam-confirm-modal__heading > span {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #EFF6FF;
+  color: #2563EB;
+}
+
+.teacher-exam-confirm-modal.is-danger .teacher-exam-confirm-modal__heading > span {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
+
+.teacher-exam-confirm-modal__heading h2 {
+  margin: 0;
+  color: #0F172A;
+  font-size: 19px;
+  font-weight: 820;
+  line-height: 1.25;
+}
+
+.teacher-exam-confirm-modal__heading p {
+  margin: 5px 0 0;
+  color: #64748B;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.teacher-exam-confirm-modal__exam {
+  display: grid;
+  gap: 3px;
+  margin-top: 18px;
+  border: 1px solid #E2E8F0;
+  border-radius: 11px;
+  background: #F8FAFC;
+  padding: 13px 14px;
+}
+
+.teacher-exam-confirm-modal__exam > span {
+  color: #64748B;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.teacher-exam-confirm-modal__exam strong {
+  color: #0F172A;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.teacher-exam-confirm-modal__exam small {
+  color: #64748B;
+  font-size: 10.5px;
+}
+
+.teacher-exam-confirm-modal__warning {
+  margin: 15px 0 0;
+  color: #64748B;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.teacher-exam-confirm-modal.is-danger .teacher-exam-confirm-modal__warning {
+  color: #991B1B;
+}
+
+.teacher-exam-confirm-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 20px;
+}
+
+.teacher-exam-confirm-modal__actions button {
+  min-height: 41px;
+  border-radius: 9px;
+  padding: 0 15px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 780;
+  cursor: pointer;
+}
+
+.teacher-exam-confirm-modal__cancel {
+  border: 1px solid #E2E8F0;
+  background: #FFFFFF;
+  color: #0F172A;
+}
+
+.teacher-exam-confirm-modal__confirm {
+  border: 1px solid rgb(var(--color-primary));
+  background: rgb(var(--color-primary));
+  color: rgb(var(--color-on-primary));
+}
+
+.teacher-exam-confirm-modal__confirm.is-danger {
+  border-color: #B91C1C;
+  background: #B91C1C;
+  color: #FFFFFF;
+}
+
+.teacher-exam-confirm-modal__actions button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+/* Content-width responsiveness: reacts naturally to sidebar expanded/collapsed state. */
+@container teacher-exam-workspace (max-width: 1040px) {
+  .teacher-exam-builder {
+    grid-template-columns: 1fr;
+  }
+
+  .teacher-exam-summary {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .teacher-exam-summary__header,
+  .teacher-exam-summary__title,
+  .teacher-exam-summary__score {
+    grid-column: 1 / -1;
+  }
+
+  .teacher-exam-summary__row {
+    grid-template-columns: 84px minmax(0, 1fr);
+  }
+}
+
+@container teacher-exam-workspace (max-width: 900px) {
+  .teacher-exam-filters--refined {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .teacher-exam-filters--refined .teacher-search-control {
+    grid-column: 1 / -1;
+  }
+
+  .teacher-exam-collection__header {
+    display: none;
+  }
+
+  .teacher-exam-entity {
+    grid-template-columns: minmax(0, 1.5fr) minmax(150px, .8fr) auto;
+    gap: 13px 18px;
+    align-items: start;
+    padding: 17px;
+  }
+
+  .teacher-exam-entity__title {
+    grid-column: 1 / 3;
+  }
+
+  .teacher-exam-entity__actions {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .teacher-exam-entity__stack,
+  .teacher-exam-entity__updated,
+  .teacher-exam-entity > div[data-label="Status"] {
+    position: relative;
+    padding-top: 16px;
+  }
+
+  .teacher-exam-entity__stack::before,
+  .teacher-exam-entity__updated::before,
+  .teacher-exam-entity > div[data-label="Status"]::before {
+    content: attr(data-label);
+    position: absolute;
+    top: 0;
+    left: 0;
+    color: rgb(var(--color-text-muted));
+    font-size: 8.5px;
+    font-weight: 800;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+}
+
+@container teacher-exam-workspace (max-width: 690px) {
+  .teacher-exams-heading,
+  .teacher-exam-builder-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .teacher-exam-builder-header__actions {
+    justify-content: flex-start;
+  }
+
+  .teacher-exam-filters--refined,
+  .teacher-exam-section__grid,
+  .teacher-exam-selection > div,
+  .teacher-exam-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .teacher-exam-filters--refined .teacher-search-control,
+  .teacher-exam-field--wide,
+  .teacher-exam-summary__header,
+  .teacher-exam-summary__title,
+  .teacher-exam-summary__score {
+    grid-column: auto;
+  }
+
+  .teacher-exam-entity {
+    grid-template-columns: 1fr auto;
+  }
+
+  .teacher-exam-entity__title {
+    grid-column: 1;
+  }
+
+  .teacher-exam-entity__actions {
+    grid-column: 2;
+  }
+
+  .teacher-exam-entity__stack,
+  .teacher-exam-entity__updated,
+  .teacher-exam-entity > div[data-label="Status"] {
+    grid-column: 1 / -1;
+  }
+
+  .teacher-exam-summary__row {
+    grid-template-columns: 92px minmax(0, 1fr);
+  }
+
+  .teacher-exam-confirm-modal__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}

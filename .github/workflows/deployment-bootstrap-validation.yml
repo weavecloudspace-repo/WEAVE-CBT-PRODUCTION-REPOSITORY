@@ -1,0 +1,73 @@
+name: Deployment bootstrap validation
+
+on:
+  push:
+    branches: [implementing-services]
+    paths:
+      - "deployment/bootstrap/**"
+      - "deployment/cli/tests/test_linux_bootstrap.py"
+      - "deployment/cli/tests/test_windows_bootstrap.py"
+      - "deployment/cli/tests/test_windows_wsl_features.ps1"
+      - "deployment/cli/tests/test_windows_bootstrap_state.ps1"
+      - "deployment/cli/tests/test_windows_wsl_version.ps1"
+      - "deployment/cli/tests/test_windows_native_commands.ps1"
+      - "deployment/cli/tests/test_windows_wsl_pipes.ps1"
+      - ".github/workflows/deployment-bootstrap-validation.yml"
+  pull_request:
+    branches: [implementing-services]
+    paths:
+      - "deployment/bootstrap/**"
+      - "deployment/cli/tests/test_linux_bootstrap.py"
+      - "deployment/cli/tests/test_windows_bootstrap.py"
+      - "deployment/cli/tests/test_windows_wsl_features.ps1"
+      - "deployment/cli/tests/test_windows_bootstrap_state.ps1"
+      - "deployment/cli/tests/test_windows_wsl_version.ps1"
+      - "deployment/cli/tests/test_windows_native_commands.ps1"
+      - "deployment/cli/tests/test_windows_wsl_pipes.ps1"
+      - ".github/workflows/deployment-bootstrap-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  bash-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Bash syntax
+        run: bash -n deployment/bootstrap/linux/bootstrap.sh
+      - name: Test Linux and Windows WSL Bash bootstrap download watchdogs
+        run: |
+          python3 -m unittest discover -s deployment/cli/tests -p test_linux_bootstrap.py -v
+          python3 -m unittest discover -s deployment/cli/tests -p test_windows_bootstrap.py -v
+
+  powershell-validation:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PowerShell bootstrap syntax
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path 'deployment/bootstrap/windows/bootstrap.ps1').Path,
+              [ref]$tokens,
+              [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+              $errors | Format-List | Out-String | Write-Host
+              throw 'Windows bootstrap has PowerShell syntax errors.'
+          }
+      - name: Verify WSL feature enable and reboot-resume logic
+        shell: powershell
+        run: .\deployment\cli\tests\test_windows_wsl_features.ps1
+      - name: Verify real bootstrap state file persistence on Windows
+        shell: powershell
+        run: |
+          .\deployment\cli\tests\test_windows_bootstrap_state.ps1
+          .\deployment\cli\tests\test_windows_wsl_version.ps1
+          .\deployment\cli\tests\test_windows_native_commands.ps1
+          .\deployment\cli\tests\test_windows_wsl_pipes.ps1

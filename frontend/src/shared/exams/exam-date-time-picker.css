@@ -1,0 +1,55 @@
+﻿.exam-datetime__trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 9px;
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-text-muted));
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.exam-datetime__trigger svg { color: rgb(var(--color-primary)); flex-shrink: 0; }
+.exam-datetime__trigger.has-value { color: rgb(var(--color-text)); }
+.exam-datetime__trigger.is-overdue { border-color: #d92d20; background: rgb(217 45 32 / .04); color: #912018; }
+.exam-datetime__trigger.is-overdue svg { color: #d92d20; }
+.exam-datetime__trigger:disabled { opacity: .6; cursor: default; }
+.exam-datetime__elapsed { margin: 7px 0 0; color: #b42323; font-size: 12px; font-weight: 600; line-height: 1.45; }
+.exam-datetime-dialog {
+  width: min(380px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: 22px;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 18px;
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-text));
+  box-shadow: 0 24px 80px rgb(15 23 42 / .2);
+}
+.exam-datetime-dialog::backdrop { background: rgb(15 23 42 / .35); }
+.exam-datetime-dialog__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.exam-datetime-dialog__heading h2 { font-size: 18px; margin: 0; }
+.exam-datetime-dialog__heading p { font-size: 13px; color: rgb(var(--color-text-muted)); margin: 6px 0 0; }
+.exam-datetime__icon-button { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border: 1px solid rgb(var(--color-border)); border-radius: 8px; background: transparent; color: rgb(var(--color-text)); cursor: pointer; }
+.exam-calendar__navigation { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 22px 0 12px; font-size: 14px; }
+.exam-calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.exam-calendar__weekday { text-align: center; font-size: 11px; font-weight: 600; color: rgb(var(--color-text-muted)); padding: 5px 0; }
+.exam-calendar button { min-height: 36px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: rgb(var(--color-text)); font: inherit; font-size: 13px; cursor: pointer; }
+.exam-calendar button[aria-current="date"] { border-color: rgb(var(--color-primary) / .4); }
+.exam-calendar button:hover:not(:disabled), .exam-datetime__icon-button:hover { background: rgb(var(--color-primary) / .07); }
+.exam-calendar button[aria-pressed="true"], .exam-calendar button[aria-pressed="true"]:hover { background: rgb(var(--color-primary)); color: rgb(var(--color-on-primary, 255 255 255)); font-weight: 700; }
+.exam-calendar button:disabled { opacity: .3; cursor: default; }
+.exam-datetime__trigger:focus-visible, .exam-datetime-dialog button:focus-visible { outline: 2px solid rgb(var(--color-primary)); outline-offset: 2px; }
+.exam-datetime__time { display: grid; grid-template-columns: 1fr 68px auto 68px; align-items: center; gap: 8px; margin-top: 18px; padding-top: 16px; border-top: 1px solid rgb(var(--color-border)); }
+.exam-datetime__time > span:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+.exam-datetime__time small { font-size: 11px; color: rgb(var(--color-text-muted)); }
+.exam-datetime__time .weave-select__menu { top: auto; bottom: calc(100% + 6px); max-height: 180px; }
+.exam-datetime__hint { font-size: 12px; line-height: 1.5; color: rgb(var(--color-text-muted)); margin: 12px 0 18px; }
+.exam-datetime__hint.is-error { color: #b42323; }
+.exam-datetime-dialog__actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.exam-datetime-dialog__actions > :first-child { margin-right: auto; }

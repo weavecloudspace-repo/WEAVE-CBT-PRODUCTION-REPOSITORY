@@ -1,0 +1,27 @@
+.admin-questions-page {
+  display: grid;
+  gap: 18px;
+}
+
+.admin-questions-page__shared > .teacher-questions-page > .teacher-page-heading {
+  display: none;
+}
+
+.admin-questions-page__shared > .teacher-questions-page {
+  gap: 16px;
+}
+
+.admin-questions-heading {
+  margin-bottom: 0;
+}
+
+.admin-questions-heading p {
+  max-width: 760px;
+}
+
+@media (max-width: 760px) {
+  .admin-questions-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

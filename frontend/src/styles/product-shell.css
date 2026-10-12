@@ -1,0 +1,140 @@
+:root {
+  --font-ui: "Segoe UI Variable Text", "Avenir Next", "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Avenir Next", "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+  --product-radius-lg: 28px;
+  --product-radius-md: 18px;
+  --product-shadow: 0 28px 80px rgb(var(--color-primary) / .10);
+  --product-shadow-soft: 0 14px 38px rgb(var(--color-primary) / .08);
+}
+
+html {
+  font-family: var(--font-ui);
+  font-optical-sizing: auto;
+}
+body, button, input, select, textarea {
+  font-family: var(--font-ui);
+  font-optical-sizing: auto;
+  letter-spacing: -.008em;
+}
+h1, h2, h3, .weave-logo__word {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+}
+
+.weave-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  color: rgb(var(--color-text));
+  line-height: 1;
+  white-space: nowrap;
+}
+.weave-logo .weave-mark {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  overflow: visible;
+}
+.weave-logo .weave-mark path { fill: none !important; }
+.weave-logo__word {
+  font-size: 27px;
+  font-weight: 690;
+  letter-spacing: -.045em;
+}
+.weave-logo__divider {
+  width: 1px;
+  height: 29px;
+  margin: 0 2px;
+  background: rgb(var(--color-primary) / .35);
+}
+.weave-logo__cbt {
+  color: rgb(var(--color-primary-deep));
+  font-size: 18px;
+  font-weight: 570;
+  letter-spacing: -.02em;
+}
+.weave-logo.large { gap: 14px; }
+.weave-logo.large .weave-mark {
+  width: clamp(64px, 5.4vw, 82px);
+  height: clamp(64px, 5.4vw, 82px);
+  flex-basis: clamp(64px, 5.4vw, 82px);
+}
+.weave-logo.large .weave-logo__word {
+  font-size: clamp(45px, 4.5vw, 62px);
+  font-weight: 700;
+  letter-spacing: -.052em;
+}
+.weave-logo.large .weave-logo__divider { height: clamp(42px, 4.6vw, 56px); }
+.weave-logo.large .weave-logo__cbt { font-size: clamp(27px, 2.8vw, 38px); font-weight: 500; }
+.weave-logo.inverse { color: #fff; }
+.weave-logo.inverse .weave-logo__cbt { color: #fff; }
+.weave-logo.inverse .weave-logo__divider { background: rgba(255,255,255,.35); }
+
+.pictogram { display: block; overflow: visible; }
+.pictogram path, .pictogram circle, .pictogram rect { vector-effect: non-scaling-stroke; }
+
+.product-kicker {
+  color: rgb(var(--color-primary));
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .32em;
+  text-transform: uppercase;
+}
+.product-script {
+  color: rgb(var(--color-primary));
+  font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive;
+  font-size: clamp(18px, 2vw, 28px);
+  font-weight: 500;
+  line-height: 1.12;
+  transform: rotate(-4deg);
+}
+
+.product-loading-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 15% 18%, rgb(var(--color-primary-soft)) 0, transparent 32%),
+    radial-gradient(circle at 88% 82%, rgb(var(--color-accent-soft)) 0, transparent 34%),
+    rgb(var(--color-background));
+}
+.product-loading-card {
+  width: min(480px, calc(100% - 40px));
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 28px;
+  background: rgb(var(--color-surface) / .94);
+  padding: 48px;
+  text-align: center;
+  box-shadow: var(--product-shadow);
+}
+.product-loading-orbit {
+  position: relative;
+  width: 98px;
+  height: 98px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 5px;
+}
+.product-loading-orbit::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgb(var(--color-primary) / .18);
+  border-top-color: rgb(var(--color-primary));
+  border-radius: 50%;
+  animation: product-spin 2.4s linear infinite;
+}
+.product-loading-orbit .weave-mark { width: 62px; height: 62px; }
+.product-loading-card h1 { margin: 0; font-size: 29px; font-weight: 650; letter-spacing: -.035em; }
+.product-loading-card p { margin: 0; max-width: 350px; }
+
+@keyframes product-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .product-loading-orbit::before { animation: none; }
+}

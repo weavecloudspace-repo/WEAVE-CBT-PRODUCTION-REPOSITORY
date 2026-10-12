@@ -1,16 +1,51 @@
-# React + Vite
+# Weave CBT frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The local CBT frontend is delivered as two independent browser applications that share the same backend and visual system.
 
-Currently, two official plugins are available:
+```text
+frontend/
+  apps/
+    staff/      staff application entrypoint
+    student/    student application entrypoint
+  src/          shared product code, features, API adapters, styles and UI
+  dist/
+    staff/      production staff build output
+    student/    production student build output
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Development
 
-## React Compiler
+The applications intentionally use different browser origins.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm run dev:staff
+# http://localhost:3001
 
-## Expanding the ESLint configuration
+npm run dev:student
+# http://localhost:3002
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Both development servers proxy `/api/v1` to the same local FastAPI backend.
+
+The staff application owns installation/setup, staff authentication, teacher workspaces, admin workspaces and initial synchronization screens. It never restores or renders a student session.
+
+The student application owns student authentication, the waiting room and the examination workspace. It never restores or renders a staff session and does not expose installation/setup screens.
+
+## Builds
+
+```bash
+npm run build
+```
+
+builds both applications. They can also be built independently:
+
+```bash
+npm run build:staff
+npm run build:student
+```
+
+The build outputs are written to `dist/staff/` and `dist/student/` respectively.
+
+## Shared visual system
+
+This split is an entrypoint/security boundary, not a visual redesign. Existing feature components, branding, icons and global styles remain under `src/` and are reused by the appropriate application.

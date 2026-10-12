@@ -1,0 +1,148 @@
+.teacher-lifecycle-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(15 23 42 / .42);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.teacher-lifecycle-confirm-modal {
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid #E2E8F0;
+  border-radius: 18px;
+  background: #FFFFFF;
+  opacity: 1;
+  isolation: isolate;
+  padding: 24px;
+  box-shadow: 0 28px 80px rgb(0 0 0 / .28), 0 10px 34px rgb(37 99 235 / .12);
+}
+
+.teacher-lifecycle-confirm-modal__heading {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.teacher-lifecycle-confirm-modal__icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #EFF6FF;
+  color: #2563EB;
+}
+
+.teacher-lifecycle-confirm-modal--danger .teacher-lifecycle-confirm-modal__icon {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
+
+.teacher-lifecycle-confirm-modal__heading h2 {
+  margin: 0;
+  color: #0F172A;
+  font-size: 20px;
+  font-weight: 820;
+  line-height: 1.2;
+  letter-spacing: -.015em;
+}
+
+.teacher-lifecycle-confirm-modal__heading p {
+  margin: 5px 0 0;
+  color: #64748B;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.teacher-lifecycle-confirm-modal__question {
+  margin-top: 18px;
+  border: 1px solid #DBEAFE;
+  border-radius: 12px;
+  background: #F8FAFC;
+  padding: 13px 14px;
+}
+
+.teacher-lifecycle-confirm-modal__question span {
+  display: block;
+  margin-bottom: 5px;
+  color: #64748B;
+  font-size: 11px;
+  font-weight: 790;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+
+.teacher-lifecycle-confirm-modal__question strong {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: #0F172A;
+  font-size: 14px;
+  font-weight: 720;
+  line-height: 1.5;
+}
+
+.teacher-lifecycle-confirm-modal__warning {
+  margin: 16px 0 0;
+  color: #64748B;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.teacher-lifecycle-confirm-modal--danger .teacher-lifecycle-confirm-modal__warning {
+  color: #991B1B;
+}
+
+.teacher-lifecycle-confirm-modal__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.teacher-lifecycle-confirm-modal__actions button {
+  min-height: 42px;
+  border-radius: 9px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 780;
+  cursor: pointer;
+}
+
+.teacher-lifecycle-confirm-modal__cancel {
+  border: 1px solid #E2E8F0;
+  background: #FFFFFF;
+  color: #0F172A;
+}
+
+.teacher-lifecycle-confirm-modal__confirm {
+  border: 1px solid #2563EB;
+  background: #2563EB;
+  color: #FFFFFF;
+  box-shadow: 0 8px 20px rgb(37 99 235 / .18);
+}
+
+.teacher-lifecycle-confirm-modal__confirm--danger {
+  border-color: #B91C1C;
+  background: #B91C1C;
+  color: #FFFFFF;
+  box-shadow: 0 8px 20px rgb(185 28 28 / .2);
+}
+
+.teacher-lifecycle-confirm-modal__actions button:hover:not(:disabled) { filter: brightness(.96); }
+.teacher-lifecycle-confirm-modal__actions button:disabled { cursor: wait; opacity: .58; }
+
+@media (max-width: 560px) {
+  .teacher-lifecycle-confirm-backdrop { padding: 16px; }
+  .teacher-lifecycle-confirm-modal { width: 100%; padding: 20px; }
+  .teacher-lifecycle-confirm-modal__actions { display: grid; grid-template-columns: 1fr 1fr; }
+}

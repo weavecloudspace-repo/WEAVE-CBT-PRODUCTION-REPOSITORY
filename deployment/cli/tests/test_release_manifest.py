@@ -1,0 +1,121 @@
+"""Verify channel metadata and generated runtime configuration without Docker."""
+import json
+import os
+import stat
+import tempfile
+import unittest
+from pathlib import Path
+from weave_cli.commands.install import InstallError, _prepare_environment, _read_environment, _read_release_manifest
+
+IMAGE = "ghcr.io/weavecloudspace-repo/weave-cbt-production-repository@sha256:" + "a" * 64
+
+
+class ReleaseManifestTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.assets = Path(self.tmp.name) / "assets"
+        self.assets.mkdir()
+        self.data = Path(self.tmp.name) / "data"
+        self.manifest = {
+            "channel": "staging",
+            "manager_version": "1.0.1",
+            "cbt_image": IMAGE,
+            "weave_api_base_url": "https://weave-staging-api-staging.up.railway.app",
+            "ubuntu": {
+                "download_url": "https://cloud-images.ubuntu.com/wsl/releases/noble/20240423/ubuntu-noble-wsl-amd64-24.04lts.rootfs.tar.gz",
+                "sha256": "2a790896740b14d637dbdc583cce1ba081ac53b9e9cdb46dc09a2f73abbd9934",
+            },
+        }
+
+    def write_manifest(self):
+        (self.assets / "release-manifest.json").write_text(json.dumps(self.manifest), encoding="utf-8")
+
+    def test_assets_resolve_next_to_compiled_executable_not_temp_runtime(self):
+        from unittest.mock import patch
+        from weave_cli.commands.install import _assets_root
+        (self.assets / 'compose.yaml').write_text('services: {}', encoding='utf-8')
+        application = self.assets.parent / 'weave.exe'
+        with (
+            patch('weave_cli.commands.install.sys.argv', [str(application), 'install']),
+            patch('weave_cli.commands.install.sys.executable', '/tmp/onefile-unpacked/weave'),
+        ):
+            self.assertEqual(_assets_root(None).resolve(), self.assets.resolve())
+    def test_release_command_reports_channel_without_docker(self):
+        from unittest.mock import patch
+        from typer.testing import CliRunner
+        from weave_cli.main import app
+        self.write_manifest()
+        with (
+            patch("weave_cli.commands.release._assets_root", return_value=self.assets),
+            patch("weave_cli.commands.release._verify_assets"),
+        ):
+            result = CliRunner().invoke(app, ["release"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("Channel: staging", result.output)
+        self.assertIn("Manager version: 1.0.1", result.output)
+        self.assertIn("weave-staging-api-staging.up.railway.app", result.output)
+
+    def test_release_command_rejects_missing_manifest(self):
+        from unittest.mock import patch
+        from typer.testing import CliRunner
+        from weave_cli.main import app
+        with (
+            patch("weave_cli.commands.release._assets_root", return_value=self.assets),
+            patch("weave_cli.commands.release._verify_assets"),
+        ):
+            result = CliRunner().invoke(app, ["release"])
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("no bundled release manifest", result.output)
+    def test_valid_manifest(self):
+        self.write_manifest()
+        self.assertEqual(_read_release_manifest(self.assets)["channel"], "staging")
+
+    def test_wrong_digest_rejected(self):
+        self.manifest["cbt_image"] = IMAGE[:-1]
+        self.write_manifest()
+        with self.assertRaises(InstallError):
+            _read_release_manifest(self.assets)
+
+    def test_untrusted_ubuntu_domain_rejected(self):
+        self.manifest["ubuntu"]["download_url"] = "https://cloud-images.ubuntu.com.attacker.example/archive.tar.gz"
+        self.write_manifest()
+        with self.assertRaises(InstallError):
+            _read_release_manifest(self.assets)
+
+    def test_bad_ubuntu_digest_rejected(self):
+        self.manifest["ubuntu"]["sha256"] = "0" * 63
+        self.write_manifest()
+        with self.assertRaises(InstallError):
+            _read_release_manifest(self.assets)
+
+    def test_insecure_api_rejected(self):
+        self.manifest["weave_api_base_url"] = "http://staging.example.test"
+        self.write_manifest()
+        with self.assertRaises(InstallError):
+            _read_release_manifest(self.assets)
+
+    @unittest.skipIf(os.name == "nt", "POSIX permission assertions")
+    def test_config_preserves_secret_across_restarts(self):
+        self.write_manifest()
+        release = _read_release_manifest(self.assets)
+        path = _prepare_environment(self.data, release)
+        values = _read_environment(path)
+        self.assertEqual(values["WEAVE_API_BASE_URL"], release["api"])
+        self.assertEqual(values["WEAVE_IMAGE"], IMAGE)
+        self.assertEqual(values["ENVIRONMENT"], "stg")
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        original = path.read_bytes()
+        self.assertEqual(_prepare_environment(self.data, release).read_bytes(), original)
+        # A partial installation may have persisted a different image before
+        # the manager was upgraded. Retrying must not rotate credentials or
+        # silently change the application's pinned image.
+        release["image"] = IMAGE[:-1] + "b"
+        self.assertEqual(_prepare_environment(self.data, release), path)
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(_read_environment(path)["WEAVE_IMAGE"], IMAGE)
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+
+if __name__ == "__main__":
+    unittest.main()

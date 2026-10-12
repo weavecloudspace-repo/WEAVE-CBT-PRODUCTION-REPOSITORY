@@ -1,0 +1,70 @@
+name: WEAVE CBT CLI validation
+
+on:
+  push:
+    branches: [implementing-services]
+    paths:
+      - "deployment/cli/src/weave_cli/commands/**"
+      - "deployment/cli/src/weave_cli/platforms/**"
+      - "deployment/cli/tests/**"
+      - "deployment/distribution/**"
+      - "deployment/cli/tests/test_wsl_session.py"
+      - "deployment/cli/tests/test_commands.py"
+      - "deployment/cli/tests/test_entrypoint.py"
+      - "deployment/cli/tests/test_database_rollback.py"
+      - "deployment/cli/tests/test_docker_compose.py"
+      - "deployment/cli/src/weave_cli/docker/**"
+      - "deployment/cli/src/weave_cli/main.py"
+      - "deployment/pyproject.toml"
+      - "deployment/uv.lock"
+      - ".github/workflows/deployment-cli-validation.yml"
+  pull_request:
+    paths:
+      - "deployment/cli/src/weave_cli/commands/**"
+      - "deployment/cli/src/weave_cli/platforms/**"
+      - "deployment/cli/tests/**"
+      - "deployment/distribution/**"
+      - "deployment/cli/tests/test_wsl_session.py"
+      - "deployment/cli/tests/test_commands.py"
+      - "deployment/cli/tests/test_entrypoint.py"
+      - "deployment/cli/tests/test_database_rollback.py"
+      - "deployment/cli/tests/test_docker_compose.py"
+      - "deployment/cli/src/weave_cli/docker/**"
+      - "deployment/cli/src/weave_cli/main.py"
+      - "deployment/pyproject.toml"
+      - "deployment/uv.lock"
+      - ".github/workflows/deployment-cli-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  cli-tests:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install locked CLI environment
+        run: uv sync --project deployment --locked
+      - name: Exercise command registration and safe runtime orchestration
+        run: uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_commands.py -v
+      - name: Verify installed CLI entrypoint and command help
+        run: |
+          uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_entrypoint.py -v
+          uv run --project deployment weave --help
+          uv run --project deployment weave install --help
+          uv run --project deployment weave rollback --help
+          uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_database_rollback.py -v
+          uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_docker_compose.py -v
+      - name: Verify Windows runtime session task safety
+        run: uv run --project deployment python -m unittest discover -s deployment/cli/tests -p test_wsl_session.py -v
+      - name: Run complete manager and distribution test suite
+        run: uv run --project deployment python -m unittest discover -s deployment/cli/tests -v
+      - name: Validate Linux installer shell syntax
+        if: runner.os == 'Linux'
+        run: bash -n deployment/distribution/linux/install.sh
+

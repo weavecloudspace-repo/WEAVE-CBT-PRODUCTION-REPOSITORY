@@ -1,0 +1,262 @@
+/*
+ * Shared staff-dashboard control standard.
+ *
+ * Keep this layer intentionally narrow: semantic action buttons, multiline
+ * form controls and known dashboard modal surfaces. Search fields, tabs,
+ * navigation and other specialized controls remain feature-owned.
+ */
+
+/* Primary actions use the active tenant/school brand colour consistently. */
+.teacher-shell .teacher-primary-action {
+  min-height: 42px;
+  border: 1px solid rgb(var(--color-primary));
+  border-radius: 9px;
+  background: rgb(var(--color-primary));
+  color: rgb(var(--color-on-primary));
+  padding-inline: 17px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+  box-shadow: 0 9px 20px rgb(var(--color-primary) / .18);
+  transition: filter 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.teacher-shell .teacher-primary-action:hover:not(:disabled) {
+  filter: brightness(.94);
+}
+
+.teacher-shell .teacher-primary-action:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.teacher-shell .teacher-primary-action:focus-visible {
+  outline: 0;
+  box-shadow:
+    0 0 0 3px rgb(var(--color-primary) / .16),
+    0 9px 20px rgb(var(--color-primary) / .18);
+}
+
+/*
+ * Secondary actions are still real buttons. Use a clearly filled, opaque
+ * tenant tint so Cancel/Back actions never read as loose text on a white card.
+ */
+.teacher-shell .teacher-secondary-action {
+  min-height: 42px;
+  border: 1px solid color-mix(in srgb, rgb(var(--color-primary)) 42%, #ffffff);
+  border-radius: 9px;
+  background: color-mix(in srgb, rgb(var(--color-primary)) 16%, #ffffff);
+  color: rgb(var(--color-primary-deep));
+  padding-inline: 17px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+  box-shadow: 0 5px 14px rgb(var(--color-primary) / .09);
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.teacher-shell .teacher-secondary-action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, rgb(var(--color-primary)) 58%, #ffffff);
+  background: color-mix(in srgb, rgb(var(--color-primary)) 23%, #ffffff);
+}
+
+.teacher-shell .teacher-secondary-action:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.teacher-shell .teacher-secondary-action:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px rgb(var(--color-primary) / .14);
+}
+
+.teacher-shell .teacher-primary-action:disabled,
+.teacher-shell .teacher-secondary-action:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+  transform: none;
+  filter: none;
+}
+
+/*
+ * Multiline fields should feel like product components, not raw browser
+ * textareas. Portal modals are included explicitly because they live outside
+ * .teacher-shell even though they belong to the same staff dashboard.
+ */
+:is(
+  .teacher-shell,
+  .admin-modal-backdrop,
+  .teacher-lifecycle-confirm-backdrop,
+  .teacher-exam-confirm-backdrop
+) textarea {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  min-height: 118px;
+  box-sizing: border-box;
+  border: 1.5px solid color-mix(in srgb, rgb(var(--color-primary)) 24%, #cbd5e1);
+  border-radius: 12px;
+  background: color-mix(in srgb, rgb(var(--color-primary-soft)) 22%, #ffffff);
+  color: rgb(var(--color-text));
+  padding: 14px 15px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  caret-color: rgb(var(--color-primary));
+  resize: none;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / .72),
+    0 2px 6px rgb(15 23 42 / .045);
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+:is(
+  .teacher-shell,
+  .admin-modal-backdrop,
+  .teacher-lifecycle-confirm-backdrop,
+  .teacher-exam-confirm-backdrop
+) textarea:hover:not(:disabled) {
+  border-color: color-mix(in srgb, rgb(var(--color-primary)) 52%, #cbd5e1);
+  background: color-mix(in srgb, rgb(var(--color-primary-soft)) 32%, #ffffff);
+}
+
+:is(
+  .teacher-shell,
+  .admin-modal-backdrop,
+  .teacher-lifecycle-confirm-backdrop,
+  .teacher-exam-confirm-backdrop
+) textarea:focus,
+:is(
+  .teacher-shell,
+  .admin-modal-backdrop,
+  .teacher-lifecycle-confirm-backdrop,
+  .teacher-exam-confirm-backdrop
+) textarea:focus-visible {
+  outline: 0;
+  border-color: rgb(var(--color-primary));
+  background: #ffffff;
+  box-shadow:
+    0 0 0 3px rgb(var(--color-primary) / .12),
+    0 8px 20px rgb(var(--color-primary) / .08);
+}
+
+:is(
+  .teacher-shell,
+  .admin-modal-backdrop,
+  .teacher-lifecycle-confirm-backdrop,
+  .teacher-exam-confirm-backdrop
+) textarea::placeholder {
+  color: rgb(var(--color-text-muted));
+  opacity: .78;
+}
+
+:is(
+  .teacher-shell,
+  .admin-modal-backdrop,
+  .teacher-lifecycle-confirm-backdrop,
+  .teacher-exam-confirm-backdrop
+) textarea:disabled {
+  border-color: #d8dee8;
+  background: #f8fafc;
+  color: rgb(var(--color-text-muted));
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/*
+ * Bank-detail question rows use an absolutely positioned number badge.
+ * questions-page.css raises normal row content above the full-row preview
+ * target; explicitly preserve the badge's absolute positioning so it never
+ * enters the four-column grid and shifts Question/Type/Status/Version.
+ */
+.teacher-shell .teacher-bank-question-row > .teacher-bank-question-row__number {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.teacher-shell .teacher-bank-question-row__prompt,
+.teacher-shell .teacher-bank-question-row__type,
+.teacher-shell .teacher-bank-question-row__version,
+.teacher-shell .teacher-bank-question-row > .status-badge {
+  min-width: 0;
+}
+
+/*
+ * Portal modal action rows. The staff theme tokens are mirrored onto the
+ * document root by StaffApp, so these controls resolve the exact same tenant
+ * colours even though React renders them below document.body.
+ */
+.admin-modal-actions > button,
+.teacher-lifecycle-confirm-modal__actions > button,
+.teacher-exam-confirm-modal__actions > button {
+  min-width: 112px;
+  min-height: 44px;
+  border-radius: 10px;
+  padding: 0 18px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 780;
+  cursor: pointer;
+  transition: filter 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.admin-modal-actions .teacher-primary-action,
+.teacher-lifecycle-confirm-modal__confirm,
+.teacher-exam-confirm-modal__confirm {
+  border: 1px solid rgb(var(--color-primary)) !important;
+  background: rgb(var(--color-primary)) !important;
+  color: rgb(var(--color-on-primary)) !important;
+  box-shadow: 0 9px 22px rgb(var(--color-primary) / .2) !important;
+}
+
+.admin-modal-actions .teacher-primary-action:hover:not(:disabled),
+.teacher-lifecycle-confirm-modal__confirm:hover:not(:disabled),
+.teacher-exam-confirm-modal__confirm:hover:not(:disabled) {
+  filter: brightness(.94);
+}
+
+.admin-modal-actions .teacher-secondary-action,
+.teacher-lifecycle-confirm-modal__cancel,
+.teacher-exam-confirm-modal__cancel {
+  border: 1px solid color-mix(in srgb, rgb(var(--color-primary)) 42%, #ffffff) !important;
+  background: color-mix(in srgb, rgb(var(--color-primary)) 16%, #ffffff) !important;
+  color: rgb(var(--color-primary-deep)) !important;
+  box-shadow: 0 5px 14px rgb(var(--color-primary) / .09) !important;
+}
+
+.admin-modal-actions .teacher-secondary-action:hover:not(:disabled),
+.teacher-lifecycle-confirm-modal__cancel:hover:not(:disabled),
+.teacher-exam-confirm-modal__cancel:hover:not(:disabled) {
+  border-color: color-mix(in srgb, rgb(var(--color-primary)) 58%, #ffffff) !important;
+  background: color-mix(in srgb, rgb(var(--color-primary)) 23%, #ffffff) !important;
+}
+
+.admin-modal-actions > button:focus-visible,
+.teacher-lifecycle-confirm-modal__actions > button:focus-visible,
+.teacher-exam-confirm-modal__actions > button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px rgb(var(--color-primary) / .15) !important;
+}
+
+.admin-modal-actions > button:active:not(:disabled),
+.teacher-lifecycle-confirm-modal__actions > button:active:not(:disabled),
+.teacher-exam-confirm-modal__actions > button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.admin-modal-actions > button:disabled,
+.teacher-lifecycle-confirm-modal__actions > button:disabled,
+.teacher-exam-confirm-modal__actions > button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+  transform: none;
+}
+
+/* Preserve semantic danger actions instead of recolouring them with branding. */
+.admin-danger-action,
+.teacher-lifecycle-confirm-modal__confirm--danger,
+.teacher-exam-confirm-modal__confirm.is-danger {
+  border-color: #b91c1c !important;
+  background: #b91c1c !important;
+  color: #ffffff !important;
+  box-shadow: 0 9px 22px rgb(185 28 28 / .2) !important;
+}

@@ -1,0 +1,146 @@
+.teacher-shell select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 46px;
+  min-height: 46px;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 10px;
+  background-color: rgb(var(--color-surface));
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2364758b' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 9.5 5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  background-size: 14px 14px;
+  color: rgb(var(--color-text));
+  padding: 0 46px 0 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 560;
+  line-height: normal;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.teacher-shell select:hover:not(:disabled) { border-color: rgb(var(--color-primary) / .34); }
+.teacher-shell select:focus,
+.teacher-shell select:focus-visible { outline: 0; border-color: rgb(var(--color-primary)); box-shadow: 0 0 0 3px rgb(var(--color-primary) / .1); }
+.teacher-shell select:disabled { cursor: not-allowed; opacity: .62; background-color: rgb(var(--color-surface-muted)); }
+.teacher-shell select option { color: rgb(var(--color-text)); background: rgb(var(--color-surface)); }
+.teacher-questions-page .teacher-question-toolbar select { width: 100%; height: 48px; min-height: 48px; padding: 0 46px 0 14px; background-position: right 16px center; font-size: 15px; }
+.teacher-field select,
+.field-stack select { width: 100%; }
+
+.weave-select {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.weave-select__trigger {
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 10px;
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-text));
+  padding: 0 13px 0 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 560;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.weave-select__trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weave-select__trigger .is-placeholder { color: rgb(var(--color-text-muted)); }
+.weave-select__trigger svg { flex: 0 0 auto; color: rgb(var(--color-text-muted)); transition: transform 150ms ease; }
+.weave-select.is-open .weave-select__trigger { border-color: rgb(var(--color-primary)); box-shadow: 0 0 0 3px rgb(var(--color-primary) / .1); }
+.weave-select.is-open .weave-select__trigger svg { transform: rotate(180deg); }
+.weave-select__trigger:hover:not(:disabled) { border-color: rgb(var(--color-primary) / .34); }
+.weave-select__trigger:disabled { cursor: not-allowed; opacity: .62; background: rgb(var(--color-surface-muted)); }
+
+.weave-select__menu {
+  position: absolute;
+  z-index: 1300;
+  top: calc(100% + 7px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 3px;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 11px;
+  background: rgb(var(--color-surface));
+  padding: 6px;
+  box-shadow: 0 20px 48px rgb(15 23 42 / .16);
+}
+
+.weave-select__option {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgb(var(--color-text));
+  padding: 8px 10px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.weave-select__option:hover:not(:disabled),
+.weave-select__option.is-selected { background: rgb(var(--color-primary-soft)); }
+.weave-select__option:disabled { opacity: .45; cursor: not-allowed; }
+.weave-select__option strong { display: block; font-size: 13px; font-weight: 700; }
+.weave-select__option small { display: block; margin-top: 2px; color: rgb(var(--color-text-muted)); font-size: 11px; line-height: 1.35; }
+.weave-select__selected-mark { flex: 0 0 auto; color: rgb(var(--color-primary)); font-weight: 800; }
+.weave-select__empty { padding: 12px; color: rgb(var(--color-text-muted)); font-size: 13px; }
+
+html.teacher-dashboard-active,
+body.teacher-dashboard-active { scrollbar-width: none; -ms-overflow-style: none; }
+html.teacher-dashboard-active::-webkit-scrollbar,
+body.teacher-dashboard-active::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+.teacher-page-title-line { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.teacher-page-title-icon { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; color: rgb(var(--color-primary)); }
+.teacher-page-title-line h1 { margin: 0; }
+
+.teacher-question-lifecycle__card {
+  position: fixed !important;
+  z-index: 1200 !important;
+  top: auto;
+  right: auto !important;
+  bottom: auto;
+  max-height: min(320px, calc(100vh - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.teacher-question-lifecycle__card[data-placement="top"] { transform-origin: bottom right; }
+.teacher-question-lifecycle__card[data-placement="bottom"] { transform-origin: top right; }
+.teacher-question-lifecycle__card > button.teacher-question-lifecycle__delete { margin-top: 8px; border: 1px solid rgb(220 38 38 / .16); background: rgb(254 242 242); color: rgb(185 28 28); }
+.teacher-question-lifecycle__card > button.teacher-question-lifecycle__delete:hover:not(:disabled) { border-color: rgb(220 38 38 / .3); background: rgb(254 226 226); }
+.teacher-question-lifecycle__card > button.teacher-question-lifecycle__delete strong { color: rgb(185 28 28); }
+.teacher-question-lifecycle__card > button.teacher-question-lifecycle__delete small { color: rgb(153 27 27 / .82); }
+
+.question-builder-page .question-instruction-trigger {
+  height: 49px;
+  min-height: 49px;
+  padding: 0 14px;
+  gap: 8px;
+}
+
+.question-builder-page .question-instruction-trigger__icon {
+  width: 30px;
+  height: 30px;
+  flex-basis: 30px;
+}

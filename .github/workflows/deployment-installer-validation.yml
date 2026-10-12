@@ -1,0 +1,84 @@
+name: Validate desktop installer packaging
+
+on:
+  pull_request:
+    branches: [staging, master]
+    paths:
+      - 'deployment/packaging/**'
+      - '.github/workflows/ci-cd.yml'
+      - '.github/workflows/deployment-installer-validation.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weave-installer-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  windows-wizard:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install packaging tools
+        shell: pwsh
+        run: |
+          python -m pip install 'Pillow>=11,<13'
+          if (-not (Test-Path 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe')) {
+            choco install innosetup --no-progress --yes
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup unavailable' }
+          }
+      - name: Validate branded Windows wizard compiles
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build/payload/assets,build/desktop-installer,dist | Out-Null
+          $binary = Join-Path $env:WINDIR 'System32\where.exe'
+          Copy-Item $binary build/payload/weave.exe
+          Copy-Item $binary build/desktop-installer/WEAVE-CBT-Desktop.exe
+          Set-Content -Encoding utf8 build/payload/assets/compose.yaml 'services: {}'
+          Set-Content -Encoding utf8 build/payload/assets/release-manifest.json '{"schema_version":1,"channel":"staging","manager_version":"1.0.0"}'
+          @'
+          from PIL import Image
+          im = Image.open("deployment/gui/resources/weave-logo-blue.png").convert("RGBA")
+          im.thumbnail((218,160))
+          base = Image.new("RGBA",(256,256))
+          base.alpha_composite(im,((256-im.width)//2,(256-im.height)//2))
+          base.save("build/desktop-installer/weave.ico",sizes=[(16,16),(32,32),(48,48),(128,128),(256,256)])
+          '@ | python -
+          $payload = (Resolve-Path build/payload).Path
+          $desktop = (Resolve-Path build/desktop-installer/WEAVE-CBT-Desktop.exe).Path
+          $icon = (Resolve-Path build/desktop-installer/weave.ico).Path
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' "/DChannel=staging" "/DVersionString=1.0.0" "/DPayloadDir=$payload" "/DDesktopExe=$desktop" "/DBrandIcon=$icon" deployment/packaging/windows/desktop.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Windows setup wizard compilation failed' }
+          if (-not (Test-Path dist/WEAVE-CBT-Staging-Desktop-Setup.exe)) { throw 'Expected Windows setup EXE missing' }
+
+  linux-deb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate Linux package metadata and contents
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n deployment/packaging/linux/build-deb.sh
+          mkdir -p build/pr-preview dist
+          printf '#!/bin/sh\nexit 0\n' > build/pr-preview/weave
+          printf '#!/bin/sh\nexit 0\n' > build/pr-preview/weave-cbt-desktop
+          chmod +x build/pr-preview/weave*
+          IMAGE="ghcr.io/weavecloudspace-repo/weave-cbt-production-repository@sha256:$(printf a%.0s {1..64})"
+          bash deployment/packaging/linux/build-deb.sh \
+            build/pr-preview/weave build/pr-preview/weave-cbt-desktop \
+            staging 1.0.0 "$IMAGE" build/debroot
+          dpkg-deb --info dist/weave-cbt-desktop-staging-linux-amd64.deb
+          dpkg-deb --contents dist/weave-cbt-desktop-staging-linux-amd64.deb |
+            grep -F './usr/bin/weave-cbt-desktop'
+          dpkg-deb --contents dist/weave-cbt-desktop-staging-linux-amd64.deb |
+            grep -F './usr/bin/weave'

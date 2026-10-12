@@ -1,0 +1,11 @@
+.admin-ops-date { display: flex; align-items: center; gap: 10px; border: 1px solid rgb(var(--color-border)); border-radius: 10px; padding: 6px 12px; background: rgb(var(--color-surface)); color: rgb(var(--color-text-muted)); }
+.admin-ops-date > span { display: grid; gap: 2px; font-size: 11px; line-height: 14px; }
+.admin-ops-date strong { min-width: 135px; color: rgb(var(--color-text)); font-size: 13px; line-height: 20px; font-weight: 650; }
+.admin-ops-date { font: inherit; text-align: left; cursor: pointer; }
+.admin-ops-date:hover { border-color: rgb(var(--color-primary)); }
+.admin-ops-date > svg { flex-shrink: 0; }
+.admin-ops-calendar__footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 18px; padding-top: 14px; border-top: 1px solid rgb(var(--color-border)); }
+.admin-ops-calendar__footer > span { font-size: 12px; color: rgb(var(--color-text-muted)); }
+.admin-ops-date:focus-visible { outline: 2px solid rgb(var(--color-primary)); outline-offset: 2px; }
+.admin-date-picker__today { min-height: 36px; border: 1px solid rgb(var(--color-border)); border-radius: 8px; padding: 8px 12px; background: rgb(var(--color-surface)); color: rgb(var(--color-primary)); font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
+.admin-date-picker__today:hover { background: rgb(var(--color-primary) / .07); }

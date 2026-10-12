@@ -1,0 +1,145 @@
+/*
+ * Tenant-branding adapter.
+ *
+ * This file changes colors only. Layout, spacing, typography and component
+ * structure remain owned by the existing feature styles.
+ */
+
+.weave-app .button--primary {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, rgb(var(--color-primary)) 88%, white) 0%,
+    rgb(var(--color-primary)) 100%
+  );
+  color: rgb(var(--color-on-primary));
+  box-shadow: 0 14px 26px rgb(var(--color-primary) / .22);
+}
+.weave-app .button--primary:hover { background: rgb(var(--color-primary-hover)); }
+.weave-app .segmented button.active {
+  background: rgb(var(--color-primary));
+  color: rgb(var(--color-on-primary));
+  box-shadow: 0 7px 18px rgb(var(--color-primary) / .24);
+}
+.weave-app .form-field__control:focus-within {
+  border-color: rgb(var(--color-focus-ring));
+  box-shadow: 0 0 0 4px rgb(var(--color-focus-ring) / .08);
+}
+
+/* Authentication surfaces */
+.weave-app .premium-auth-shell { background-color: rgb(var(--color-background)); }
+.weave-app .premium-auth-pill { background: rgb(var(--color-primary-soft)); color: rgb(var(--color-primary)); }
+.weave-app .premium-auth-hero h1,
+.weave-app .premium-signin-card h2 { color: rgb(var(--color-text)); }
+.weave-app .premium-auth-hero p,
+.weave-app .premium-signin-card .segmented button { color: rgb(var(--color-text-muted)); }
+.weave-app .premium-signin-card { background: rgb(var(--color-surface)); }
+.weave-app .premium-form-group label { color: rgb(var(--color-text-soft)); }
+.weave-app .premium-form-group .form-field__control {
+  border-color: rgb(var(--color-border));
+  background: rgb(var(--color-surface-muted));
+}
+.weave-app .premium-form-group .form-field__control:focus-within {
+  border-color: rgb(var(--color-focus-ring));
+  background: rgb(var(--color-surface));
+  box-shadow: 0 0 0 3px rgb(var(--color-focus-ring) / .10);
+}
+.weave-app .premium-forgot-link button { color: rgb(var(--color-primary)); }
+.weave-app .premium-auth-footer { color: rgb(var(--color-text-faint)); }
+.weave-app .premium-signin-card .segmented { background: rgb(var(--color-surface-subtle)); }
+.weave-app .premium-signin-card .segmented button.active {
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-text));
+}
+
+/* Student lobby surface (active exam colors are defined below). */
+.weave-app .premium-lobby-card { background: rgb(var(--color-surface)); }
+
+/* Admin / teacher operational surfaces */
+.weave-app .premium-admin-shell { background-color: rgb(var(--color-background)); color: rgb(var(--color-text-soft)); }
+.weave-app .premium-sidebar {
+  background: rgb(var(--color-sidebar-background));
+  border-color: rgb(var(--color-sidebar-border));
+}
+.weave-app .premium-sidebar .weave-logo strong,
+.weave-app .premium-school-badge .school-info strong,
+.weave-app .premium-sidebar-footer .user-info strong,
+.weave-app .premium-header-content h1,
+.weave-app .metric-card-value strong,
+.weave-app .panel-header h2,
+.weave-app .schedule-info strong,
+.weave-app .activity-info strong { color: rgb(var(--color-text)); }
+.weave-app .premium-nav button.active {
+  background: rgb(var(--color-sidebar-active));
+  color: rgb(var(--color-sidebar-active-text));
+}
+.weave-app .btn-primary {
+  background: rgb(var(--color-primary));
+  color: rgb(var(--color-on-primary));
+  box-shadow: 0 4px 6px -1px rgb(var(--color-primary) / .10), 0 2px 4px -1px rgb(var(--color-primary) / .06);
+}
+.weave-app .btn-primary:hover {
+  background: rgb(var(--color-primary-hover));
+  box-shadow: 0 10px 15px -3px rgb(var(--color-primary) / .10), 0 4px 6px -2px rgb(var(--color-primary) / .05);
+}
+.weave-app .panel-header a,
+.weave-app .status-pill.upcoming,
+.weave-app .activity-icon.blue,
+.weave-app .monitoring-stat strong { color: rgb(var(--color-primary)); }
+.weave-app .status-pill.upcoming,
+.weave-app .activity-icon.blue,
+.weave-app .metric-icon.blue { background: rgb(var(--color-primary-soft)); }
+.weave-app .metric-icon.blue { color: rgb(var(--color-primary)); }
+.weave-app .form-group input:focus,
+.weave-app .form-group select:focus,
+.weave-app .form-group textarea:focus {
+  border-color: rgb(var(--color-focus-ring));
+  box-shadow: 0 0 0 3px rgb(var(--color-focus-ring) / .10);
+}
+
+/* Keep reading surfaces neutral; tenant colour identifies actions and exam states. */
+.weave-app .premium-exam-shell--session {
+  --color-background: 248 250 252;
+  --color-surface: 255 255 255;
+  --color-surface-raised: 255 255 255;
+  --color-surface-muted: 241 245 249;
+  --color-surface-subtle: 248 250 252;
+  --color-border: 226 232 240;
+  --color-border-strong: 148 163 184;
+  --color-border-subtle: 241 245 249;
+  --color-text: 15 23 42;
+  --color-text-soft: 51 65 85;
+  --color-text-muted: 71 85 105;
+  --color-text-faint: 100 116 139;
+  --color-focus-ring: var(--color-primary);
+}
+.weave-app .premium-exam-shell--session .premium-exam-sidebar { background: rgb(var(--color-background)); border-color: rgb(var(--color-border)); color: rgb(var(--color-text)); }
+.weave-app .premium-exam-shell--session .premium-exam-rail-brand .dashboard-school-identity strong { color: rgb(var(--color-text)); }
+.weave-app .premium-exam-shell--session .premium-exam-rail-brand .dashboard-school-identity__mark { background: transparent; border: 0; box-shadow: none; }
+.weave-app .premium-exam-shell--session .premium-exam-sidebar .premium-question-nav h3 { color: rgb(var(--color-text)); }
+.weave-app .premium-exam-shell--session .premium-exam-sidebar .premium-question-nav__meta,
+.weave-app .premium-exam-shell--session .premium-exam-sidebar .premium-exam-timer__label { color: rgb(var(--color-text-muted)); opacity: 1; }
+.weave-app .premium-exam-shell--session .premium-exam-sidebar .premium-exam-timer:not(.is-critical) .premium-exam-timer__value { color: rgb(var(--color-text)); }
+.weave-app .premium-exam-shell--session,
+.weave-app .premium-exam-shell--session .premium-exam-stage,
+.weave-app .premium-exam-shell--session .premium-exam-content { background: rgb(var(--color-background)); }
+.weave-app .premium-exam-shell--session .premium-exam-header--session { border-color: transparent; }
+.weave-app .premium-exam-shell--session .premium-exam-header--session .premium-exam-session-title h1 { color: rgb(var(--color-on-primary)); }
+.weave-app .premium-exam-shell--session .premium-exam-header--session .premium-exam-session-eyebrow { color: rgb(var(--color-on-primary) / .7); }
+.weave-app .premium-exam-shell--session .premium-exam-header--session .premium-exam-header-account { background: rgb(var(--color-on-primary) / .08); border-color: rgb(var(--color-on-primary) / .2); }
+.weave-app .premium-exam-shell--session .premium-exam-header--session .premium-exam-header-account .student-avatar { background: rgb(var(--color-on-primary) / .16); color: rgb(var(--color-on-primary)); }
+.weave-app .premium-exam-shell--session .premium-exam-header--session .premium-exam-header-account .premium-student-name { color: rgb(var(--color-on-primary)); border-color: rgb(var(--color-on-primary) / .2); }
+.weave-app .premium-exam-shell--session .premium-exam-header--session .premium-exam-header-account .premium-student-logout { color: rgb(var(--color-on-primary)); }
+.weave-app .premium-exam-shell--session .premium-exam-header--session .premium-exam-header-account .premium-student-logout:hover { background: rgb(var(--color-on-primary) / .16); }
+.weave-app .premium-exam-shell--session .premium-exam-header--session .premium-student-logout:focus-visible { outline-color: rgb(var(--color-on-primary)); }
+.weave-app .premium-exam-shell--session .premium-question-eyebrow { color: rgb(var(--color-text-muted)); }
+.weave-app .premium-exam-shell--session .premium-option:hover { background: rgb(var(--color-background)); border-color: rgb(var(--color-border-strong)); }
+.weave-app .premium-exam-shell--session .premium-option-letter { background: rgb(var(--color-surface-muted)); color: rgb(var(--color-text-soft)); }
+.weave-app .premium-exam-shell--session .premium-option-indicator { border-color: rgb(var(--color-border-strong)); }
+.weave-app .premium-exam-shell--session .premium-option.selected { background: color-mix(in srgb, rgb(var(--color-primary)) 8%, rgb(var(--color-surface))); border-color: rgb(var(--color-primary)); }
+.weave-app .premium-exam-shell--session .premium-option.selected .premium-option-letter { background: rgb(var(--color-primary)); color: rgb(var(--color-on-primary)); }
+.weave-app .premium-exam-shell--session .premium-option.selected .premium-option-indicator { border-color: transparent; }
+.weave-app .premium-exam-shell--session .premium-exam-sidebar .nav-btn:hover { background: rgb(var(--color-surface-muted)); border-color: rgb(var(--color-border-strong)); }
+.weave-app .premium-exam-shell--session .premium-exam-sidebar .nav-btn.answered { background: color-mix(in srgb, rgb(var(--color-primary)) 8%, rgb(var(--color-surface))); color: rgb(var(--color-primary)); border-color: rgb(var(--color-primary) / .2); }
+.weave-app .premium-exam-shell--session .premium-exam-sidebar .nav-btn.current { background: rgb(var(--color-primary)); color: rgb(var(--color-on-primary)); border-color: rgb(var(--color-primary)); box-shadow: 0 0 0 3px rgb(var(--color-primary) / .12); }
+.weave-app .premium-exam-shell--session .premium-exam-sidebar .nav-btn.flagged { border-color: #b77915; }
+.weave-app .premium-exam-shell--session .premium-exam-navigation button:disabled { background: rgb(var(--color-surface-muted)); border-color: rgb(var(--color-border)); color: rgb(var(--color-text-muted)); opacity: 1; }

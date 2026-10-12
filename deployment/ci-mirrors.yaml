@@ -1,0 +1,13 @@
+# CI-only infrastructure images are pre-fetched with fallback registries and
+# locally retagged before the required Compose smoke test. The Compose topology
+# matches production; no public registry request occurs during 'compose up'.
+services:
+  postgres:
+    image: weave-cbt-ci/postgres:16-alpine
+    pull_policy: never
+  redis:
+    image: weave-cbt-ci/redis:7-alpine
+    pull_policy: never
+  nginx:
+    image: weave-cbt-ci/nginx:stable-alpine
+    pull_policy: never

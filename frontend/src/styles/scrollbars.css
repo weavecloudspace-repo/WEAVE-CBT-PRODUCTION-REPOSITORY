@@ -1,0 +1,126 @@
+/*
+ * Shared scrollbar treatment for all CBT frontends.
+ * Nested scroll surfaces stay compact. The document viewport uses an app-owned
+ * scrollbar so its appearance never depends on the browser or operating system.
+ */
+
+/* Compact nested scroll areas such as tables and drawers. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(214 208 211) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgb(214 208 211);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(214 208 211);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-button {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* The browser-owned document scrollbar is intentionally hidden. */
+html,
+body {
+  scrollbar-width: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Weave page scrollbar                                                       */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * The hit area is intentionally wider than the visible thumb. The reference
+ * Weave UI shows only the thumb itself; there is no visible full-height rail.
+ */
+.page-scrollbar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
+  width: 12px;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  touch-action: none;
+  transition: opacity 120ms ease;
+}
+
+/* Staff dashboards have a sticky 72px application header. */
+body:has(.teacher-shell) .page-scrollbar {
+  top: 72px;
+}
+
+.page-scrollbar.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.page-scrollbar:focus-visible {
+  outline: none;
+}
+
+.page-scrollbar__thumb {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 7px;
+  min-height: 56px;
+  border-radius: 4px 0 0 4px;
+  background: rgb(214 208 211);
+  box-shadow: none;
+  cursor: grab;
+  transition: width 120ms ease;
+  will-change: transform;
+}
+
+.page-scrollbar:hover .page-scrollbar__thumb,
+.page-scrollbar:focus-visible .page-scrollbar__thumb {
+  width: 8px;
+  background: rgb(214 208 211);
+}
+
+.page-scrollbar__thumb:active {
+  width: 8px;
+  cursor: grabbing;
+  background: rgb(214 208 211);
+}
+
+@media (pointer: coarse) {
+  .page-scrollbar {
+    width: 10px;
+  }
+
+  .page-scrollbar__thumb {
+    width: 6px;
+  }
+}

@@ -1,0 +1,224 @@
+"""Console-only self-extracting Windows WEAVE CBT CLI Manager installer."""
+from __future__ import annotations
+
+import base64
+import ctypes
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import atexit
+import zipfile
+import sys
+from pathlib import Path
+from urllib.parse import urlsplit
+from colorama import Fore, Style, just_fix_windows_console
+
+just_fix_windows_console()
+BLUE, GREEN, RED, RESET = Fore.LIGHTBLUE_EX, Fore.LIGHTGREEN_EX, Fore.LIGHTRED_EX, Style.RESET_ALL
+
+
+def output(label: str, message: str) -> None:
+    tint = GREEN if label == "OK" else RED if label == "ERROR" else BLUE
+    print(f"{tint}[WEAVE][{label}]{RESET} {message}", flush=True)
+
+
+def admin() -> bool:
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except (AttributeError, OSError):
+        return False
+
+
+def independent_console() -> bool:
+    try:
+        processes = (ctypes.c_ulong * 16)()
+        return ctypes.windll.kernel32.GetConsoleProcessList(processes, 16) <= 1
+    except (AttributeError, OSError):
+        return False
+
+
+def perform_install(*, verify_only: bool = False) -> None:
+    bundle = Path(__file__).resolve().parent / "payload.zip"
+    if not bundle.is_file():
+        raise RuntimeError("Embedded WEAVE CBT payload.zip is missing.")
+    staging = tempfile.TemporaryDirectory(prefix="weave-cbt-manager-")
+    atexit.register(staging.cleanup)
+    payload = Path(staging.name)
+    with zipfile.ZipFile(bundle) as archive:
+        expected = {"weave.exe", "assets/compose.yaml", "assets/release-manifest.json"}
+        members = archive.namelist()
+        if not expected.issubset(set(members)):
+            raise RuntimeError("Embedded manager bundle is missing required release files.")
+        for member in members:
+            normalized = member.replace("\\", "/")
+            path = Path(normalized)
+            if (normalized.startswith("/") or ":" in normalized or ".." in path.parts):
+                raise RuntimeError("Unsafe path in embedded manager bundle.")
+        archive.extractall(payload)
+    source = payload / "weave.exe"
+    assets = payload / "assets"
+    if not source.is_file() or not (assets / "compose.yaml").is_file() or not (assets / "release-manifest.json").is_file():
+        raise RuntimeError("Installer payload incomplete. Redownload from the official WEAVE release.")
+
+    if verify_only:
+        try:
+            metadata = json.loads((assets / "release-manifest.json").read_text(encoding="utf-8"))
+        except (ValueError, OSError) as exc:
+            raise RuntimeError(f"Bundled release manifest is unreadable: {exc}") from exc
+        if not isinstance(metadata, dict) or metadata.get("channel") not in ("production", "staging"):
+            raise RuntimeError("Bundled release manifest has an invalid channel.")
+        if not isinstance(metadata.get("manager_version"), str) or not metadata["manager_version"].strip():
+            raise RuntimeError("Bundled release manifest does not specify the manager version.")
+        api_url = metadata.get("weave_api_base_url")
+        if not isinstance(api_url, str) or urlsplit(api_url).scheme != "https" or not urlsplit(api_url).hostname:
+            raise RuntimeError("Bundled WEAVE API URL must use HTTPS.")
+        image = metadata.get("cbt_image", "")
+        digest = image.rsplit("@sha256:", 1)[-1] if isinstance(image, str) else ""
+        if (not isinstance(image, str) or not image.startswith("ghcr.io/")
+                or "@sha256:" not in image or len(digest) != 64
+                or any(char not in "0123456789abcdef" for char in digest.lower())):
+            raise RuntimeError("Bundled Docker image must have an immutable SHA-256 digest.")
+        ubuntu = metadata.get("ubuntu")
+        if not isinstance(ubuntu, dict):
+            raise RuntimeError("Bundled release manifest must pin the Ubuntu WSL archive.")
+        ubuntu_url = ubuntu.get("download_url", "")
+        ubuntu_digest = ubuntu.get("sha256", "")
+        if (not isinstance(ubuntu_url, str) or urlsplit(ubuntu_url).scheme != "https"
+                or urlsplit(ubuntu_url).hostname != "cloud-images.ubuntu.com"
+                or not urlsplit(ubuntu_url).path.endswith(".tar.gz")):
+            raise RuntimeError("Bundled Ubuntu WSL archive must use Canonical HTTPS.")
+        if (not isinstance(ubuntu_digest, str) or len(ubuntu_digest) != 64
+                or any(char not in "0123456789abcdef" for char in ubuntu_digest.lower())):
+            raise RuntimeError("Bundled Ubuntu archive must have a valid SHA-256 checksum.")
+        check = subprocess.run([str(source), "release"], stdout=subprocess.DEVNULL,
+                               stderr=subprocess.PIPE, text=True, timeout=60, check=False)
+        if check.returncode != 0:
+            raise RuntimeError("Embedded weave.exe failed to run: " + (check.stderr or "")[-400:])
+        output("OK", f"Verified embedded CLI and {metadata['channel']} release manifest.")
+        return
+
+    directory = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "WeaveCBT"
+    # A staging setup cannot silently replace an existing production manager.
+    old_release = directory / "assets" / "release-manifest.json"
+    if old_release.is_file():
+        try:
+            existing = json.loads(old_release.read_text(encoding="utf-8"))
+            incoming = json.loads((assets / "release-manifest.json").read_text(encoding="utf-8"))
+        except (ValueError, OSError) as exc:
+            raise RuntimeError(f"Cannot verify existing installation channel: {exc}") from exc
+        if existing.get("channel") != incoming.get("channel"):
+            raise RuntimeError("Existing WEAVE CBT Manager belongs to another channel. Refusing to overwrite staging/production assets.")
+    directory.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, directory / "weave.exe")
+    shutil.copytree(assets, directory / "assets", dirs_exist_ok=True)
+    output("OK", f"Installed WEAVE manager into {directory}")
+
+    import winreg
+    path_key = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path_key, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE) as key:
+        try:
+            current, kind = winreg.QueryValueEx(key, "Path")
+        except FileNotFoundError:
+            current, kind = "", winreg.REG_EXPAND_SZ
+        entries = {os.path.normcase(os.path.normpath(os.path.expandvars(item.strip().strip('"')))) for item in current.split(";") if item.strip()}
+        if os.path.normcase(os.path.normpath(str(directory))) not in entries:
+            result = (current.rstrip(";") + ";" if current else "") + str(directory)
+            winreg.SetValueEx(key, "Path", 0, kind if kind in (winreg.REG_SZ, winreg.REG_EXPAND_SZ) else winreg.REG_EXPAND_SZ, result)
+
+    try:
+        user32 = ctypes.windll.user32
+        notify = user32.SendMessageTimeoutW
+        notify.argtypes = (
+            ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t, ctypes.c_wchar_p,
+            ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_size_t),
+        )
+        notify.restype = ctypes.c_size_t
+        response = ctypes.c_size_t()
+        status = notify(0xFFFF, 0x001A, 0, "Environment", 0x0002, 5000, ctypes.byref(response))
+        if not status:
+            output("STEP", "PATH was saved; open a NEW PowerShell session to load it.")
+    except (AttributeError, OSError, TypeError):
+        output("STEP", "PATH was saved; open a NEW PowerShell session to load it.")
+    output("OK", "Machine PATH configured.")
+
+    check = subprocess.run([str(directory / "weave.exe"), "release"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=45, check=False)
+    if check.returncode != 0:
+        raise RuntimeError("Installed CLI did not start: " + (check.stderr or "")[-400:])
+    output("OK", "CLI validation completed.")
+    print(f"\n{GREEN}SETUP COMPLETED SUCCESSFULLY{RESET}\n")
+    print("NEXT STEP: Open a NEW PowerShell window as Administrator and run:")
+    print(f"    {BLUE}weave install{RESET}")
+    print("\nWEAVE is available from any directory.")
+
+
+def request_elevation_and_wait() -> int:
+    # Windows PowerShell 5.1 ships with supported Windows desktops/servers.
+    # Re-launch the original downloaded EXE, never Nuitka\'s temporary onefile
+    # payload executable. -Wait -PassThru
+    # propagates the elevated child's real exit code to the caller.
+    def literal(value: str) -> str:
+        return "'" + value.replace("'", "''") + "'"
+
+    command = (
+        "$ErrorActionPreference = 'Stop'; "
+        "try { $child = Start-Process -FilePath " + literal(str(Path(sys.argv[0]).resolve()))
+    )
+    if len(sys.argv) > 1:
+        command += " -ArgumentList " + literal(subprocess.list2cmdline(sys.argv[1:]))
+    command += (
+        " -Verb RunAs -Wait -PassThru; exit $child.ExitCode } "
+        "catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }"
+    )
+    encoded = base64.b64encode(command.encode("utf-16le")).decode("ascii")
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+        check=False,
+    )
+    return result.returncode
+
+
+def main() -> int:
+    if sys.platform != "win32":
+        output("ERROR", "This setup program is for Windows.")
+        return 1
+    print(f"\n{BLUE}WEAVE CBT CLI MANAGER SETUP{RESET}\n")
+    if "--verify-payload" in sys.argv[1:]:
+        try:
+            perform_install(verify_only=True)
+            return 0
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            output("ERROR", str(exc))
+            return 1
+    if not admin():
+        output("STEP", "Requesting Administrator elevation through Windows UAC...")
+        try:
+            code = request_elevation_and_wait()
+        except OSError as exc:
+            output("ERROR", f"Unable to launch elevated setup: {exc}")
+            code = 1
+        if code != 0:
+            output("ERROR", "Elevated setup failed or Windows UAC approval was unavailable.")
+            if independent_console() and "--no-pause" not in sys.argv:
+                try:
+                    input("Press Enter to close...")
+                except EOFError:
+                    pass
+        return code
+    try:
+        perform_install()
+        return 0
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+        output("ERROR", str(exc))
+        return 1
+    finally:
+        if independent_console() and "--no-pause" not in sys.argv:
+            try:
+                input("\nPress Enter to close...")
+            except EOFError:
+                pass
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

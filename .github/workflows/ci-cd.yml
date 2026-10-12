@@ -1,108 +1,818 @@
-name: CI/CD
+name: WEAVE CBT image
 
 on:
   push:
+    branches: [staging, master]
   pull_request:
+    branches: [staging, master]
   workflow_dispatch:
+    inputs:
+      approve_production:
+        description: "Explicitly approve a Production release from master"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-cd-${{ github.workflow }}-${{ github.ref }}
+  group: cbt-image-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  backend-test:
-    name: Backend tests
+  changes:
+    name: Identify affected components
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      cli: ${{ steps.filter.outputs.cli }}
+      gui: ${{ steps.filter.outputs.gui }}
+      image: ${{ steps.filter.outputs.image }}
+      release: ${{ steps.filter.outputs.release }}
+      workflow: ${{ steps.filter.outputs.workflow }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # On a long-lived staging branch, compare only the latest push,
+          # not the full accumulated difference against the default branch.
+          base: ${{ github.event_name == 'push' && github.ref_name || github.event.repository.default_branch }}
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'deployment/docker/**'
+              - '.github/workflows/backend-validation.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/frontend-validation.yml'
+            cli:
+              - 'deployment/cli/**'
+              - 'deployment/bootstrap/**'
+              - 'deployment/distribution/**'
+              - 'deployment/pyproject.toml'
+              - 'deployment/uv.lock'
+              - '.github/workflows/deployment-*'
+            gui:
+              - 'deployment/gui/**'
+              - 'deployment/packaging/**'
+              - '.github/workflows/ci-cd.yml'
+            image:
+              - 'backend/**'
+              - 'frontend/**'
+              - 'deployment/docker/**'
+              - 'deployment/compose.yaml'
+              - 'deployment/nginx/**'
+              - 'deployment/ci-mirrors.yaml'
+              # Changes to image verification must exercise the image gate.
+              - '.github/workflows/ci-cd.yml'
+            workflow:
+              - '.github/workflows/**'
+            release:
+              - 'backend/**'
+              - 'frontend/**'
+              - 'deployment/**'
+              - '.github/workflows/ci-cd.yml'
+              - '.github/workflows/deployment-**'
+      - name: Validate YAML structure and duplicate keys
+        if: steps.filter.outputs.workflow == 'true'
+        shell: bash
+        run: |
+          python -m pip install 'ruamel.yaml>=0.18,<0.19'
+          python - <<'PY'
+          from pathlib import Path
+          from ruamel.yaml import YAML
+          yaml = YAML(typ='safe')
+          for workflow in Path('.github/workflows').glob('*.yml'):
+              with workflow.open(encoding='utf-8') as stream:
+                  yaml.load(stream)
+              print(f'Validated YAML: {workflow}')
+          PY
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/backend-validation.yml
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/frontend-validation.yml
+
+  gui-validation:
+    name: Desktop unit and headless smoke tests
+    needs: changes
+    if: >-
+      (github.event_name == 'push' && needs.changes.outputs.gui == 'true') ||
+      github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Validate desktop manager discovery
+        run: python -m unittest discover -s deployment/gui/tests -v
+      - name: Install Linux Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-xinerama0 libxcb-xfixes0
+      - name: Install Qt desktop runtime
+        run: python -m pip install 'PySide6>=6.7,<7'
+      - name: Check native GUI creation without display
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python deployment/gui/main.py --smoke-test
 
-      - name: Run backend tests
-        run: python -m unittest discover -s tests -v
-
-  frontend-check:
-    name: Frontend checks
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-
+  bootstrap:
+    needs: changes
+    if: >-
+      (github.event_name == 'push' && needs.changes.outputs.cli == 'true') ||
+      github.event_name == 'workflow_dispatch'
+    name: CLI and bootstrap validation
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Run CLI tests
+        run: uv run --project deployment python -m unittest discover -s deployment/cli/tests -v
+      - name: Check Linux bootstrap syntax
+        if: runner.os == 'Linux'
+        run: bash -n deployment/bootstrap/linux/bootstrap.sh
+      - name: Check PowerShell syntax and state tests
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path deployment/bootstrap/windows/bootstrap.ps1).Path,
+            [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) { throw 'Windows WSL bootstrap syntax errors.' }
+          .\deployment\cli\tests\test_windows_wsl_features.ps1
+          .\deployment\cli\tests\test_windows_bootstrap_state.ps1
+          .\deployment\cli\tests\test_windows_wsl_version.ps1
+          .\deployment\cli\tests\test_windows_native_commands.ps1
+          .\deployment\cli\tests\test_windows_wsl_pipes.ps1
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Lint frontend
-        run: npm run lint
-
-      - name: Run frontend tests
-        run: npm test
-
-      - name: Build frontend
-        run: npm run build
-
-  deliver-artifacts:
-    name: Stage delivery artifacts
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [backend-test, frontend-check]
+  image:
+    name: Resolve and verify application image
+    needs: [changes, backend, frontend, bootstrap, gui-validation]
+    if: >-
+      always() &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master') &&
+      (github.event_name != 'workflow_dispatch' || inputs.approve_production == true) &&
+      (needs.changes.outputs.release == 'true' || github.event_name == 'workflow_dispatch') &&
+      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    outputs:
+      image: ${{ steps.digest.outputs.image || steps.reuse.outputs.image }}
     runs-on: ubuntu-latest
-
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
+      - uses: actions/checkout@v4
+      - name: Resolve image repository
+        id: repository
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+        if: needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch'
         with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Build frontend delivery artifact
-        working-directory: frontend
-        run: npm run build
-
-      - name: Stage frontend artifact
-        uses: actions/upload-artifact@v7
+          driver-opts: |
+            image=mirror.gcr.io/moby/buildkit:buildx-stable-1
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
+      - name: Build current application image
+        if: (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
+        uses: docker/build-push-action@v7
         with:
-          name: frontend-dist-${{ github.sha }}
-          path: frontend/dist
+          context: .
+          file: deployment/docker/app/Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ steps.repository.outputs.name }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=cbt-app
+          cache-to: type=gha,mode=max,scope=cbt-app
+      - name: Prefetch infrastructure images for the Docker smoke test
+        if: needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # Rate limits on a single public registry must not silently disable
+          # the end-to-end test. Reuse these images ONLY for CI verification.
+          for spec in postgres:16-alpine redis:7-alpine nginx:stable-alpine; do
+            name="${spec%%:*}"
+            tag="${spec#*:}"
+            target="weave-cbt-ci/$name:$tag"
+            for registry in mirror.gcr.io/library public.ecr.aws/docker/library docker.io/library; do
+              source="$registry/$name:$tag"
+              echo "Trying $source for the mandatory integration test"
+              if timeout 120 docker pull "$source"; then
+                docker tag "$source" "$target"
+                break
+              fi
+              echo "::warning::Cannot fetch $source; trying the next registry"
+            done
+            if ! docker image inspect "$target" >/dev/null 2>&1; then
+              echo "::error::Unable to fetch $name:$tag from any registry; refusing to skip the smoke test"
+              exit 1
+            fi
+          done
+      - name: Verify fresh bootstrap, service health and browser routes
+        id: integration_smoke
+        if: needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch'
+        env:
+          IMAGE: ${{ steps.repository.outputs.name }}:sha-${{ github.sha }}
+        run: |
+          cat > deployment/ci.env <<'EOF'
+          ENVIRONMENT=stg
+          WEAVE_API_BASE_URL=https://example.test
+          POSTGRES_DB=weave_cbt
+          POSTGRES_USER=weave
+          POSTGRES_PASSWORD=CI-only-credential-2026
+          DATABASE_URL=postgresql+asyncpg://weave:CI-only-credential-2026@postgres:5432/weave_cbt
+          REDIS_URL=redis://redis:6379/0
+          DEBUG=false
+          EOF
+          printf 'WEAVE_IMAGE=%s\n' "$IMAGE" >> deployment/ci.env
+          docker compose -p weave-cbt-ci -f deployment/compose.yaml -f deployment/ci-mirrors.yaml --env-file deployment/ci.env up -d --wait --wait-timeout 240
+          docker compose -p weave-cbt-ci -f deployment/compose.yaml -f deployment/ci-mirrors.yaml --env-file deployment/ci.env ps --all --format json > /tmp/weave-cbt-ci-services.json
+          python3 - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+
+          raw = Path('/tmp/weave-cbt-ci-services.json').read_text().strip()
+          try:
+              parsed = json.loads(raw)
+              rows = parsed if isinstance(parsed, list) else [parsed]
+          except json.JSONDecodeError:
+              rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
+          services = {}
+          for row in rows:
+              services.setdefault(row.get('Service'), []).append(row)
+          required = {'postgres': 1, 'redis': 1, 'api': 3, 'worker': 1, 'nginx': 1}
+          for service, count in required.items():
+              actual = services.get(service, [])
+              if len(actual) != count or any(r.get('State', '').lower() != 'running' for r in actual):
+                  raise SystemExit(f'{service}: expected {count} running container(s), found {actual}')
+          for service in ('postgres', 'redis'):
+              if any(r.get('Health', '').lower() != 'healthy' for r in services[service]):
+                  raise SystemExit(f'{service} health checks are not healthy')
+          bootstrap = services.get('bootstrap', [])
+          if len(bootstrap) != 1 or bootstrap[0].get('State', '').lower() != 'exited' or str(bootstrap[0].get('ExitCode')) != '0':
+              raise SystemExit(f'Bootstrap did not complete successfully: {bootstrap}')
+          print('Integration topology verified: 3 API replicas, worker, nginx, healthy database/Redis and completed bootstrap.')
+          PY
+          for route in staff student; do
+            curl --fail --retry 20 --retry-delay 3 --retry-all-errors "http://localhost/$route" -o "/tmp/$route.html"
+            grep -q '<html' "/tmp/$route.html"
+          done
+          curl --fail --retry 20 --retry-delay 3 --retry-all-errors http://localhost/openapi.json -o /tmp/openapi.json
+          python3 -c 'import json; assert json.load(open("/tmp/openapi.json"))["paths"]'
+      - name: Container diagnostics
+        if: failure() && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
+        run: |
+          if [ -f deployment/ci.env ]; then
+            docker compose -p weave-cbt-ci -f deployment/compose.yaml -f deployment/ci-mirrors.yaml --env-file deployment/ci.env logs --no-color --tail 100
+          fi
+      - name: Stop smoke-test services
+        if: always() && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
+        run: |
+          if [ -f deployment/ci.env ]; then
+            docker compose -p weave-cbt-ci -f deployment/compose.yaml -f deployment/ci-mirrors.yaml --env-file deployment/ci.env down --volumes
+          fi
+      - name: Enforce successful Docker smoke-test before publishing
+        if: always() && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
+        env:
+          SMOKE_OUTCOME: ${{ steps.integration_smoke.outcome }}
+        run: |
+          if [ "$SMOKE_OUTCOME" != 'success' ]; then
+            echo "::error::Docker integration smoke test was $SMOKE_OUTCOME, not successful. Refusing to publish an unverified image."
+            exit 1
+          fi
+          echo 'Verified fresh Docker startup, API replicas, worker, healthy database/Redis and HTTP routes.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Log in to GitHub Container Registry
+        if: success() && steps.integration_smoke.outcome == 'success' && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish verified image
+        if: success() && steps.integration_smoke.outcome == 'success' && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
+        env:
+          IMAGE: ${{ steps.repository.outputs.name }}
+        run: |
+          docker push "$IMAGE:sha-$GITHUB_SHA"
+          docker tag "$IMAGE:sha-$GITHUB_SHA" "$IMAGE:$GITHUB_REF_NAME"
+          docker push "$IMAGE:$GITHUB_REF_NAME"
+          printf 'Published image: `%s:sha-%s`\n' "$IMAGE" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Resolve published Docker image digest
+        id: digest
+        if: success() && steps.integration_smoke.outcome == 'success' && (needs.changes.outputs.image == 'true' || github.event_name == 'workflow_dispatch')
+        env:
+          IMAGE: ${{ steps.repository.outputs.name }}
+        run: |
+          DIGEST=$(docker buildx imagetools inspect "$IMAGE:sha-$GITHUB_SHA" --format '{{.Manifest.Digest}}')
+          test -n "$DIGEST"
+          echo "image=$IMAGE@$DIGEST" >> "$GITHUB_OUTPUT"
+      - name: Resolve existing verified channel image when application is unchanged
+        id: reuse
+        if: needs.changes.outputs.image != 'true' && github.event_name != 'workflow_dispatch'
+        env:
+          IMAGE: ${{ steps.repository.outputs.name }}
+          CHANNEL: ${{ github.ref_name }}
+        run: |
+          set -Eeuo pipefail
+          # A previously published channel image is used only if no application
+          # paths changed; never rely on an embedded emergency/stale digest.
+          digest=$(docker buildx imagetools inspect "$IMAGE:$CHANNEL" --format '{{.Manifest.Digest}}')
+          test -n "$digest"
+          echo "image=$IMAGE@$digest" >> "$GITHUB_OUTPUT"
+          echo "Reused validated image for unchanged application: $IMAGE@$digest" >> "$GITHUB_STEP_SUMMARY"
+      - name: Require anonymous GHCR access for zero-login manager installations
+        env:
+          PUBLISHED_IMAGE: ${{ steps.digest.outputs.image || steps.reuse.outputs.image }}
+        run: |
+          set -Eeuo pipefail
+          anonymous_config="$(mktemp -d)"
+          trap 'rm -rf "$anonymous_config"' EXIT
+          if ! DOCKER_CONFIG="$anonymous_config" docker manifest inspect "$PUBLISHED_IMAGE" >/dev/null; then
+            echo "::error::GHCR image is not anonymously pullable. Official manager installers do not require Docker login; make the GitHub Container Registry package public before release."
+            exit 1
+          fi
+          echo "Verified anonymous GHCR image access: $PUBLISHED_IMAGE" >> "$GITHUB_STEP_SUMMARY"
+
+  compile-cli:
+    name: Compile standalone CLI (${{ matrix.os }})
+    if: >-
+      (github.event_name == 'push' && needs.changes.outputs.release == 'true' &&
+       (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/master' && inputs.approve_production == true)
+    needs: [changes]
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Reuse verified compiled CLI when sources are unchanged
+        id: cli-cache
+        uses: actions/cache@v4
+        with:
+          path: build/cli
+          key: cbt-cli-v3-${{ runner.os }}-${{ hashFiles('deployment/cli/**/*.py', 'deployment/pyproject.toml', 'deployment/uv.lock') }}
+      - name: Install manager compiler
+        if: steps.cli-cache.outputs.cache-hit != 'true'
+        run: python -m pip install -e ./deployment nuitka zstandard
+      - name: Compile Windows CLI
+        if: runner.os == 'Windows' && steps.cli-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          python -m nuitka --mode=onefile --onefile-no-compression --assume-yes-for-downloads --output-dir=build/cli --output-filename=weave.exe deployment/cli/entrypoint.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows CLI compilation failed.' }
+          # Scanner gate: no newly compiled Windows binary executes or ships
+          # before Microsoft Defender has scanned it. A blocked/missing file
+          # is a hard failure; never add exclusions or bypass detections.
+          $candidate = (Resolve-Path build/cli/weave.exe).Path
+          $scan = Get-Command Start-MpScan -ErrorAction SilentlyContinue
+          if (-not $scan) { throw 'Microsoft Defender scanner is unavailable; cannot certify Windows CLI.' }
+          Start-MpScan -ScanType CustomScan -ScanPath $candidate -ErrorAction Stop
+          if (-not (Test-Path $candidate)) { throw 'Windows CLI missing after Defender scan; release blocked.' }
+          $findings = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object {
+            @($_.Resources) -match [regex]::Escape($candidate)
+          })
+          if ($findings.Count -gt 0) {
+            $findings | Format-List InitialDetectionTime,ThreatID,Resources,ActionSuccess | Out-String | Write-Host
+            throw 'Microsoft Defender detected the compiled Windows CLI; release blocked pending analysis.'
+          }
+          & (Resolve-Path build/cli/weave.exe).Path --help
+          if ($LASTEXITCODE -ne 0) { throw 'Compiled Windows CLI did not start.' }
+      - name: Compile Linux CLI
+        if: runner.os == 'Linux' && steps.cli-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m nuitka --mode=onefile --assume-yes-for-downloads --output-dir=build/cli --output-filename=weave deployment/cli/entrypoint.py
+          build/cli/weave --help
+      - name: Scan Windows CLI (including restored cache)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidate = (Resolve-Path build/cli/weave.exe).Path
+          if (-not (Get-Command Start-MpScan -ErrorAction SilentlyContinue)) {
+            throw 'Microsoft Defender unavailable; refusing to publish unscanned Windows CLI.'
+          }
+          Start-MpScan -ScanType CustomScan -ScanPath $candidate -ErrorAction Stop
+          if (-not (Test-Path $candidate)) { throw 'Defender blocked the Windows CLI.' }
+          $detections = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object {
+            @($_.Resources) -match [regex]::Escape($candidate)
+          })
+          if ($detections.Count -gt 0) {
+            $detections | Format-List InitialDetectionTime,ThreatID,Resources | Out-String | Write-Host
+            throw 'Defender detected the Windows CLI. Do not release it or suppress security protection.'
+          }
+      - name: Validate cached or freshly compiled CLI
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            build/cli/weave.exe --help
+          else
+            chmod +x build/cli/weave
+            build/cli/weave --help
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compiled-cli-${{ runner.os }}
+          path: build/cli/weave*
           if-no-files-found: error
-          retention-days: 14
 
-      - name: Stage backend source artifact
-        uses: actions/upload-artifact@v7
+  compile-gui:
+    name: Compile desktop GUI (${{ matrix.os }})
+    needs: [changes]
+    if: >-
+      (github.event_name == 'push' && needs.changes.outputs.release == 'true' &&
+       (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/master' && inputs.approve_production == true)
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          name: backend-source-${{ github.sha }}
+          python-version: '3.11'
+      - name: Cache compiled desktop executable
+        id: cache-gui
+        uses: actions/cache@v4
+        with:
+          path: build/gui
+          key: cbt-gui-v8-${{ runner.os }}-${{ hashFiles('deployment/gui/**', '.github/workflows/ci-cd.yml') }}
+      - name: Install desktop build dependencies
+        if: steps.cache-gui.outputs.cache-hit != 'true'
+        run: python -m pip install 'PySide6==6.10.2' 'nuitka==4.2.2' zstandard
+      - name: Install Windows PyInstaller dependencies
+        if: runner.os == 'Windows' && steps.cache-gui.outputs.cache-hit != 'true'
+        run: python -m pip install 'PySide6==6.12.0' 'pyinstaller==6.22.3' 'pyinstaller-hooks-contrib==2026.8' 'Pillow>=11,<13'
+      - name: Compile Windows GUI
+        if: runner.os == 'Windows' && steps.cache-gui.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          # Embed the official WEAVE logo into the EXE, so Windows taskbar,
+          # Alt+Tab and file properties match the installed shortcut icon.
+          @'
+          from pathlib import Path
+          from PIL import Image
+          logo = Image.open("deployment/gui/resources/weave-logo-blue.png").convert("RGBA")
+          logo.thumbnail((222, 154), Image.Resampling.LANCZOS)
+          canvas = Image.new("RGBA", (256, 256))
+          canvas.alpha_composite(logo, ((256-logo.width)//2, (256-logo.height)//2))
+          Path("build/gui").mkdir(parents=True, exist_ok=True)
+          canvas.save("build/gui/weave.ico", sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Official WEAVE taskbar icon generation failed' }
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name WEAVE-CBT-Desktop --distpath build/gui --workpath build/gui/pyinstaller-work --specpath build/gui/pyinstaller-spec --icon "$((Resolve-Path build/gui/weave.ico).Path)" --add-data "$((Resolve-Path deployment/gui/resources).Path);resources" deployment/gui/main.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows GUI compilation failed' }
+      - name: Install Linux Qt runtime libraries
+        # Even a cached standalone GUI needs the host's Qt/EGL libraries.
+        # The GitHub runner is ephemeral; these system packages are never cached.
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-xinerama0 libxcb-xfixes0
+      - name: Compile Linux GUI
+        if: runner.os == 'Linux' && steps.cache-gui.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m nuitka --mode=onefile --enable-plugin=pyside6 --assume-yes-for-downloads --include-data-dir=deployment/gui/resources=resources --output-dir=build/gui --output-filename=weave-cbt-desktop deployment/gui/main.py
+      - name: Scan Windows GUI binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $binary = (Resolve-Path build/gui/WEAVE-CBT-Desktop.exe).Path
+          if (-not (Get-Command Start-MpScan -ErrorAction SilentlyContinue)) {
+            throw 'Microsoft Defender unavailable; refusing to publish unscanned Windows GUI.'
+          }
+          Start-MpScan -ScanType CustomScan -ScanPath $binary -ErrorAction Stop
+          if (-not (Test-Path $binary)) { throw 'Defender blocked Windows Desktop GUI.' }
+          $detections = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object {
+            @($_.Resources) -match [regex]::Escape($binary)
+          })
+          if ($detections.Count -gt 0) {
+            $detections | Format-List InitialDetectionTime,ThreatID,Resources | Out-String | Write-Host
+            throw 'Defender detected Windows Desktop GUI. Release blocked.'
+          }
+      - name: Smoke test compiled Windows GUI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $binary = (Resolve-Path build/gui/WEAVE-CBT-Desktop.exe).Path
+          # PowerShell does not reliably wait for GUI-subsystem EXEs invoked with &,
+          # and $LASTEXITCODE can be null. Wait for the real process exit instead.
+          $result = Start-Process -FilePath $binary -ArgumentList '--smoke-test' -Wait -PassThru -ErrorAction Stop
+          Write-Host "Compiled Windows GUI smoke test exit code: $($result.ExitCode)"
+          if ($result.ExitCode -ne 0) { throw "Compiled Windows GUI smoke test failed (exit code $($result.ExitCode))." }
+      - name: Smoke test compiled Linux GUI
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          chmod +x build/gui/weave-cbt-desktop
+          build/gui/weave-cbt-desktop --smoke-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compiled-gui-${{ runner.os }}
           path: |
-            backend/app
-            backend/pyproject.toml
-            backend/README.md
-            backend/.python-version
+            build/gui/WEAVE-CBT-Desktop.exe
+            build/gui/weave-cbt-desktop
           if-no-files-found: error
-          retention-days: 14
+
+  package:
+    name: Package manager for ${{ matrix.os }}
+    needs: [image, compile-cli, compile-gui]
+    if: >-
+      always() &&
+      needs.image.result == 'success' &&
+      needs.compile-cli.result == 'success' &&
+      needs.compile-gui.result == 'success'
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: compiled-cli-${{ runner.os }}
+          path: build/cli
+      - uses: actions/download-artifact@v4
+        with:
+          name: compiled-gui-${{ runner.os }}
+          path: build/gui
+      - name: Install Windows setup compiler
+        if: runner.os == 'Windows'
+        run: python -m pip install -e ./deployment nuitka zstandard
+      - name: Windows console setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CBT_IMAGE: ${{ needs.image.outputs.image }}
+          CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}
+        run: |
+          New-Item -ItemType Directory -Force -Path build\payload\assets,dist | Out-Null
+          Copy-Item build\cli\weave.exe build\payload\weave.exe
+          Copy-Item deployment\compose.yaml build\payload\assets\compose.yaml
+          Copy-Item deployment\nginx build\payload\assets\nginx -Recurse
+          Copy-Item deployment\certificates build\payload\assets\certificates -Recurse
+          Copy-Item deployment\bootstrap build\payload\assets\bootstrap -Recurse
+          python deployment\distribution\make_manifest.py --channel $env:CHANNEL --image $env:CBT_IMAGE --version "1.0.$env:GITHUB_RUN_NUMBER" --destination build\payload\assets\release-manifest.json
+          if ($LASTEXITCODE -ne 0) { throw "Manifest generation failed." }
+          $name = if ($env:CHANNEL -eq 'staging') { 'WEAVE-CBT-Staging-Setup.exe' } else { 'WEAVE-CBT-Setup.exe' }
+          & (Resolve-Path "build\payload\weave.exe").Path release
+          if ($LASTEXITCODE -ne 0) { throw "Bundled CLI cannot resolve Windows release assets." }
+          Compress-Archive -Path build\payload\* -DestinationPath build\payload.zip -Force
+          python -m nuitka --mode=onefile --assume-yes-for-downloads --include-data-files=build/payload.zip=payload.zip --output-dir=dist --output-filename=$name deployment\distribution\windows\setup.py
+          if ($LASTEXITCODE -ne 0) { throw "Windows setup build failed." }
+          & (Join-Path (Resolve-Path dist).Path $name) --verify-payload
+          if ($LASTEXITCODE -ne 0) { throw "Compiled Windows setup payload verification failed." }
+      - name: Create WEAVE icon from exact branded logo geometry
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m pip install 'Pillow>=11,<13'
+          @'
+          from PIL import Image
+          from pathlib import Path
+          original = Image.open("deployment/gui/resources/weave-logo-blue.png").convert("RGBA")
+          original.thumbnail((218, 160), Image.Resampling.LANCZOS)
+          canvas = Image.new("RGBA", (256, 256))
+          canvas.alpha_composite(original, ((256-original.width)//2, (256-original.height)//2))
+          Path("build/desktop-installer").mkdir(parents=True, exist_ok=True)
+          canvas.save("build/desktop-installer/weave.ico", sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to create the supplied WEAVE icon' }
+      - name: Install Inno Setup for native Windows wizard
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress --yes
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          }
+          if (-not (Test-Path $iscc)) { throw 'Inno Setup compiler was not found' }
+      - name: Build one-file Windows graphical setup wizard
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          $payload = (Resolve-Path build/payload).Path
+          $desktop = (Resolve-Path build/gui/WEAVE-CBT-Desktop.exe).Path
+          $icon = (Resolve-Path build/desktop-installer/weave.ico).Path
+          $version = "1.0.$env:GITHUB_RUN_NUMBER"
+          & $iscc "/DChannel=$env:CHANNEL" "/DVersionString=$version" "/DPayloadDir=$payload" "/DDesktopExe=$desktop" "/DBrandIcon=$icon" "deployment/packaging/windows/desktop.iss"
+          if ($LASTEXITCODE -ne 0) { throw 'Native Windows wizard compilation failed' }
+          $name = if ($env:CHANNEL -eq 'staging') { 'WEAVE-CBT-Staging-Desktop-Setup.exe' } else { 'WEAVE-CBT-Desktop-Setup.exe' }
+          if (-not (Test-Path (Join-Path dist $name))) { throw 'Standalone Windows setup executable is missing' }
+      - name: Smoke test Windows wizard installation and bundled manager
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $name = if ($env:CHANNEL -eq 'staging') { 'WEAVE-CBT-Staging-Desktop-Setup.exe' } else { 'WEAVE-CBT-Desktop-Setup.exe' }
+          $setup = (Resolve-Path (Join-Path dist $name)).Path
+          $log = Join-Path $env:RUNNER_TEMP 'weave-desktop-setup.log'
+          # Inno Setup is a Windows GUI-subsystem executable: invoking it via
+          # the PowerShell call operator may return before installation ends.
+          # Use an explicit wait and the child's actual exit code, never a
+          # stale $LASTEXITCODE left by a previous console command.
+          # CI has no interactive UAC session, so install to isolated per-user
+          # storage. The shipped wizard defaults to Administrator installation.
+          $folder = Join-Path $env:RUNNER_TEMP 'weave-desktop-acceptance'
+          $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', "/DIR=$folder", "/LOG=$log")
+          $process = Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru
+          Write-Host "Windows desktop setup exit code: $($process.ExitCode)"
+          if ($process.ExitCode -ne 0) {
+            if (Test-Path $log) {
+              Write-Host 'Last 100 lines of Inno Setup installation log:'
+              Get-Content -LiteralPath $log -Tail 100
+            } else {
+              Write-Warning 'Installer exited before creating the requested log.'
+            }
+            # Diagnostic evidence only: never disable antivirus, ignore a
+            # detection or mark a blocked executable as successfully installed.
+            if (Get-Command Get-MpThreatDetection -ErrorAction SilentlyContinue) {
+              Get-MpThreatDetection | Select-Object -First 8 InitialDetectionTime, ThreatID, Resources, ActionSuccess | Format-List | Out-String | Write-Host
+            }
+            throw "Windows setup wizard failed to install (exit code $($process.ExitCode))."
+          }
+          $manager = Join-Path $folder 'weave.exe'
+          $desktop = Join-Path $folder 'WEAVE-CBT-Desktop.exe'
+          if (-not (Test-Path $manager) -or -not (Test-Path $desktop)) { throw 'Desktop and matching CLI were not installed together' }
+          & $manager release
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled WEAVE CLI cannot load release information' }
+          & $desktop --smoke-test
+          if ($LASTEXITCODE -ne 0) { throw 'Installed GUI cannot start' }
+          $manifest = Get-Content (Join-Path $folder 'assets/release-manifest.json') -Raw | ConvertFrom-Json
+          if ($manifest.channel -ne $env:CHANNEL) { throw 'Desktop installer channel mismatch' }
+          if ($manifest.cbt_image -notmatch '@sha256:[0-9a-f]{64}$') { throw 'Desktop installer image is not digest pinned' }
+      - name: Linux terminal package
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          CBT_IMAGE: ${{ needs.image.outputs.image }}
+          CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p build/package/weave-cbt/assets dist
+          install -m 0755 build/cli/weave build/package/weave-cbt/weave
+          install -m 0755 deployment/distribution/linux/install.sh build/package/weave-cbt/install.sh
+          cp deployment/compose.yaml build/package/weave-cbt/assets/
+          cp -R deployment/nginx deployment/bootstrap deployment/certificates build/package/weave-cbt/assets/
+          python deployment/distribution/make_manifest.py --channel "$CHANNEL" --image "$CBT_IMAGE" --version "1.0.$GITHUB_RUN_NUMBER" --destination build/package/weave-cbt/assets/release-manifest.json
+          build/package/weave-cbt/weave release
+          tar -C build/package -czf "dist/weave-cbt-$CHANNEL-linux-amd64.tar.gz" weave-cbt
+          test -s "dist/weave-cbt-$CHANNEL-linux-amd64.tar.gz"
+          mkdir -p build/smoke
+          tar -C build/smoke -xzf "dist/weave-cbt-$CHANNEL-linux-amd64.tar.gz"
+          build/smoke/weave-cbt/weave --help
+          build/smoke/weave-cbt/weave release
+          test -f build/smoke/weave-cbt/assets/release-manifest.json
+      - name: Linux graphical desktop package
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          CBT_IMAGE: ${{ needs.image.outputs.image }}
+          CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}
+        run: |
+          set -Eeuo pipefail
+          bash deployment/packaging/linux/build-deb.sh build/cli/weave build/gui/weave-cbt-desktop "$CHANNEL" "1.0.$GITHUB_RUN_NUMBER" "$CBT_IMAGE" build/debroot
+          dpkg-deb --info "dist/weave-cbt-desktop-$CHANNEL-linux-amd64.deb"
+          dpkg-deb --contents "dist/weave-cbt-desktop-$CHANNEL-linux-amd64.deb" | grep -F './usr/bin/weave-cbt-desktop'
+          dpkg-deb --contents "dist/weave-cbt-desktop-$CHANNEL-linux-amd64.deb" | grep -F './usr/bin/weave'
+          sudo apt-get install -y "./dist/weave-cbt-desktop-$CHANNEL-linux-amd64.deb"
+          QT_QPA_PLATFORM=offscreen /usr/bin/weave-cbt-desktop --smoke-test
+          /usr/bin/weave release
+          test -f /usr/share/weave-cbt/assets/release-manifest.json
+      # Nuitka also creates .build/.dist directories in dist/. Ship only
+      # the verified executable, never its intermediate working directories.
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: manager-${{ runner.os }}
+          path: dist/*.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: manager-${{ runner.os }}
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+          if-no-files-found: error
+
+  release:
+    name: Publish versioned manager release
+    # A merge into master never publishes a customer installer automatically.
+    # Select "Run workflow" on master with approve_production=true to promote.
+    needs: [image, package]
+    if: >-
+      always() &&
+      needs.image.result == 'success' &&
+      needs.package.result == 'success' &&
+      ((github.ref == 'refs/heads/staging' && github.event_name == 'push') ||
+       (github.ref == 'refs/heads/master' && github.event_name == 'workflow_dispatch' &&
+        inputs.approve_production == true))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: manager-*
+          path: dist
+          merge-multiple: true
+      - name: Publish release to GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ github.ref_name == 'master' && 'production' || 'staging' }}
+          CBT_IMAGE: ${{ needs.image.outputs.image }}
+        run: |
+          set -Eeuo pipefail
+          # Exactly two Windows executables, one Linux CLI tar and one native DEB.
+          shopt -s nullglob
+          windows=(dist/*.exe)
+          linux=(dist/*.tar.gz)
+          debs=(dist/*.deb)
+          if [ "${#windows[@]}" -ne 2 ] || [ "${#linux[@]}" -ne 1 ] || [ "${#debs[@]}" -ne 1 ]; then
+            echo "::error::Expected 2 Windows EXEs, 1 Linux CLI tarball and 1 Linux DEB."
+            exit 1
+          fi
+          for entry in dist/*; do
+            if [ ! -f "$entry" ]; then
+              echo "::error::Unexpected directory or non-file release artifact: $entry"
+              exit 1
+            fi
+          done
+          (cd dist && sha256sum -- *.exe *.tar.gz *.deb > SHA256SUMS)
+          if [ "$CHANNEL" = staging ]; then
+            TAG="staging-1.0.$GITHUB_RUN_NUMBER"
+            PRERELEASE=--prerelease
+          else
+            TAG="v1.0.$GITHUB_RUN_NUMBER"
+            PRERELEASE=
+          fi
+          if [ "$CHANNEL" = staging ]; then
+            NOTES="GUI and CLI from commit $GITHUB_SHA; application image $CBT_IMAGE. Install the desktop package or use the standalone CLI."
+          else
+            NOTES="GUI and CLI from commit $GITHUB_SHA; pinned application image $CBT_IMAGE."
+          fi
+          gh release create "$TAG" "${windows[@]}" "${linux[@]}" "${debs[@]}" dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "WEAVE CBT $TAG" $PRERELEASE --notes "$NOTES"

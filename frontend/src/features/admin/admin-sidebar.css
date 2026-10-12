@@ -1,0 +1,196 @@
+.admin-sidebar-nav {
+  align-content: start;
+}
+
+.admin-sidebar-nav .admin-nav-link,
+.admin-sidebar-nav .admin-nav-group__trigger,
+.admin-sidebar-nav .admin-nav-child {
+  position: relative;
+  width: 100%;
+}
+
+.admin-nav-group {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.admin-sidebar-nav .admin-nav-group__trigger {
+  color: rgb(var(--color-on-primary) / .82);
+}
+
+.admin-sidebar-nav .admin-nav-group__trigger > .icon:last-child {
+  flex: 0 0 auto;
+  margin-left: auto;
+  opacity: .7;
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+
+.admin-nav-group.is-open .admin-nav-group__trigger > .icon:last-child {
+  transform: rotate(180deg);
+  opacity: 1;
+}
+
+/*
+ * Keep domain parents quiet when one of their children is selected. The page
+ * itself gets the selection cue; the parent only stays legible as context.
+ * This mirrors the main Weave sidebar, where active navigation uses a light
+ * tint instead of a large filled pill.
+ */
+.admin-sidebar .admin-sidebar-nav .admin-nav-group__trigger.active {
+  background: rgb(var(--color-on-primary) / .035);
+  color: rgb(var(--color-on-primary));
+  box-shadow: none;
+}
+
+.admin-nav-group__children {
+  display: grid;
+  gap: 3px;
+  margin: -1px 0 5px 20px;
+  border-left: 1px solid rgb(var(--color-on-primary) / .19);
+  padding: 3px 0 5px 11px;
+}
+
+.admin-nav-group__children[hidden] {
+  display: none;
+}
+
+.admin-sidebar-nav .admin-nav-child {
+  min-height: 40px;
+  gap: 9px;
+  border-radius: 9px;
+  padding: 0 10px;
+  background: transparent;
+  color: rgb(var(--color-on-primary) / .67);
+  font-size: 12.5px;
+  font-weight: 650;
+  box-shadow: none;
+}
+
+.admin-sidebar .admin-sidebar-nav .admin-nav-link:hover,
+.admin-sidebar .admin-sidebar-nav .admin-nav-group__trigger:hover,
+.admin-sidebar .admin-sidebar-nav .admin-nav-child:hover {
+  background: rgb(var(--color-on-primary) / .055);
+  color: rgb(var(--color-on-primary));
+  box-shadow: none;
+}
+
+.admin-sidebar .admin-sidebar-nav .admin-nav-child.active {
+  background: rgb(var(--color-on-primary) / .07);
+  color: rgb(var(--color-on-primary));
+  box-shadow: none;
+}
+
+.admin-nav-child__rail {
+  width: 4px;
+  height: 4px;
+  flex: 0 0 4px;
+  border-radius: 999px;
+  background: rgb(var(--color-on-primary) / .28);
+}
+
+.admin-nav-child.active .admin-nav-child__rail {
+  width: 5px;
+  height: 5px;
+  flex-basis: 5px;
+  background: rgb(var(--color-on-primary) / .8);
+  box-shadow: none;
+}
+
+/* Top-level destinations use Weave's restrained tint + trailing dot cue. */
+.admin-sidebar .admin-sidebar-nav .admin-nav-link.active,
+.admin-sidebar .admin-sidebar-nav .admin-nav-link[aria-current='page'] {
+  background: rgb(var(--color-on-primary) / .065);
+  color: rgb(var(--color-on-primary));
+  box-shadow: none;
+}
+
+.admin-sidebar-nav .admin-nav-link[aria-current='page']::after {
+  content: '';
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  margin-left: auto;
+  border-radius: 999px;
+  background: rgb(var(--color-on-primary) / .72);
+}
+
+.admin-shell--collapsed .admin-nav-link[aria-current='page']::after {
+  display: none;
+}
+
+.admin-shell--collapsed .admin-nav-group__children {
+  display: none !important;
+}
+
+.admin-shell--collapsed .admin-nav-group__trigger > .icon:last-child {
+  display: none;
+}
+
+@media (max-width: 1120px) {
+  .admin-sidebar-nav .admin-nav-group {
+    position: relative;
+  }
+
+  .admin-sidebar-nav .admin-nav-group__trigger > .icon:last-child {
+    display: none;
+  }
+
+  .admin-sidebar-nav .admin-nav-group__children:not([hidden]) {
+    position: absolute;
+    top: 0;
+    left: calc(100% + 12px);
+    z-index: 1600;
+    width: 224px;
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    border: 1px solid rgb(var(--color-on-primary) / .17);
+    border-radius: 12px;
+    background: color-mix(in srgb, rgb(var(--color-primary)) 93%, #081632);
+    padding: 8px;
+    box-shadow: 0 20px 50px rgb(4 14 39 / .28);
+  }
+
+  .admin-sidebar .admin-nav-group__children .admin-nav-child {
+    min-height: 42px;
+    justify-content: flex-start;
+    padding: 0 11px;
+  }
+
+  .admin-sidebar .admin-nav-group__children .admin-nav-child > span:last-child,
+  .admin-sidebar .admin-nav-group__children .admin-nav-child__rail {
+    display: inline-block;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-sidebar-nav .admin-nav-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .admin-sidebar-nav .admin-nav-group__children:not([hidden]) {
+    position: static;
+    width: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  .admin-sidebar .admin-nav-group__children .admin-nav-child {
+    width: auto;
+    min-width: max-content;
+    min-height: 44px;
+    padding: 0 11px;
+  }
+
+  .admin-sidebar .admin-nav-group__children .admin-nav-child__rail {
+    display: none;
+  }
+}
