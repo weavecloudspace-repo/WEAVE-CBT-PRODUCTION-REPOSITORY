@@ -29,6 +29,34 @@ class NetworkManagementTests(unittest.TestCase):
         result = json.loads(reply.output)
         self.assertEqual(result["url"], "https://server.school.cbt-staging.weavecloudspace.com/student")
 
+    def test_native_https_url_works_without_eligible_school_subnet(self):
+        self.stack.installation.runtime_type = "native"
+        with (
+            patch.object(network, "get_stack", return_value=self.stack),
+            patch.object(network, "inventory", return_value=[{
+                "name": "ens5", "address": "172.31.29.250", "network": "172.31.16.0/20",
+                "category": "Host", "private": True,
+            }]),
+            patch.object(network, "recommend", return_value=None),
+            patch.object(network, "_https_hostname", return_value="server.school.cbt.weavecloudspace.com"),
+        ):
+            reply = CliRunner().invoke(app, ["network", "url", "--json"])
+        self.assertEqual(reply.exit_code, 0, reply.output)
+        data = json.loads(reply.output)
+        self.assertEqual(data["url"], "https://server.school.cbt.weavecloudspace.com/student")
+        self.assertEqual(data["scheme"], "https")
+        self.assertEqual(data["address"], "")
+
+    def test_native_http_url_without_eligible_school_subnet_still_fails(self):
+        self.stack.installation.runtime_type = "native"
+        with (
+            patch.object(network, "get_stack", return_value=self.stack),
+            patch.object(network, "inventory", return_value=[]),
+            patch.object(network, "_https_hostname", return_value=None),
+        ):
+            reply = CliRunner().invoke(app, ["network", "url", "--json"])
+        self.assertNotEqual(reply.exit_code, 0)
+
     def test_legacy_http_url_without_tls(self):
         with (patch.object(network, "get_stack", return_value=self.stack),
               patch.object(network, "_read_state", return_value={"listen_address": "192.168.1.12"}),
