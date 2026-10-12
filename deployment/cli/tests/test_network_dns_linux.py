@@ -54,6 +54,34 @@ class LinuxDNSTests(unittest.TestCase):
         self.assertFalse(status["configured"])
         self.assertFalse(status["router_verified"])
 
+    def test_identity_accepts_larger_school_subnets(self):
+        (self.root / "tls.enabled").write_text("enabled\n", encoding="utf-8")
+        for subnet in ("172.31.16.0/20", "172.31.24.0/21",
+                       "172.31.28.0/22", "172.31.28.0/23"):
+            with self.subTest(subnet=subnet):
+                adapter = dict(self.adapter, name="ens5", address="172.31.29.250",
+                               network=subnet)
+                with (
+                    patch("weave_cli.commands.network._https_hostname",
+                          return_value="host.school.cbt.weavecloudspace.com"),
+                    patch.object(dns.network, "inventory", return_value=[adapter]),
+                ):
+                    hostname, selected = dns._identity(self.stack, None)
+                self.assertEqual(hostname, "host.school.cbt.weavecloudspace.com")
+                self.assertEqual(selected["network"], subnet)
+
+    def test_identity_rejects_subnet_wider_than_school_limit(self):
+        (self.root / "tls.enabled").write_text("enabled\n", encoding="utf-8")
+        adapter = dict(self.adapter, name="ens5", address="172.31.29.250",
+                       network="172.31.0.0/19")
+        with (
+            patch("weave_cli.commands.network._https_hostname",
+                  return_value="host.school.cbt.weavecloudspace.com"),
+            patch.object(dns.network, "inventory", return_value=[adapter]),
+        ):
+            with self.assertRaisesRegex(dns.DNSError, "Cannot choose one school interface"):
+                dns._identity(self.stack, None)
+
     def test_identity_requires_valid_private_adapter(self):
         (self.root / "tls.enabled").write_text("enabled\n", encoding="utf-8")
         with patch("weave_cli.commands.network._https_hostname",

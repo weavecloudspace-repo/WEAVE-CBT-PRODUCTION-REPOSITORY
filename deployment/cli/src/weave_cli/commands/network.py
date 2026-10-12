@@ -253,9 +253,15 @@ def network_url(
             address = saved["listen_address"]
         else:
             selected = recommend(inventory())
-            if not selected:
+            if selected:
+                address = selected["address"]
+            elif _https_hostname(stack):
+                # The paired HTTPS hostname is independently verified in the
+                # installed Nginx configuration. Showing it does not require
+                # guessing an untrusted or ambiguous LAN interface.
+                address = ""
+            else:
                 raise LanError("Choose an unambiguous school network before requesting a student URL.")
-            address = selected["address"]
         result = _student_url(stack, address)
         if json_output:
             typer.echo(json.dumps(result, separators=(",", ":")))
@@ -266,6 +272,8 @@ def network_url(
             warning("HTTPS has not been activated; pair the server and run weave tls.")
         else:
             warning("School DNS must resolve this hostname to the server LAN IP.")
+            if not address:
+                warning("No eligible school LAN adapter was detected; verify the server IP and school connectivity independently.")
         warning("Verify student access from a separate school computer.")
     except (*COMMAND_ERRORS, LanError, RuntimeError) as exc:
         error(str(exc))
