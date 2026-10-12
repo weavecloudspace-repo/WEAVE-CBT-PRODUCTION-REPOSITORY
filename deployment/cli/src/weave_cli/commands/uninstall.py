@@ -8,6 +8,7 @@ from weave_cli.commands._shared import (
 
 from weave_cli.commands.lan import configure, LanError, _state_path
 from weave_cli.commands.purge_safety import PurgeSafetyError, verify_purged_resources
+from weave_cli.commands.purge_cleanup import preflight, cleanup_host, verify_host, clear_active_config
 
 
 def uninstall(
@@ -35,33 +36,26 @@ def uninstall(
 
         info("Removing application containers...")
         if purge_volumes:
+            # Run host ownership checks BEFORE destroying irreplaceable exam data.
+            snapshot = preflight(stack)
+            cleanup_host(stack)
             stack.compose.destroy()
-            # Compose normally removes TLS/ACME volumes, but verify before
-            # unregistering so the next machine identity cannot reuse them.
             verify_purged_resources(stack.runtime)
+            verify_host(stack, snapshot)
         else:
             stack.compose.stop()
+            from weave_cli.commands.network_dns import remove_if_configured
+            remove_if_configured(stack)
+            if stack.installation.runtime_type == "wsl2" and _state_path(stack.installation.data_directory).exists():
+                configure(stack.installation.data_directory, remove=True)
 
-        from weave_cli.commands.network_dns import remove_if_configured
-        remove_if_configured(stack)
-
-        # Remove only opted-in WEAVE-owned LAN exposure before unregistering.
-        if stack.installation.runtime_type == "wsl2" and _state_path(stack.installation.data_directory).exists():
-            configure(stack.installation.data_directory, remove=True)
-
-        if purge_volumes:
-            # This host marker activates the TLS renewal profile. It must not
-            # survive removal of the associated Certbot certificate volume.
-            marker = stack.installation.data_directory / "tls.enabled"
-            if marker.is_symlink() or (marker.exists() and not marker.is_file()):
-                raise PurgeSafetyError("Unexpected TLS marker type; inspect before completing purge.")
-            marker.unlink(missing_ok=True)
-
-        # Registration is deleted only after Compose succeeds. Do not erase
-        # runtime.env, data directories, distro, or unrelated Docker resources.
+        # Keep registration until all resource cleanup and verification succeed.
         stack.platform.remove_runtime_persistence()
+        if purge_volumes:
+            # Checked paths only. No recursive deletions and no unrelated files.
+            clear_active_config(stack.installation.data_directory, stack.installation.install_directory)
         stack.manager.delete()
-        success("WEAVE CBT unregistered; application files were retained.")
+        success("WEAVE CBT unregistered; installation manager binaries were retained.")
         if purge_volumes:
             warning("Compose-managed volumes, TLS certificates and TLS activation marker were removed.")
         else:
