@@ -44,7 +44,7 @@ def _windows_unowned_resources(data: Path, addresses: set[str]) -> None:
         row["address"] for row in network.inventory()
         if row.get("private") and row.get("category") in ("Private", "DomainAuthenticated")
     ]
-    addresses.update(active)
+    candidates = set(addresses) | set(active)
     try:
         wsl_address = lan._wsl_address()
     except lan.LanError:
@@ -52,7 +52,7 @@ def _windows_unowned_resources(data: Path, addresses: set[str]) -> None:
 
     http_owned = (data / "lan.json").is_file()
     tls_owned = (data / "tls-lan.json").is_file()
-    for address in sorted(addresses):
+    for address in sorted(candidates):
         if not http_owned:
             dest = lan._mapped_destination(address)
             if dest and wsl_address and dest == f"{wsl_address}/80":
