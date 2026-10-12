@@ -761,16 +761,17 @@ jobs:
 
   release:
     name: Publish versioned manager release
-    # A merge into master never publishes a customer installer automatically.
-    # Select "Run workflow" on master with approve_production=true to promote.
+    # Publish on successful staging/master pushes, including staging -> master merges.
+    # Manually dispatched production releases still require explicit approval.
     needs: [image, package]
     if: >-
       always() &&
       needs.image.result == 'success' &&
       needs.package.result == 'success' &&
-      ((github.ref == 'refs/heads/staging' && github.event_name == 'push') ||
-       (github.ref == 'refs/heads/master' && github.event_name == 'workflow_dispatch' &&
-        inputs.approve_production == true))
+      ((github.event_name == 'push' &&
+        (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')) ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/master' && inputs.approve_production == true))
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -816,3 +817,24 @@ jobs:
             NOTES="GUI and CLI from commit $GITHUB_SHA; pinned application image $CBT_IMAGE."
           fi
           gh release create "$TAG" "${windows[@]}" "${linux[@]}" "${debs[@]}" dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "WEAVE CBT $TAG" $PRERELEASE --notes "$NOTES"
+
+  production-release-required:
+    name: Require successful production publishing
+    # Release-affecting master pushes must not be green if publishing was skipped.
+    needs: [changes, release]
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      needs.changes.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce successful GitHub release publishing
+        env:
+          RELEASE_RESULT: ${{ needs.release.result }}
+        shell: bash
+        run: |
+          if [ "$RELEASE_RESULT" != 'success' ]; then
+            echo "::error::Production release job was $RELEASE_RESULT; publishing is required for master pushes affecting release inputs."
+            exit 1
+          fi
