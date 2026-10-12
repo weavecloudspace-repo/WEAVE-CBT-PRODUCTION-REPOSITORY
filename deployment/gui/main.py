@@ -1245,7 +1245,7 @@ class ControlCenter(QMainWindow):
         privileged = (command in MUTATIONS or
                       (command == "network" and (args[0] in {"setup", "trust", "refresh", "remove"} or args[:2] == ["dns", "setup"]
                           or (sys.platform.startswith("linux") and args[:2] == ["dns", "status"]))) or
-                      (command == "self-update" and args == ["--yes"]) or (sys.platform.startswith("linux") and command in {"doctor", "status", "logs"}))
+                      (command == "self-update" and args[0:1] == ["--yes"]) or (sys.platform.startswith("linux") and command in {"doctor", "status", "logs"}))
         if privileged and not is_admin() and sys.platform == "win32":
             if self.confirm("Administrator permission", "This operation requires Administrator privileges. Relaunch the manager elevated?"):
                 if elevate_gui(command, args):
