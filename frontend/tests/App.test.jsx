@@ -167,6 +167,18 @@ describe('Weave backend integration shell', () => {
   })
 
   it('uses student auth and saves answers through the current-attempt API', async () => {
+    const studentSession = {
+      student_id: '77777777-7777-7777-7777-777777777777',
+      candidate_id: candidateId,
+      exam_id: examId,
+      exam_title: 'Mathematics CA1',
+      display_name: 'Taiwo Adewale',
+      availability: 'ready',
+      is_makeup: false,
+      scheduled_start_at: null,
+      activated_at: '2026-08-22T09:00:00Z',
+    }
+    let studentLoggedIn = false
     const fetchMock = installFetch({
       'GET /api/v1/installation/status': () => jsonResponse(pairedStatus),
       'POST /api/v1/student/auth/login': ({ options }) => {
@@ -174,29 +186,14 @@ describe('Weave backend integration shell', () => {
           admission_number: 'BFA/24/001',
           password: 'bfa/24/001',
         })
-        return jsonResponse({
-          student_id: '77777777-7777-7777-7777-777777777777',
-          candidate_id: candidateId,
-          exam_id: examId,
-          exam_title: 'Mathematics CA1',
-          display_name: 'Taiwo Adewale',
-          availability: 'ready',
-          is_makeup: false,
-          scheduled_start_at: null,
-          activated_at: '2026-08-22T09:00:00Z',
-        })
+        studentLoggedIn = true
+        return jsonResponse(studentSession)
       },
-      'GET /api/v1/student/auth/status': () => jsonResponse({
-        student_id: '77777777-7777-7777-7777-777777777777',
-        candidate_id: candidateId,
-        exam_id: examId,
-        exam_title: 'Mathematics CA1',
-        display_name: 'Taiwo Adewale',
-        availability: 'ready',
-        is_makeup: false,
-        scheduled_start_at: null,
-        activated_at: '2026-08-22T09:00:00Z',
-      }),
+      // Boot-time restoration must be unauthenticated until login succeeds.
+      // Otherwise a fast GET /status can bypass the login form during this test.
+      'GET /api/v1/student/auth/status': () => studentLoggedIn
+        ? jsonResponse(studentSession)
+        : jsonResponse({ detail: 'Authentication required.' }, 401),
       'POST /api/v1/student/attempts/current/start': () => jsonResponse(currentAttempt()),
       'GET /api/v1/student/attempts/current': () => jsonResponse(currentAttempt()),
       [`PUT /api/v1/student/attempts/current/questions/${attemptQuestionId}/answer`]: ({ options }) => {
@@ -216,7 +213,7 @@ describe('Weave backend integration shell', () => {
 
     const studentLoginButton = await screen.findByRole('button', { name: /login as student/i })
     fireEvent.click(studentLoginButton)
-    fireEvent.change(screen.getByLabelText(/admission number/i), { target: { value: 'bfa/24/001' } })
+    fireEvent.change(await screen.findByLabelText(/admission number/i), { target: { value: 'bfa/24/001' } })
     fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'bfa/24/001' } })
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
 
