@@ -13,7 +13,7 @@ from pathlib import Path
 import typer
 
 from weave_cli.commands._shared import COMMAND_ERRORS, banner, error, get_stack, info, success, warning
-from weave_cli.commands.lan import PRIVATE_RANGES, LanError, _read_state, configure, _powershell
+from weave_cli.commands.lan import MIN_SCHOOL_PREFIX, PRIVATE_RANGES, LanError, _read_state, configure, _powershell
 from weave_cli.installation import InstallationStateError
 from weave_cli.platforms.base import PlatformError
 
@@ -107,7 +107,7 @@ def recommend(adapters: list[dict]) -> dict | None:
             ipaddress.IPv4Network(row["network"]).subnet_of(parent)
             for parent in PRIVATE_RANGES
         )
-        and ipaddress.IPv4Network(row["network"]).prefixlen >= 24
+        and ipaddress.IPv4Network(row["network"]).prefixlen >= MIN_SCHOOL_PREFIX
     ]
     # A multi-adapter school server needs explicit choice; guessing is unsafe.
     return suitable[0] if len(suitable) == 1 else None
@@ -189,7 +189,7 @@ def network_configure(
             raise LanError("Automatic Windows forwarding applies only to WSL2.")
         selected = recommend(inventory())
         if not selected:
-            raise LanError("No unambiguous private /24-or-narrower school network was found.")
+            raise LanError("No unambiguous private /20-or-narrower school network was found.")
         stack = get_stack()
         if stack.installation.runtime_type != "wsl2" or not stack.platform.is_admin():
             raise LanError("Use an elevated Administrator PowerShell with the WEAVE WSL2 installation.")
@@ -312,8 +312,8 @@ def _candidate(adapters: list[dict], interface: str) -> dict:
         ("vethernet", "docker", "wsl", "virtualbox", "vmware")
     ) or not any(ipaddress.IPv4Network(chosen["network"]).subnet_of(parent)
                  for parent in PRIVATE_RANGES)
-            or ipaddress.IPv4Network(chosen["network"]).prefixlen < 24):
-        raise LanError("Choose a physical school adapter with a private /24-or-narrower subnet.")
+            or ipaddress.IPv4Network(chosen["network"]).prefixlen < MIN_SCHOOL_PREFIX):
+        raise LanError("Choose a physical school adapter with a private /20-or-narrower subnet.")
     return chosen
 
 
@@ -360,8 +360,8 @@ def network_trust(
 @app.command("setup")
 def network_setup(
     listen_address: str | None = typer.Option(None, "--listen-address", help="Server IPv4 address."),
-    client_subnet: str | None = typer.Option(None, "--client-subnet", help="Allowed school subnet."),
-    auto: bool = typer.Option(False, "--auto", help="Use the only eligible trusted school interface."),
+    client_subnet: str | None = typer.Option(None, "--client-subnet", help="Allowed private school LAN CIDR (/20 or narrower)."),
+    auto: bool = typer.Option(False, "--auto", help="Detect the CIDR from the only eligible trusted school interface."),
     yes: bool = typer.Option(False, "--yes", help="Skip the LAN setup confirmation."),
 ) -> None:
     """Configure WEAVE-owned Windows forwarding; Linux needs no WSL forwarding."""

@@ -25,6 +25,9 @@ DISTRIBUTION = "WeaveCBT"
 PRIVATE_RANGES = tuple(ipaddress.IPv4Network(cidr) for cidr in (
     "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"
 ))
+# Largest allowed client LAN: /20 (4094 usable addresses). Wider ranges
+# remain disallowed to avoid exposing WSL ports to an entire organization.
+MIN_SCHOOL_PREFIX = 20
 
 
 class LanError(RuntimeError):
@@ -46,10 +49,10 @@ def _private_subnet(value: str, address: str) -> str:
         network = ipaddress.IPv4Network(value, strict=True)
     except (ipaddress.AddressValueError, ipaddress.NetmaskValueError, ValueError) as exc:
         raise LanError("Supply a valid canonical IPv4 CIDR subnet, e.g. 192.168.1.0/24.") from exc
-    # Limit unintended access: one school LAN subnet, not an entire private /8.
+    # Limit unintended access to a private school LAN no wider than /20.
     if (not any(network.subnet_of(allowed) for allowed in PRIVATE_RANGES)
-            or network.prefixlen < 24 or ipaddress.IPv4Address(address) not in network):
-        raise LanError("Client subnet must be private, /24 or narrower, and contain the host LAN address.")
+            or network.prefixlen < MIN_SCHOOL_PREFIX or ipaddress.IPv4Address(address) not in network):
+        raise LanError("Client subnet must be private, /20 or narrower, and contain the host LAN address.")
     return str(network)
 
 
@@ -391,7 +394,7 @@ def lan(
     listen_address: str | None = typer.Option(None, "--listen-address",
         help="Private Windows host IPv4 address on the school LAN."),
     client_subnet: str | None = typer.Option(None, "--client-subnet",
-        help="Allowed private school LAN CIDR (/24 or narrower)."),
+        help="Allowed private school LAN CIDR (/20 or narrower, e.g. /22 or /23)."),
     refresh: bool = typer.Option(False, "--refresh", help="Refresh an existing WSL NAT mapping."),
     remove: bool = typer.Option(False, "--remove", help="Remove only WEAVE-owned LAN rules."),
 ) -> None:
