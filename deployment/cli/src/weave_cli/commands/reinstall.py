@@ -19,6 +19,7 @@ from weave_cli.commands.install import (
 )
 from weave_cli.commands.lan import LanError
 from weave_cli.commands.purge_cleanup import preflight, cleanup_host, verify_host
+from weave_cli.commands.network_dns import DNSError
 from weave_cli.commands.purge_safety import PurgeSafetyError, verify_purged_resources
 from weave_cli.commands.update_recovery import guard_pending_update
 from weave_cli.docker.compose import DockerCompose, DockerComposeError
@@ -160,7 +161,7 @@ def reinstall(
         info(f"Image: {state.installed_version}")
         info("Open http://localhost/ to pair this fresh server with WEAVE Cloud.")
     except (InstallError, InstallationStateError, DockerRuntimeError,
-            DockerComposeError, PlatformError, LanError, PurgeSafetyError, OSError) as exc:
+            DockerComposeError, PlatformError, LanError, DNSError, PurgeSafetyError, OSError) as exc:
         error(str(exc))
         raise typer.Exit(code=1) from exc
 
