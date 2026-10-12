@@ -288,28 +288,53 @@ def setup(stack, *, interface: str | None = None) -> dict:
         raise
 
 
-def remove_if_configured(stack) -> None:
+def remove_if_configured(stack, *, purge_files: bool = False) -> None:
+    """Remove the verified WEAVE DNS service; purge additionally clears its files.
+
+    Normal removal preserves the executable/config for incident review. The
+    opt-in DNS commands and future DNS setup remain available in both modes.
+    """
     if stack.installation.runtime_type == "native" and sys.platform.startswith("linux"):
         from weave_cli.commands.network_dns_linux import remove_linux
         remove_linux(stack)
         return
-    root, _, _, state_file = _paths(stack)
+    root, corefile, records, state_file = _paths(stack)
     if not state_file.exists():
         return
     state = _status(stack)
     if not state["configured"]:
         return
-    try:
-        _service_action("stop", SERVICE)
-    except lan.LanError:
-        pass
-    _service_action("delete", SERVICE)
+    installed = stack.installation.install_directory / "coredns.exe"
+    if purge_files:
+        try:
+            saved = json.loads(state_file.read_text(encoding="utf-8"))
+        except (ValueError, OSError) as exc:
+            raise DNSError("Unrecognized WEAVE DNS ownership record.") from exc
+        if (saved.get("schema") != 1 or saved.get("executable") != str(installed)):
+            raise DNSError("CoreDNS ownership record differs from the WEAVE installation.")
+        for path in (installed, corefile, records, state_file):
+            if path.is_symlink() or (path.exists() and not path.is_file()):
+                raise DNSError(f"Unsafe WEAVE DNS artifact: {path}")
+    if state["service_registered"]:
+        try:
+            _service_action("stop", SERVICE)
+        except lan.LanError:
+            pass
+        _service_action("delete", SERVICE)
     for name in FIREWALL:
         lan._powershell("Remove-NetFirewallRule -Name '" + name +
                         "' -ErrorAction SilentlyContinue", context="Remove WEAVE DNS firewall")
     state_file.unlink(missing_ok=True)
-    # Preserve CoreDNS executable and generated files for incident review.
-    # Removing its service does not touch examination volumes or certificates.
+    if purge_files:
+        for path in (corefile, records, installed):
+            path.unlink(missing_ok=True)
+        if root.exists():
+            try:
+                root.rmdir()
+            except OSError:
+                # Unknown files may belong to an administrator: never remove
+                # or recursively delete the directory.
+                pass
 
 
 def reconcile_if_configured(stack) -> None:
