@@ -315,11 +315,12 @@ def remove_if_configured(stack, *, purge_files: bool = False) -> None:
         for path in (installed, corefile, records, state_file):
             if path.is_symlink() or (path.exists() and not path.is_file()):
                 raise DNSError(f"Unsafe WEAVE DNS artifact: {path}")
-    try:
-        _service_action("stop", SERVICE)
-    except lan.LanError:
-        pass
-    _service_action("delete", SERVICE)
+    if state["service_registered"]:
+        try:
+            _service_action("stop", SERVICE)
+        except lan.LanError:
+            pass
+        _service_action("delete", SERVICE)
     for name in FIREWALL:
         lan._powershell("Remove-NetFirewallRule -Name '" + name +
                         "' -ErrorAction SilentlyContinue", context="Remove WEAVE DNS firewall")
