@@ -18,7 +18,7 @@ from weave_cli.commands.install import (
     MINIMUM_FREE_GIB, PROJECT_NAME,
 )
 from weave_cli.commands.lan import LanError
-from weave_cli.commands.purge_cleanup import preflight, cleanup_host, verify_host
+from weave_cli.commands.purge_cleanup import preflight, cleanup_host, verify_host, clear_dns_artifacts
 from weave_cli.commands.network_dns import DNSError
 from weave_cli.commands.purge_safety import PurgeSafetyError, verify_purged_resources
 from weave_cli.commands.update_recovery import guard_pending_update
@@ -49,6 +49,8 @@ def _archive_stale_files(install_dir: Path, data_dir: Path) -> Path | None:
         (data_dir / "tls.enabled", "tls.enabled"),
         (data_dir / "lan.json", "lan.json"),
         (data_dir / "tls-lan.json", "tls-lan.json"),
+        (data_dir / "update-recovery.json", "update-recovery.json"),
+        (data_dir / ".cbt-update.lock", ".cbt-update.lock"),
         (install_dir / "compose.yaml", "compose.yaml"),
         (install_dir / "nginx" / "nginx.conf", "nginx.conf"),
         (install_dir / "nginx" / "reload-watch.sh", "reload-watch.sh"),
@@ -91,7 +93,8 @@ def reinstall(
             state = manager.load()
             if state.install_directory != install_dir or state.data_directory != data_dir:
                 raise InstallError("Installation uses custom paths. Back it up and uninstall explicitly.")
-        guard_pending_update(data_dir)
+        if not purge_data:
+            guard_pending_update(data_dir)
         leftovers = any(p.exists() for p in (
             data_dir / "runtime.env",
             install_dir / "compose.yaml",
@@ -143,6 +146,9 @@ def reinstall(
             # names. Refuse to reuse old certificates during first start.
             verify_purged_resources(runtime)
             verify_host(host, snapshot)
+            # An earlier normal uninstall could leave CoreDNS files after
+            # its ownership marker and service were removed.
+            clear_dns_artifacts(data_dir, install_dir)
             platform.remove_runtime_persistence()
             if manager.exists():
                 manager.delete()
