@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
 import sys
 from datetime import date, datetime
 from itertools import pairwise
@@ -1237,6 +1238,10 @@ class ControlCenter(QMainWindow):
         if command == "install" and self.desktop.server_installed:
             self._message("Already installed", "This CBT server is already registered. An installation will not overwrite examination data.")
             return
+        # Pass the actual Desktop process ID: the elevated installer will
+        # refuse to replace its executable until this process has exited.
+        if command == "self-update" and args == ["--yes"] and sys.platform == "win32":
+            args.extend(["--manager-pid", str(os.getpid())])
         privileged = (command in MUTATIONS or
                       (command == "network" and (args[0] in {"setup", "trust", "refresh", "remove"} or args[:2] == ["dns", "setup"]
                           or (sys.platform.startswith("linux") and args[:2] == ["dns", "status"]))) or
@@ -1314,6 +1319,18 @@ class ControlCenter(QMainWindow):
         self.operation_records = self.operation_records[:6]
         self.last_activity.setText("\n".join(self.operation_records))
         self.activity_console.appendPlainText(f"Exit code: {code}")
+        if (name == "self-update" and code == 0
+                and "WEAVE_MANAGER_INSTALLER_LAUNCHED" in self.output_tail
+                and sys.platform == "win32"):
+            # An installer is already elevated and waiting for this GUI PID.
+            # The CLI subprocess has finished, so it is safe to close rather
+            # than let Inno Setup try to shut down a busy manager.
+            self.activity_console.appendPlainText(
+                "Verified installer started; closing the Desktop Manager for safe file replacement."
+            )
+            self.poll.stop()
+            QTimer.singleShot(0, self._close_for_manager_update)
+            return
         if self.auto_refresh.isChecked():
             self.poll.start(20000)
         self.refresh()
@@ -1354,7 +1371,7 @@ class ControlCenter(QMainWindow):
             if name in {"install", "update"} or (name == "network" and self.last_arguments and self.last_arguments[0] in {"setup", "trust", "refresh", "remove", "dns"}):
                 self._message("Operation successful", f"WEAVE {name} completed. Check Diagnostics and test the CBT endpoints before an examination.")
         elif name == "self-update" and code == 0:
-            self._message("Manager update", "The official manager installer has been launched, or this release is already current. Complete the installer if prompted.")
+            self._message("Manager update", "The manager is already current, or no installer was started. Recheck the installed version if needed.")
         else:
             self._message(
                 "Operation failed",
@@ -1363,6 +1380,17 @@ class ControlCenter(QMainWindow):
                 error=True,
                 details=self.output_tail or self.last_error,
             )
+
+    def _close_for_manager_update(self):
+        """Close voluntarily after the verified installer has been launched."""
+        if self.busy or self.process.state() != QProcess.NotRunning:
+            return
+        self.poll.stop()
+        if self.probe.state() != QProcess.NotRunning:
+            self.probe.kill()
+            self.probe.waitForFinished(2000)
+        if self.close():
+            QApplication.quit()
 
     def closeEvent(self, event):
         if self.busy:
