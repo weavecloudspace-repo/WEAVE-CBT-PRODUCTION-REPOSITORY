@@ -106,6 +106,40 @@ class PurgeCleanupTests(unittest.TestCase):
         self.assertFalse((self.install / "compose.yaml").exists())
         self.assertTrue((self.data / "do-not-delete").exists())
 
+    def test_stale_dns_binary_removed_without_touching_unknown_files(self):
+        dns_dir = self.data / "dns"
+        dns_dir.mkdir()
+        (dns_dir / "Corefile").write_text("stale configuration")
+        (dns_dir / "records.hosts").write_text("stale DNS record")
+        (self.install / "coredns.exe").write_text("stale binary")
+        (dns_dir / "operator-notes.txt").write_text("preserve")
+        purge_cleanup.clear_dns_artifacts(self.data, self.install)
+        self.assertFalse((dns_dir / "Corefile").exists())
+        self.assertFalse((dns_dir / "records.hosts").exists())
+        self.assertFalse((self.install / "coredns.exe").exists())
+        self.assertTrue((dns_dir / "operator-notes.txt").exists())
+
+    def test_verify_does_not_delete_or_reject_unrelated_tcp80_on_https_only(self):
+        snapshot = purge_cleanup.HostSnapshot(
+            addresses=("192.168.1.12",), runtime_type="wsl2",
+            https_addresses=("192.168.1.12",),
+        )
+        with patch.object(purge_cleanup.sys, "platform", "win32"), \
+             patch.object(lan_tls, "_destination", return_value=None), \
+             patch.object(lan, "_mapped_destination", return_value="172.18.0.50/80") as http, \
+             patch.object(lan, "_firewall_exists", return_value=False), \
+             patch.object(lan_tls, "_firewall_exists", return_value=False), \
+             patch.object(network_dns, "_service_exists", return_value=False):
+            purge_cleanup.verify_host(self.stack, snapshot)
+        http.assert_not_called()
+
+    def test_full_uninstall_file_cleanup_removes_update_journal(self):
+        (self.data / "update-recovery.json").write_text('{"phase": "pending"}')
+        (self.data / ".cbt-update.lock").write_text("stale")
+        purge_cleanup.clear_active_config(self.data, self.install)
+        self.assertFalse((self.data / "update-recovery.json").exists())
+        self.assertFalse((self.data / ".cbt-update.lock").exists())
+
     def test_windows_owned_coredns_files_removed_only_during_full_purge(self):
         dns = self.data / "dns"
         dns.mkdir()

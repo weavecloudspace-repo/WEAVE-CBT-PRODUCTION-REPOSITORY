@@ -18,6 +18,8 @@ from weave_cli.commands.network_dns import remove_if_configured
 class HostSnapshot:
     addresses: tuple[str, ...]
     runtime_type: str
+    http_addresses: tuple[str, ...] = ()
+    https_addresses: tuple[str, ...] = ()
 
 
 def _tls_address(path: Path) -> str:
@@ -85,19 +87,28 @@ def preflight(stack) -> HostSnapshot:
     data = stack.installation.data_directory
     runtime_type = stack.installation.runtime_type
     addresses: set[str] = set()
+    http_addresses: set[str] = set()
+    https_addresses: set[str] = set()
     if runtime_type == "wsl2" and sys.platform == "win32":
         state = lan._read_state(data)
         if state:
             addresses.add(state["listen_address"])
+            http_addresses.add(state["listen_address"])
         if (data / "tls-lan.json").exists():
-            addresses.add(_tls_address(data / "tls-lan.json"))
+            address = _tls_address(data / "tls-lan.json")
+            addresses.add(address)
+            https_addresses.add(address)
         _windows_unowned_resources(data, addresses)
     else:
         # Check configured native DNS ownership before deleting Docker data.
         from weave_cli.commands import network_dns_linux
         if runtime_type == "native" and sys.platform.startswith("linux"):
             network_dns_linux._snapshot(stack)
-    return HostSnapshot(addresses=tuple(sorted(addresses)), runtime_type=runtime_type)
+    return HostSnapshot(
+        addresses=tuple(sorted(addresses)), runtime_type=runtime_type,
+        http_addresses=tuple(sorted(http_addresses)),
+        https_addresses=tuple(sorted(https_addresses)),
+    )
 
 
 def cleanup_host(stack, *, purge_files: bool = True) -> None:
@@ -120,9 +131,12 @@ def verify_host(stack, snapshot: HostSnapshot) -> None:
             raise lan.LanError(f"WEAVE host cleanup is incomplete: {relative} remains.")
     if snapshot.runtime_type == "wsl2" and sys.platform == "win32":
         from weave_cli.commands import network_dns
-        for address in snapshot.addresses:
+        # Check only resources this installation owned. A different service
+        # might legitimately own the other port on the same LAN address.
+        for address in snapshot.http_addresses:
             if lan._mapped_destination(address) is not None:
                 raise lan.LanError(f"TCP/80 forwarding remains at {address}; inspect ownership.")
+        for address in snapshot.https_addresses:
             if lan_tls._destination(address) is not None:
                 raise lan.LanError(f"TCP/443 forwarding remains at {address}; inspect ownership.")
         if lan._firewall_exists() or lan_tls._firewall_exists():
@@ -133,6 +147,33 @@ def verify_host(stack, snapshot: HostSnapshot) -> None:
         from weave_cli.commands import network_dns_linux
         if network_dns_linux._snapshot(stack)["configured"]:
             raise lan.LanError("WEAVE CoreDNS systemd service remains after cleanup.")
+
+
+def clear_dns_artifacts(data: Path, install: Path) -> None:
+    """Discard only obsolete files inside WEAVE's dedicated paths.
+
+    This does not uninstall the CoreDNS feature or modify any CLI command.
+    Host service/ownership checks must have succeeded first.
+    """
+    files = (
+        data / "dns" / "Corefile",
+        data / "dns" / "records.hosts",
+        install / "coredns.exe",
+    )
+    if (data / "dns" / "managed.json").exists():
+        raise lan.LanError("CoreDNS ownership marker remains; stop WEAVE DNS first.")
+    for path in files:
+        if path.is_symlink() or (path.exists() and not path.is_file()):
+            raise lan.LanError(f"Unexpected CoreDNS artifact: {path}")
+    for path in files:
+        path.unlink(missing_ok=True)
+    root = data / "dns"
+    if root.is_dir() and not root.is_symlink():
+        try:
+            root.rmdir()
+        except OSError:
+            # Never recursively delete unknown files.
+            pass
 
 
 def clear_active_config(data: Path, install: Path) -> None:
@@ -146,6 +187,8 @@ def clear_active_config(data: Path, install: Path) -> None:
         data / "runtime.env",
         data / "lan.json",
         data / "tls-lan.json",
+        data / "update-recovery.json",
+        data / ".cbt-update.lock",
         install / "compose.yaml",
         install / "nginx" / "nginx.conf",
         install / "nginx" / "reload-watch.sh",
@@ -156,3 +199,4 @@ def clear_active_config(data: Path, install: Path) -> None:
             raise lan.LanError(f"Unsafe installation artifact: {path}")
     for path in targets:
         path.unlink(missing_ok=True)
+    clear_dns_artifacts(data, install)
