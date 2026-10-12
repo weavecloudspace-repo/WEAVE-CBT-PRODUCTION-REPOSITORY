@@ -1,4 +1,13 @@
-export function buildAcademicLevels(subjects = []) {
+export function buildAcademicLevels(subjects = [], explicitLevels = []) {
+  // Administrator level catalog is authoritative. Teachers continue to see
+  // only levels represented by their authorized curriculum subjects.
+  if (explicitLevels.length) {
+    return [...explicitLevels].sort((left, right) => {
+      if (left.position !== right.position) return left.position - right.position
+      return left.name.localeCompare(right.name)
+    })
+  }
+
   const levels = new Map()
 
   for (const subject of subjects) {

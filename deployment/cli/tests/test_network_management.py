@@ -29,6 +29,34 @@ class NetworkManagementTests(unittest.TestCase):
         result = json.loads(reply.output)
         self.assertEqual(result["url"], "https://server.school.cbt-staging.weavecloudspace.com/student")
 
+    def test_native_https_url_works_without_eligible_school_subnet(self):
+        self.stack.installation.runtime_type = "native"
+        with (
+            patch.object(network, "get_stack", return_value=self.stack),
+            patch.object(network, "inventory", return_value=[{
+                "name": "ens5", "address": "172.31.29.250", "network": "172.31.16.0/20",
+                "category": "Host", "private": True,
+            }]),
+            patch.object(network, "recommend", return_value=None),
+            patch.object(network, "_https_hostname", return_value="server.school.cbt.weavecloudspace.com"),
+        ):
+            reply = CliRunner().invoke(app, ["network", "url", "--json"])
+        self.assertEqual(reply.exit_code, 0, reply.output)
+        data = json.loads(reply.output)
+        self.assertEqual(data["url"], "https://server.school.cbt.weavecloudspace.com/student")
+        self.assertEqual(data["scheme"], "https")
+        self.assertEqual(data["address"], "")
+
+    def test_native_http_url_without_eligible_school_subnet_still_fails(self):
+        self.stack.installation.runtime_type = "native"
+        with (
+            patch.object(network, "get_stack", return_value=self.stack),
+            patch.object(network, "inventory", return_value=[]),
+            patch.object(network, "_https_hostname", return_value=None),
+        ):
+            reply = CliRunner().invoke(app, ["network", "url", "--json"])
+        self.assertNotEqual(reply.exit_code, 0)
+
     def test_legacy_http_url_without_tls(self):
         with (patch.object(network, "get_stack", return_value=self.stack),
               patch.object(network, "_read_state", return_value={"listen_address": "192.168.1.12"}),
@@ -54,6 +82,23 @@ class NetworkManagementTests(unittest.TestCase):
         configured.assert_called_once_with(
             self.stack.installation.data_directory,
             listen_address="192.168.1.12", client_subnet="192.168.1.0/24",
+        )
+
+    def test_auto_setup_passes_detected_22_subnet_without_modifying_router(self):
+        adapter = {
+            "name": "Ethernet", "address": "192.168.10.10",
+            "network": "192.168.8.0/22", "category": "Private", "private": True,
+        }
+        with (
+            patch.object(network, "get_stack", return_value=self.stack),
+            patch.object(network, "inventory", return_value=[adapter]),
+            patch.object(network, "configure", return_value=True) as configured,
+        ):
+            result = CliRunner().invoke(app, ["network", "setup", "--auto", "--yes"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        configured.assert_called_once_with(
+            self.stack.installation.data_directory,
+            listen_address="192.168.10.10", client_subnet="192.168.8.0/22",
         )
 
     def test_core_dns_setup_requires_https(self):

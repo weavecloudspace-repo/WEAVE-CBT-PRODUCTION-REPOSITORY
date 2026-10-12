@@ -109,7 +109,10 @@ export function QuestionBuilder({ enableAI = false, mode = 'create', state, disp
     return () => { cancelled = true }
   }, [editing, gateway, questionId, teacherData.banks, teacherData.subjects])
 
-  const levels = useMemo(() => buildAcademicLevels(teacherData.subjects), [teacherData.subjects])
+  const levels = useMemo(
+    () => buildAcademicLevels(teacherData.subjects, teacherData.levels),
+    [teacherData.subjects, teacherData.levels],
+  )
   const subjectsForLevel = useMemo(
     () => listSubjectsForLevel(teacherData.subjects, levelId),
     [levelId, teacherData.subjects],

@@ -69,6 +69,35 @@ describe('academic authoring scope', () => {
     expect(listSubjectsForLevel(subjects, 'jss2').map((subject) => subject.id)).toEqual(['jss2-math', 'jss2-science'])
   })
 
+  it('keeps administrator academic levels visible even when no subjects are authorable', () => {
+    const catalog = [
+      { id: 'jss3', name: 'JSS3', category: 'junior_secondary', position: 3 },
+      { id: 'jss1', name: 'JSS1', category: 'junior_secondary', position: 1 },
+    ]
+    expect(buildAcademicLevels([], catalog).map((level) => level.name)).toEqual(['JSS1', 'JSS3'])
+    expect(buildAcademicLevels([])).toEqual([])
+  })
+
+  it('shows the administrator level catalog while keeping empty subject scope empty', () => {
+    render(
+      <QuestionBuilder
+        state={{ staff: { selectedBankId: null, selectedQuestionId: null } }}
+        dispatch={vi.fn()}
+        teacherData={{
+          subjects: [],
+          levels: [{ id: 'jss3', name: 'JSS3', category: 'junior_secondary', position: 3 }],
+          banks: [],
+          refresh: vi.fn(),
+        }}
+        gateway={{ media: { uploadQuestionImage: vi.fn() }, questions: {} }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('combobox', { name: /academic level/i }))
+    expect(screen.getByRole('option', { name: /JSS3/i })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /^subject$/i })).toBeDisabled()
+  })
+
   it('filters question subjects and banks when the academic level changes', () => {
     render(
       <QuestionBuilder

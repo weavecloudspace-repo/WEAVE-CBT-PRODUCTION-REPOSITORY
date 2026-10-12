@@ -15,6 +15,15 @@ class OutputBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AcademicLevelResponse(OutputBase):
+    """Synchronized academic level visible to school administrators."""
+
+    id: UUID
+    name: str
+    category: str
+    position: int
+
+
 class AcademicSessionResponse(OutputBase):
     """carries academic session context"""
 

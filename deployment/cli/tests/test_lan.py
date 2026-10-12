@@ -28,6 +28,18 @@ class FirewallNormalizationTests(unittest.TestCase):
             with self.subTest(remote=remote), patch.object(lan, "_powershell", return_value=self._rule(remote)):
                 lan._verify_firewall("192.168.1.24", "192.168.1.0/24")
 
+    def test_accepts_cidr_and_windows_netmask_for_larger_school_network(self):
+        for subnet, remote in (
+            ("192.168.0.0/23", "192.168.0.0/255.255.254.0"),
+            ("192.168.0.0/22", "192.168.0.0/255.255.252.0"),
+            ("192.168.0.0/21", "192.168.0.0/21"),
+            ("192.168.0.0/20", "192.168.0.0/255.255.240.0"),
+        ):
+            with self.subTest(subnet=subnet), patch.object(
+                lan, "_powershell", return_value=self._rule(remote)
+            ):
+                lan._verify_firewall("192.168.1.24", subnet)
+
     def test_refuses_wider_rule_extra_addresses_or_public_profile(self):
         cases = (
             self._rule("192.168.0.0/16"),
@@ -140,6 +152,34 @@ class LanTests(unittest.TestCase):
             lan._private_subnet("192.168.1.0/24", "192.168.1.24"),
             "192.168.1.0/24",
         )
+
+    def test_accepts_common_school_subnet_prefixes(self):
+        examples = (
+            ("192.168.1.0/26", "192.168.1.24"),
+            ("192.168.1.0/25", "192.168.1.24"),
+            ("192.168.1.0/24", "192.168.1.24"),
+            ("192.168.0.0/23", "192.168.1.24"),
+            ("192.168.0.0/22", "192.168.1.24"),
+            ("192.168.0.0/21", "192.168.1.24"),
+            ("192.168.0.0/20", "192.168.1.24"),
+            ("10.0.0.0/20", "10.0.1.24"),
+            ("172.16.0.0/21", "172.16.1.24"),
+        )
+        for subnet, address in examples:
+            with self.subTest(subnet=subnet):
+                self.assertEqual(lan._private_subnet(subnet, address), subnet)
+
+    def test_rejects_broad_public_noncanonical_or_unrelated_subnets(self):
+        for subnet in (
+            "192.168.0.0/19",
+            "10.0.0.0/16",
+            "192.168.1.24/23",
+            "192.168.8.0/22",
+            "172.15.0.0/20",
+            "8.8.8.0/24",
+        ):
+            with self.subTest(subnet=subnet), self.assertRaises(lan.LanError):
+                lan._private_subnet(subnet, "192.168.1.24")
 
     def test_refresh_without_configuration_is_harmless(self):
         with tempfile.TemporaryDirectory() as directory:

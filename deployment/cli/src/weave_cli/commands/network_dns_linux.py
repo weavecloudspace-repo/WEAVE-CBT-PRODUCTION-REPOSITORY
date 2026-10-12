@@ -103,8 +103,8 @@ def _identity(stack, interface: str | None) -> tuple[str, dict]:
     address = selected["address"]
     cidr = selected["network"]
     subnet = ipaddress.IPv4Network(cidr)
-    if not subnet.prefixlen >= 24 or not ipaddress.IPv4Address(address) in subnet:
-        raise DNSError("Only specific private school /24-or-narrower networks are supported.")
+    if subnet.prefixlen < network.MIN_SCHOOL_PREFIX or ipaddress.IPv4Address(address) not in subnet:
+        raise DNSError("Only specific private school /20-or-narrower networks are supported.")
     return hostname, selected
 
 
