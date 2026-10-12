@@ -9,6 +9,7 @@ from weave_cli.commands._shared import (
 from weave_cli.commands.lan import configure, LanError, _state_path
 from weave_cli.commands.purge_safety import PurgeSafetyError, verify_purged_resources
 from weave_cli.commands.purge_cleanup import preflight, cleanup_host, verify_host, clear_active_config
+from weave_cli.commands.network_dns import DNSError
 
 
 def uninstall(
@@ -61,7 +62,7 @@ def uninstall(
         else:
             success("Persistent school data volumes were preserved.")
         info("Docker Engine and WSL were not removed.")
-    except (*COMMAND_ERRORS, PermissionError, LanError, PurgeSafetyError) as exc:
+    except (*COMMAND_ERRORS, PermissionError, LanError, DNSError, PurgeSafetyError) as exc:
         error(str(exc))
         raise typer.Exit(code=1) from exc
 
