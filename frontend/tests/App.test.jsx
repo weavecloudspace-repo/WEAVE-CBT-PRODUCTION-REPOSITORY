@@ -113,9 +113,9 @@ describe('Weave backend integration shell', () => {
 
     expect(await screen.findByRole('heading', { name: /welcome to/i })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /get started/i }))
-    fireEvent.change(screen.getByLabelText(/pairing code/i), { target: { value: 'weave2026' } })
+    fireEvent.change(await screen.findByLabelText(/pairing code/i), { target: { value: 'weave2026' } })
     fireEvent.click(screen.getByRole('button', { name: /continue/i }))
-    fireEvent.change(screen.getByLabelText(/server name/i), { target: { value: 'Brightfield CBT Lab' } })
+    fireEvent.change(await screen.findByLabelText(/server name/i), { target: { value: 'Brightfield CBT Lab' } })
     fireEvent.click(screen.getByRole('button', { name: /complete setup/i }))
 
     expect(await screen.findByRole('heading', { name: /successfully paired/i })).toBeInTheDocument()
@@ -136,7 +136,7 @@ describe('Weave backend integration shell', () => {
 
     const staffLoginButton = await screen.findByRole('button', { name: /login as staff/i })
     fireEvent.click(staffLoginButton)
-    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'teacher@brightfield.test' } })
+    fireEvent.change(await screen.findByLabelText(/email/i), { target: { value: 'teacher@brightfield.test' } })
     fireEvent.change(screen.getByPlaceholderText(/enter your password/i), { target: { value: 'secret' } })
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
 
@@ -229,7 +229,7 @@ describe('Weave backend integration shell', () => {
 async function loginAsAdmin() {
   const staffLoginButton = await screen.findByRole('button', { name: /login as staff/i })
   fireEvent.click(staffLoginButton)
-  fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'admin@brightfield.test' } })
+  fireEvent.change(await screen.findByLabelText(/email/i), { target: { value: 'admin@brightfield.test' } })
   fireEvent.change(screen.getByPlaceholderText(/enter your password/i), { target: { value: 'secret' } })
   fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
   await screen.findByText(/^administrator$/i)
