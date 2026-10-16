@@ -921,6 +921,17 @@
 .premium-exam-shell--session button:focus-visible, .premium-mark-review:focus-within { outline: 2px solid rgb(var(--color-focus-ring)); outline-offset: 3px; }
 .premium-exam-shell--session button:disabled { opacity: .45; cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) { .premium-exam-shell--session *, .premium-exam-shell--session *::before { animation: none !important; transition: none !important; } }
+/* Center the active question paper on the full wide-screen viewport, not just
+   the workspace to the right of the fixed 258px exam rail. Automatic vertical
+   margins use any spare height but collapse when long questions need scrolling.
+   No changes to the rail, timer, actions or narrower-screen attempt layout. */
+@media screen and (min-width: 1600px) {
+  .premium-exam-shell--session .premium-exam-content > .premium-question-paper {
+    translate: -129px 0;
+    margin-block: auto;
+  }
+}
+
 @media (max-width: 900px) {
   .premium-exam-frame { grid-template-columns: 210px minmax(0, 1fr); }
   .premium-exam-shell .premium-exam-header--session .premium-exam-header__inner { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 10px 20px; }

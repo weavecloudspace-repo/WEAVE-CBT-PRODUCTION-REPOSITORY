@@ -332,6 +332,16 @@
   50% { opacity: .88; translate: 0 -8px; }
 }
 
+/* Wide monitors: bring the staff and student sign-in cards a little closer
+   to the split-screen divider. Only visual alignment changes; mobile,
+   regular desktop, other pages, and form interactions stay as they are. */
+@media screen and (min-width: 1600px) {
+  .weave-login-page--staff .weave-login-card,
+  .weave-login-page--student .weave-login-card {
+    translate: -36px 0;
+  }
+}
+
 @media (max-width: 980px) {
   .weave-login-page::before { display: none; }
   .weave-login-welcome {
