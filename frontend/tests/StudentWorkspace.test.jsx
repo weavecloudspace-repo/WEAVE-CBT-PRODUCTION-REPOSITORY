@@ -116,7 +116,7 @@ it('blocks a suspended restored attempt and requests suspension handling once', 
   setup({ suspended: true, onSuspended })
   await screen.findByRole('heading', { name: 'Exam currently suspended' })
   expect(screen.queryByText('First question')).not.toBeInTheDocument()
-  expect(onSuspended).toHaveBeenCalledOnce()
+  await waitFor(() => expect(onSuspended).toHaveBeenCalledOnce())
 })
 
 it('persists review flags without replacing answers and shows them across navigation', async () => {
