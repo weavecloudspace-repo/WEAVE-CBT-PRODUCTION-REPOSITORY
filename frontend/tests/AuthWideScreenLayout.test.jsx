@@ -1,12 +1,11 @@
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { StaffLoginPage } from '../src/features/auth/StaffLoginPage'
 import { StudentLoginPage } from '../src/features/auth/StudentLoginPage'
 
-const authCssPath = fileURLToPath(new URL('../src/features/auth/auth.css', import.meta.url))
+const authCssPath = 'src/features/auth/auth.css'
 
 describe('large-monitor login card alignment', () => {
   it('limits the left offset to staff and student login cards at 1600px+', () => {
