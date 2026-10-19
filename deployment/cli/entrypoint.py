@@ -17,8 +17,12 @@ def _configure_console_encoding() -> None:
 
 _configure_console_encoding()
 
-from weave_cli.main import main  # noqa: E402
-
-
 if __name__ == "__main__":
-    main()
+    from pathlib import Path
+    from weave_cli.commands.client_resolution import CLIENT_WINDOWS, CLIENT_LINUX, main_client
+
+    if Path(sys.argv[0]).name.casefold() in (CLIENT_WINDOWS.casefold(), CLIENT_LINUX):
+        main_client()
+    else:
+        from weave_cli.main import main  # noqa: E402
+        main()
