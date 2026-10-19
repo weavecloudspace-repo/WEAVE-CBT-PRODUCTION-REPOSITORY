@@ -708,5 +708,7 @@ def network_doctor() -> None:
 
 def register(root: typer.Typer) -> None:
     from weave_cli.commands.network_dns import register as register_dns
+    from weave_cli.commands.client_resolution import register as register_client
     register_dns(app)
+    register_client(app)
     root.add_typer(app, name="network")
