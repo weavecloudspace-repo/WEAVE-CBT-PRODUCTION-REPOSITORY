@@ -20,17 +20,39 @@ from weave_cli.platforms.base import PlatformError
 app = typer.Typer(help="Show local IP/subnet details, check LAN readiness, or configure Windows forwarding.")
 
 
+NETWORK_INSPECTION_TIMEOUT = 60
+
+
 def _run(command: list[str]) -> str:
-    try:
-        result = subprocess.run(
-            command, capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=15, check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise LanError(f"Cannot inspect network adapters: {type(exc).__name__}") from exc
-    if result.returncode:
-        raise LanError(f"Network inventory command failed (exit {result.returncode}).")
-    return result.stdout.strip()
+    # Windows PowerShell networking modules can load slowly on older hosts.
+    # Retry only read-only inventory queries; never blindly retry mutations.
+    attempts = 2 if sys.platform == "win32" else 1
+    for attempt in range(attempts):
+        try:
+            result = subprocess.run(
+                command, capture_output=True, text=True,
+                encoding="utf-8", errors="replace",
+                timeout=NETWORK_INSPECTION_TIMEOUT, check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            if attempt + 1 < attempts:
+                time.sleep(1)
+                continue
+            raise LanError(
+                f"Cannot inspect network adapters: timed out after "
+                f"{NETWORK_INSPECTION_TIMEOUT}s per attempt ({attempts} attempt(s)). "
+                "Check Windows network services and adapter drivers."
+            ) from exc
+        except OSError as exc:
+            raise LanError(f"Cannot inspect network adapters: {exc}") from exc
+        if result.returncode:
+            detail = (result.stderr or result.stdout or "").strip()[:500]
+            raise LanError(
+                f"Network inventory command failed (exit {result.returncode})"
+                + (f": {detail}" if detail else ".")
+            )
+        return result.stdout.strip()
+    raise AssertionError("Unreachable network inspection state")
 
 
 def _windows_addresses() -> list[dict]:
@@ -410,7 +432,7 @@ def network_setup(
 def _tcp_open(address: str, port: int) -> bool:
     """Test the actual host TCP path, not just saved portproxy metadata."""
     try:
-        with socket.create_connection((address, port), timeout=1.5):
+        with socket.create_connection((address, port), timeout=5):
             return True
     except OSError:
         return False
