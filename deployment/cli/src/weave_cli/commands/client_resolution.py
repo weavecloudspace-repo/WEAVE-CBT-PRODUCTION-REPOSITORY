@@ -259,6 +259,8 @@ def apply(config: dict[str, object], *, hosts: Path, state_dir: Path,
     previous = _load_json(state_path) if state_path.exists() else None
     text, encoding = _read_hosts(hosts)
     if remove:
+        if previous is not None and previous != config:
+            raise ClientResolutionError("This USB package is not the active WEAVE configuration; refusing removal.")
         if previous is None and BEGIN not in text and END not in text:
             return False
         # Reuse strict ownership validation before removing anything.
@@ -351,7 +353,7 @@ def _request_elevation() -> int:
     if os.name == "nt":
         import ctypes
         argument = "--remove" if "--remove" in sys.argv[1:] else ""
-        result = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, argument,
+        result = ctypes.windll.shell32.ShellExecuteW(None, "runas", str(Path(sys.argv[0]).resolve()), argument,
                                                        str(Path(sys.executable).parent), 1)
         if result <= 32:
             raise ClientResolutionError("Windows administrator elevation was denied.")
@@ -359,7 +361,7 @@ def _request_elevation() -> int:
     runner = ["sudo"] if sys.stdin.isatty() and shutil.which("sudo") else ["pkexec"]
     if not shutil.which(runner[0]):
         raise ClientResolutionError("Administrator/root permissions are required (sudo or pkexec).")
-    return subprocess.call([*runner, sys.executable, *sys.argv[1:]])
+    return subprocess.call([*runner, str(Path(sys.argv[0]).resolve()), *sys.argv[1:]])
 
 
 def main_client() -> None:
@@ -368,7 +370,7 @@ def main_client() -> None:
         args = sys.argv[1:]
         if any(a not in {"--remove"} for a in args) or len(args) > 1:
             raise ClientResolutionError("Usage: client setup executable [--remove]")
-        executable_dir = Path(sys.executable).resolve().parent
+        executable_dir = Path(sys.argv[0]).resolve().parent
         config = _load_json(executable_dir / CONFIG_NAME)
         print("WEAVE CBT client network setup")
         print(f"School server: {config['address']} -> {config['hostname']}")
