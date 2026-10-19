@@ -56,7 +56,7 @@ def _private_subnet(value: str, address: str) -> str:
     return str(network)
 
 
-def _run(args: list[str], *, timeout: int = 30, context: str = "") -> str:
+def _run(args: list[str], *, timeout: int = 60, context: str = "") -> str:
     try:
         result = subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
