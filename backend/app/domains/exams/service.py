@@ -30,6 +30,7 @@ from app.domains.exams.models import (
     ExamStatus,
 )
 from app.domains.exams.repository import ExamRepository
+from app.domains.exams.score_allocation import resolved_cbt_allocation
 from app.domains.exams.schedule_validation import validate_normal_entry_window
 from app.domains.exams.schemas import ExamCreate, ExamUpdate, ManualQuestionRemove
 from app.domains.exams.timetable_service import ExamTimetableService
@@ -474,6 +475,7 @@ class ExamService(
             raise AcademicScopeError(
                 "Assessment component does not belong to the selected assessment scheme"
             )
+        resolved_cbt_allocation(assessment_component, payload.cbt_maximum_score)
 
         question_bank = await QuestionRepository.get_bank_by_id(
             db,
@@ -549,6 +551,7 @@ class ExamService(
             lead_assigned_by_actor_id=actor.id,
             lead_assigned_at=now,
             component_maximum_score=None,
+            cbt_maximum_score=payload.cbt_maximum_score,
         )
 
         try:
@@ -927,6 +930,7 @@ class ExamService(
             revision_number=latest.revision_number + 1,
             revision_of_exam_id=latest.id,
             created_by_actor_id=actor.id,
+            cbt_maximum_score=getattr(latest, "cbt_maximum_score", None),
             lead_teacher_id=getattr(latest, "lead_teacher_id", None),
             lead_assigned_by_actor_id=actor.id,
             lead_assigned_at=datetime.now(UTC),
