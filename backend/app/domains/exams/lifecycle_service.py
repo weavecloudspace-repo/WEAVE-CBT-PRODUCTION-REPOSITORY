@@ -32,6 +32,7 @@ from app.domains.exams.models import (
     ExamTargetClass,
 )
 from app.domains.exams.repository import ExamRepository
+from app.domains.exams.score_allocation import resolved_cbt_allocation
 from app.domains.questions.models import QuestionType
 from app.domains.questions.repository import QuestionRepository
 from app.domains.runtime.models import RealtimeOutboxEvent
@@ -217,6 +218,9 @@ class ExamLifecycleServiceMixin:
             raise AcademicScopeError(
                 "Assessment component does not belong to the examination assessment scheme"
             )
+        effective_cbt_maximum = resolved_cbt_allocation(
+            assessment_component, getattr(exam, "cbt_maximum_score", None)
+        )
 
         question_bank = await QuestionRepository.get_bank_by_id(
             db,
@@ -670,7 +674,7 @@ class ExamLifecycleServiceMixin:
             if exam.question_selection_mode == ExamQuestionSelectionMode.MANUAL:
                 await ExamRepository.clear_question_selections(db, exam.id)
 
-            exam.component_maximum_score = assessment_component.maximum_score
+            exam.component_maximum_score = effective_cbt_maximum
             exam.status = ExamStatus.SEALED
             exam.sealed_by_actor_id = actor.id
             exam.sealed_at = sealed_at
@@ -973,6 +977,7 @@ class ExamLifecycleServiceMixin:
             revision_of_exam_id=latest.id,
             created_by_actor_id=actor.id,
             component_maximum_score=None,
+            cbt_maximum_score=getattr(latest, "cbt_maximum_score", None),
         )
 
         try:
