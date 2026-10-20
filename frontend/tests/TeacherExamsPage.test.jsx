@@ -101,6 +101,44 @@ function completeNewExamContext() {
   chooseSelectOption(/question bank/i, /Mathematics Bank/i)
 }
 
+describe('Hybrid examination score allocation', () => {
+  it('allows partial CBT allocation and sends it with the draft examination', async () => {
+    const createExam = vi.fn().mockResolvedValue({ id: 'new-exam', authoring_version: 1 })
+    const data = {
+      ...teacherData,
+      exams: [],
+      assessmentComponents: [{ ...teacherData.assessmentComponents[0], maximumScore: 50, isHybrid: true }],
+    }
+    render(<ExamAuthoringPage state={teacherState} dispatch={vi.fn()} teacherData={data}
+      gateway={{ exams: { createExam } }} />)
+    completeNewExamContext()
+    fireEvent.change(screen.getByLabelText('Exam title'), { target: { value: 'Mathematics hybrid' } })
+    fireEvent.click(screen.getByLabelText(/Use part for CBT, reserve the rest for theory/i))
+    fireEvent.change(screen.getByLabelText('CBT marks'), { target: { value: '20' } })
+    expect(screen.getByText(/CBT: 20 \/ 50/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Create Draft Exam/i }))
+    await waitFor(() => expect(createExam).toHaveBeenCalledWith(
+      expect.objectContaining({ assessment_component_id: 'component-1', cbt_maximum_score: 20 }),
+    ))
+  })
+
+  it('rejects an invalid partial allocation and keeps non-hybrid components unchanged', () => {
+    const data = {
+      ...teacherData,
+      exams: [],
+      assessmentComponents: [{ ...teacherData.assessmentComponents[0], maximumScore: 50, isHybrid: true }],
+    }
+    render(<ExamAuthoringPage state={teacherState} dispatch={vi.fn()} teacherData={data}
+      gateway={{ exams: { createExam: vi.fn() } }} />)
+    completeNewExamContext()
+    fireEvent.change(screen.getByLabelText('Exam title'), { target: { value: 'Hybrid exam' } })
+    fireEvent.click(screen.getByLabelText(/Use part for CBT, reserve the rest for theory/i))
+    fireEvent.change(screen.getByLabelText('CBT marks'), { target: { value: '50' } })
+    fireEvent.click(screen.getByRole('button', { name: /Create Draft Exam/i }))
+    expect(screen.getByText(/Choose CBT marks greater than zero and below 50/)).toBeInTheDocument()
+  })
+})
+
 describe('Teacher exams', () => {
   it('suggests twenty minutes for entry, preserves adjustments, and respects clearing', () => {
     vi.useFakeTimers()
