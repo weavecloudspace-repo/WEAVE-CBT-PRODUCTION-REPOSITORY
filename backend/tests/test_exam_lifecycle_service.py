@@ -371,7 +371,7 @@ class ExamLifecycleServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_seal_uses_full_term_eligibility_not_lead_classes(self) -> None:
         db = AsyncMock()
         admin = actor(role="admin")
-        current_exam = exam(status=ExamStatus.SUBMITTED, cbt_maximum_score=Decimal("5"))
+        current_exam = exam(status=ExamStatus.SUBMITTED, cbt_maximum_score=Decimal(5))
         scope = academic_scope(current_exam)
         scope["component"].is_hybrid = True
         source_question = SimpleNamespace(
@@ -512,7 +512,7 @@ class ExamLifecycleServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertLess(order.index("sync_lock"), order.index("authorize"))
         self.assertEqual(result.status, ExamStatus.SEALED)
         self.assertEqual(result.roster_status, ExamRosterStatus.PENDING)
-        self.assertEqual(result.component_maximum_score, Decimal("5"))  # Frozen CBT portion
+        self.assertEqual(result.component_maximum_score, Decimal(5))  # Frozen CBT portion
 
     async def test_seal_rolls_back_if_snapshot_transaction_fails(self) -> None:
         db = AsyncMock()
