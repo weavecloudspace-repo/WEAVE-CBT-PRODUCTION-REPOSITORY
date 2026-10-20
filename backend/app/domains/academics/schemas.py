@@ -103,3 +103,4 @@ class AssessmentComponentResponse(OutputBase):
     maximum_score: Decimal
     position: int
     is_active: bool
+    is_hybrid: bool = False

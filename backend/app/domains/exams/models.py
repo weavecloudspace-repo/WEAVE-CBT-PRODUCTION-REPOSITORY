@@ -343,6 +343,12 @@ class Exam(Base):
 
     cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Optional draft choice. None means the full component score is allocated to CBT.
+    # The existing component_maximum_score is the *effective* maximum frozen at sealing.
+    cbt_maximum_score: Mapped[Decimal | None] = mapped_column(
+        Numeric(8, 2),
+        nullable=True,
+    )
     component_maximum_score: Mapped[Decimal | None] = mapped_column(
         Numeric(8, 2),
         nullable=True,
@@ -411,6 +417,10 @@ class Exam(Base):
         CheckConstraint(
             "component_maximum_score IS NULL OR component_maximum_score > 0",
             name="ck_exams_component_maximum_positive",
+        ),
+        CheckConstraint(
+            "cbt_maximum_score IS NULL OR cbt_maximum_score > 0",
+            name="ck_exams_cbt_maximum_score_positive",
         ),
         CheckConstraint(
             "lead_assigned_at IS NULL OR lead_assigned_by_actor_id IS NOT NULL",

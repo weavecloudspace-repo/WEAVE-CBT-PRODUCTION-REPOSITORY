@@ -48,6 +48,10 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
   const initialSchemeId = editingExam?.assessmentSchemeId || teacherData.assessmentSchemes[0]?.id || ''
   const initialScheduledStartAt = toDateTimeLocal(editingExam?.scheduledStartAt)
   const initialLatestNormalStartAt = toDateTimeLocal(editingExam?.latestNormalStartAt)
+  const editingComponent = teacherData.assessmentComponents.find((item) => item.id === editingExam?.assessmentComponentId)
+  const initialCbtAllocation = editingExam?.cbtMaximumScore == null ? null : Number(editingExam.cbtMaximumScore)
+  const initialPartial = editingComponent?.isHybrid && initialCbtAllocation != null &&
+    initialCbtAllocation < Number(editingComponent.maximumScore)
 
   const [leadTeacherId, setLeadTeacherId] = useState(editingExam?.leadTeacherId || '')
   const [leadTeacherName, setLeadTeacherName] = useState(
@@ -63,6 +67,8 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
   const [subjectId, setSubjectId] = useState(editing ? initialSubject?.id || '' : '')
   const [schemeId, setSchemeId] = useState(initialSchemeId)
   const [componentId, setComponentId] = useState(editing ? editingExam?.assessmentComponentId || '' : '')
+  const [cbtAllocationMode, setCbtAllocationMode] = useState(initialPartial ? 'partial' : 'full')
+  const [cbtAllocation, setCbtAllocation] = useState(initialPartial ? String(initialCbtAllocation) : '')
   const [bankId, setBankId] = useState(editing ? editingExam?.questionBankId || '' : '')
   const [selectionMode, setSelectionMode] = useState(editingExam?.selectionMode || 'random')
   const [questionCount, setQuestionCount] = useState(editingExam?.questionCount || 20)
@@ -113,6 +119,10 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
   const selectedSubject = findSubjectScope(teacherData.subjects, subjectId)
   const selectedBank = subjectBanks.find((bank) => bank.id === bankId)
   const selectedComponent = components.find((component) => component.id === componentId)
+  const componentMaximum = Number(selectedComponent?.maximumScore || 0)
+  const partialAllocation = selectedComponent?.isHybrid && cbtAllocationMode === 'partial'
+  const selectedCbtMaximum = partialAllocation ? Number(cbtAllocation) : componentMaximum
+  const selectedTheoryMaximum = componentMaximum - selectedCbtMaximum
   const questionConfigurationChanged = Boolean(
     editing && (
       bankId !== editingExam.questionBankId ||
@@ -175,11 +185,15 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
   const changeScheme = (nextSchemeId) => {
     setSchemeId(nextSchemeId)
     setComponentId('')
+    setCbtAllocationMode('full')
+    setCbtAllocation('')
     resetDuplicateRecovery()
   }
 
   const changeComponent = (nextComponentId) => {
     setComponentId(nextComponentId)
+    setCbtAllocationMode('full')
+    setCbtAllocation('')
     resetDuplicateRecovery()
   }
 
@@ -257,6 +271,15 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
       setError('Question count and duration must both be greater than zero.')
       return
     }
+    if (partialAllocation && (
+      !/^\d+(?:\.\d{1,2})?$/.test(String(cbtAllocation)) ||
+      !Number.isFinite(selectedCbtMaximum) ||
+      selectedCbtMaximum <= 0 ||
+      selectedCbtMaximum >= componentMaximum
+    )) {
+      setError(`Choose CBT marks greater than zero and below ${componentMaximum}; the rest is reserved for theory.`)
+      return
+    }
     if (selectionMode === 'manual' && manualQuestionIds.length > Number(questionCount)) {
       setError('Remove extra manual selections or increase the number of questions.')
       return
@@ -317,6 +340,9 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
           expected_authoring_version: editingExam.authoringVersion || 1,
           assessment_scheme_id: schemeId,
           assessment_component_id: componentId,
+          ...(partialAllocation || editingExam?.cbtMaximumScore != null
+            ? { cbt_maximum_score: partialAllocation ? selectedCbtMaximum : null }
+            : {}),
           title: title.trim(),
           instructions: instructions.trim() || null,
           folder_color: folderColor,
@@ -346,6 +372,7 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
           curriculum_subject_id: subjectId,
           assessment_scheme_id: schemeId,
           assessment_component_id: componentId,
+          ...(partialAllocation ? { cbt_maximum_score: selectedCbtMaximum } : {}),
           question_bank_id: bankId,
           question_selection_mode: selectionMode,
           question_count: Number(questionCount),
@@ -561,6 +588,36 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
                 placeholder={schemeId ? 'Choose component' : 'Choose a scheme first'}
               />
             </FieldSelect>
+            {selectedComponent?.isHybrid && (
+              <fieldset className="teacher-exam-field teacher-exam-field--wide exam-score-allocation" disabled={readOnly}>
+                <legend className="exam-option-label">CBT score allocation</legend>
+                <label className="exam-score-allocation__choice">
+                  <input type="radio" name="cbt-allocation-mode" value="full"
+                    checked={cbtAllocationMode === 'full'}
+                    onChange={() => setCbtAllocationMode('full')} />
+                  Use full component ({componentMaximum} marks) for CBT
+                </label>
+                <label className="exam-score-allocation__choice">
+                  <input type="radio" name="cbt-allocation-mode" value="partial"
+                    checked={cbtAllocationMode === 'partial'}
+                    onChange={() => setCbtAllocationMode('partial')} />
+                  Use part for CBT, reserve the rest for theory in WEAVE
+                </label>
+                {partialAllocation && (
+                  <label className="teacher-exam-field">
+                    <span>CBT marks (less than {componentMaximum})</span>
+                    <input type="number" aria-label="CBT marks" min="0.01"
+                      max={componentMaximum - 0.01} step="0.01" required
+                      value={cbtAllocation} disabled={readOnly}
+                      onChange={(event) => setCbtAllocation(event.target.value)} />
+                    {selectedCbtMaximum > 0 && selectedCbtMaximum < componentMaximum && (
+                      <small>CBT: {selectedCbtMaximum} / {componentMaximum} · Theory: {selectedTheoryMaximum} / {componentMaximum}</small>
+                    )}
+                  </label>
+                )}
+                <small>The allocation is frozen when the exam is sealed and sent with approved results.</small>
+              </fieldset>
+            )}
             <div className="exam-paper-options">
             <div className="exam-paper-options__lead">
             {isAdmin ? (
@@ -689,6 +746,12 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
           <p className="exam-summary__context">{selectedLevel?.name || 'Choose level'} &middot; {selectedSubject?.name || 'Choose subject'} &middot; {selectedComponent?.name || 'Choose component'}</p>
           <SummaryRow label="Lead author" value={leadName} />
           <SummaryRow label="Questions" value={`${questionCount || 0} questions`} helper={selectedBank?.name} />
+          {selectedComponent?.isHybrid && (
+            <SummaryRow label="Score allocation"
+              value={partialAllocation && selectedCbtMaximum > 0 && selectedCbtMaximum < componentMaximum
+                ? `CBT ${selectedCbtMaximum} · Theory ${selectedTheoryMaximum}`
+                : `Full CBT ${componentMaximum}`} />
+          )}
           <SummaryRow label="Duration" value={`${durationMinutes || 0} minutes`} />
           <SummaryRow label="Schedule" value={scheduledStartAt ? formatDateTime(toIsoOrNull(scheduledStartAt)) : 'Not scheduled'} helper={latestNormalStartAt ? `Latest start: ${formatDateTime(toIsoOrNull(latestNormalStartAt))}` : 'Can be set later'} />
           {!readOnly && (

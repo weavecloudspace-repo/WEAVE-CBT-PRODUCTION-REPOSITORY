@@ -282,6 +282,14 @@ class ResultSyncService:
         exam = await ExamRepository.get_exam_by_id(db, exam_id=exam_id)
         if exam is None:
             raise ExamNotFound("Examination does not exist")
+        if exam.component_maximum_score is None:
+            raise ResultSyncError("The examination has no sealed CBT score allocation.")
+        if any(
+            row.component_maximum_score != exam.component_maximum_score for row in rows
+        ):
+            raise ResultSyncError(
+                "Stored result allocations disagree with the sealed examination."
+            )
 
         # Re-check the academic publication decision immediately before payload
         # construction. This should normally be guaranteed by the claim lock,
@@ -348,6 +356,9 @@ class ResultSyncService:
             curriculum_subject_id=exam.curriculum_subject_id,
             assessment_component_id=exam.assessment_component_id,
             exam_date=rows[0].exam_date,
+            # Sealing freezes the effective CBT score maximum. Send it with
+            # every result batch; no separate allocation sync is required.
+            cbt_maximum_score=exam.component_maximum_score,
             scores=scores,
         )
         return _PreparedResultBatch(
