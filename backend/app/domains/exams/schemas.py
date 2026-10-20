@@ -65,6 +65,7 @@ class ExamCreate(InputBase):
     curriculum_subject_id: UUID
     assessment_scheme_id: UUID
     assessment_component_id: UUID
+    cbt_maximum_score: Decimal | None = Field(default=None, gt=0, le=100, max_digits=5, decimal_places=2)
     question_bank_id: UUID
     question_selection_mode: ExamQuestionSelectionMode = (
         ExamQuestionSelectionMode.RANDOM
@@ -120,6 +121,7 @@ class ExamUpdate(InputBase):
     term_id: UUID | None = None
     assessment_scheme_id: UUID | None = None
     assessment_component_id: UUID | None = None
+    cbt_maximum_score: Decimal | None = Field(default=None, gt=0, le=100, max_digits=5, decimal_places=2)
     title: str | None = Field(default=None, min_length=1, max_length=255)
     instructions: str | None = None
     folder_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
@@ -280,6 +282,7 @@ class ExamResponse(OutputBase):
     cancelled_at: datetime | None
     cancellation_reason: str | None
     component_maximum_score: Decimal | None
+    cbt_maximum_score: Decimal | None = None
     created_at: datetime
     updated_at: datetime
 
