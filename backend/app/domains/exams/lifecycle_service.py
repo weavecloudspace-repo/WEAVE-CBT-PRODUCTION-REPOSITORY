@@ -218,9 +218,8 @@ class ExamLifecycleServiceMixin:
             raise AcademicScopeError(
                 "Assessment component does not belong to the examination assessment scheme"
             )
-        effective_cbt_maximum = resolved_cbt_allocation(
-            assessment_component, getattr(exam, "cbt_maximum_score", None)
-        )
+        # Validate again at submission as cloud configuration may have changed.
+        resolved_cbt_allocation(assessment_component, getattr(exam, "cbt_maximum_score", None))
 
         question_bank = await QuestionRepository.get_bank_by_id(
             db,
@@ -544,6 +543,10 @@ class ExamLifecycleServiceMixin:
             raise AcademicScopeError(
                 "Assessment component does not belong to the examination assessment scheme"
             )
+        # Freeze the CBT portion while academic projections are locked.
+        effective_cbt_maximum = resolved_cbt_allocation(
+            assessment_component, getattr(exam, "cbt_maximum_score", None)
+        )
 
         question_bank = await QuestionRepository.get_bank_by_id(
             db,
