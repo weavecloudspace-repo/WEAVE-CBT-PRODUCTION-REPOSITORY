@@ -587,15 +587,15 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
               />
             </FieldSelect>
             {selectedComponent?.isHybrid && (
-              <fieldset className="teacher-exam-field teacher-exam-field--wide" disabled={readOnly}>
+              <fieldset className="teacher-exam-field teacher-exam-field--wide exam-score-allocation" disabled={readOnly}>
                 <legend className="exam-option-label">CBT score allocation</legend>
-                <label className="flex items-center gap-2">
+                <label className="exam-score-allocation__choice">
                   <input type="radio" name="cbt-allocation-mode" value="full"
                     checked={cbtAllocationMode === 'full'}
                     onChange={() => setCbtAllocationMode('full')} />
                   Use full component ({componentMaximum} marks) for CBT
                 </label>
-                <label className="flex items-center gap-2">
+                <label className="exam-score-allocation__choice">
                   <input type="radio" name="cbt-allocation-mode" value="partial"
                     checked={cbtAllocationMode === 'partial'}
                     onChange={() => setCbtAllocationMode('partial')} />
