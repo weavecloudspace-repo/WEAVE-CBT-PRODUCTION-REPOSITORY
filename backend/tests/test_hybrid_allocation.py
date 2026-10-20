@@ -38,14 +38,14 @@ def _component(*, hybrid: bool, maximum: str = "50") -> SimpleNamespace:
 
 def test_hybrid_projection_is_backward_compatible_without_schema_version_change() -> None:
     assert SYNC_SCHEMA_VERSION == 5
-    sample = dict(
-        id=uuid4(),
-        assessment_scheme_id=uuid4(),
-        name="Examination",
-        maximum_score=Decimal("50"),
-        position=0,
-        is_active=True,
-    )
+    sample = {
+        "id": uuid4(),
+        "assessment_scheme_id": uuid4(),
+        "name": "Examination",
+        "maximum_score": Decimal(50),
+        "position": 0,
+        "is_active": True,
+    }
     old = WeaveAssessmentComponentSnapshot(**sample)
     hybrid = WeaveAssessmentComponentSnapshot(**sample, is_hybrid=True)
     assert old.is_hybrid is False
@@ -57,34 +57,34 @@ def test_hybrid_projection_is_backward_compatible_without_schema_version_change(
 def test_partial_marks_allowed_only_on_hybrid_components() -> None:
     hybrid = _component(hybrid=True)
     ordinary = _component(hybrid=False)
-    assert resolved_cbt_allocation(hybrid, None) == Decimal("50")
-    assert resolved_cbt_allocation(hybrid, Decimal("50")) == Decimal("50")
-    assert resolved_cbt_allocation(hybrid, Decimal("20")) == Decimal("20")
-    assert resolved_cbt_allocation(ordinary, None) == Decimal("50")
+    assert resolved_cbt_allocation(hybrid, None) == Decimal(50)
+    assert resolved_cbt_allocation(hybrid, Decimal(50)) == Decimal(50)
+    assert resolved_cbt_allocation(hybrid, Decimal(20)) == Decimal(20)
+    assert resolved_cbt_allocation(ordinary, None) == Decimal(50)
     with pytest.raises(AcademicScopeError, match="Only hybrid"):
-        resolved_cbt_allocation(ordinary, Decimal("20"))
-    for invalid in (Decimal("-1"), Decimal("0"), Decimal("50.01")):
+        resolved_cbt_allocation(ordinary, Decimal(20))
+    for invalid in (Decimal(-1), Decimal(0), Decimal("50.01")):
         with pytest.raises(AcademicScopeError):
             resolved_cbt_allocation(hybrid, invalid)
 
 
 def test_create_and_update_accept_optional_partial_allocation() -> None:
-    args = dict(
-        session_id=uuid4(),
-        term_id=uuid4(),
-        curriculum_subject_id=uuid4(),
-        assessment_scheme_id=uuid4(),
-        assessment_component_id=uuid4(),
-        question_bank_id=uuid4(),
-        question_count=10,
-        title="Mathematics Examination",
-        duration_minutes=45,
-    )
+    args = {
+        "session_id": uuid4(),
+        "term_id": uuid4(),
+        "curriculum_subject_id": uuid4(),
+        "assessment_scheme_id": uuid4(),
+        "assessment_component_id": uuid4(),
+        "question_bank_id": uuid4(),
+        "question_count": 10,
+        "title": "Mathematics Examination",
+        "duration_minutes": 45,
+    }
     assert ExamCreate(**args).cbt_maximum_score is None
-    assert ExamCreate(**args, cbt_maximum_score=Decimal("20")).cbt_maximum_score == 20
+    assert ExamCreate(**args, cbt_maximum_score=Decimal(20)).cbt_maximum_score == 20
     assert ExamUpdate(cbt_maximum_score=None).model_fields_set == {"cbt_maximum_score"}
-    assert ExamUpdate(cbt_maximum_score=Decimal("20")).cbt_maximum_score == 20
-    for invalid in (Decimal("0"), Decimal("-1"), Decimal("101")):
+    assert ExamUpdate(cbt_maximum_score=Decimal(20)).cbt_maximum_score == 20
+    for invalid in (Decimal(0), Decimal(-1), Decimal(101)):
         with pytest.raises(ValidationError):
             ExamCreate(**args, cbt_maximum_score=invalid)
     assert "cbt_maximum_score" in Exam.__table__.columns
@@ -92,18 +92,18 @@ def test_create_and_update_accept_optional_partial_allocation() -> None:
 
 
 def test_result_batch_carries_frozen_allocation_and_zero_marks() -> None:
-    common = dict(
-        batch_id=uuid4(),
-        source_exam_id=uuid4(),
-        academic_session_id=uuid4(),
-        academic_term_id=uuid4(),
-        academic_level_id=uuid4(),
-        curriculum_subject_id=uuid4(),
-        assessment_component_id=uuid4(),
-        exam_date=date(2026, 10, 10),
-        scores=[WeaveResultScore(student_id=uuid4(), score=Decimal("0"))],
-    )
-    payload = WeaveResultBulkRequest(**common, cbt_maximum_score=Decimal("20"))
+    common = {
+        "batch_id": uuid4(),
+        "source_exam_id": uuid4(),
+        "academic_session_id": uuid4(),
+        "academic_term_id": uuid4(),
+        "academic_level_id": uuid4(),
+        "curriculum_subject_id": uuid4(),
+        "assessment_component_id": uuid4(),
+        "exam_date": date(2026, 10, 10),
+        "scores": [WeaveResultScore(student_id=uuid4(), score=Decimal(0))],
+    }
+    payload = WeaveResultBulkRequest(**common, cbt_maximum_score=Decimal(20))
     assert payload.model_dump(mode="json")["cbt_maximum_score"] == "20"
     assert WeaveResultBulkRequest(**common).cbt_maximum_score is None
 
@@ -123,7 +123,7 @@ async def test_approved_result_sync_sends_the_frozen_allocation() -> None:
     candidate_id = uuid4()
     result_id = uuid4()
     student_id = uuid4()
-    allocated = Decimal("20")
+    allocated = Decimal(20)
     paper = SimpleNamespace(
         id=exam_id,
         session_id=uuid4(),
@@ -139,7 +139,7 @@ async def test_approved_result_sync_sends_the_frozen_allocation() -> None:
         sync_status=ResultSyncStatus.SYNCING,
         voided_at=None,
         exam_date=date(2026, 10, 10),
-        component_score=Decimal("16"),
+        component_score=Decimal(16),
         component_maximum_score=allocated,
     )
     subject = SimpleNamespace(id=paper.curriculum_subject_id, curriculum_id=uuid4())
@@ -159,6 +159,6 @@ async def test_approved_result_sync_sends_the_frozen_allocation() -> None:
     ):
         prepared = await ResultSyncService()._prepare_batch(AsyncMock(), batch_id=uuid4())
     assert prepared.payload.cbt_maximum_score == allocated
-    assert prepared.payload.scores[0].score == Decimal("16")
+    assert prepared.payload.scores[0].score == Decimal(16)
     assert prepared.payload.scores[0].student_id == student_id
     assert prepared.payload.source_exam_id == exam_id
