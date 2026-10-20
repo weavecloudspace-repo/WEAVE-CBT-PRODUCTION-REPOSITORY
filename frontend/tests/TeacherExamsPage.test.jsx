@@ -122,7 +122,7 @@ describe('Hybrid examination score allocation', () => {
     ))
   })
 
-  it('rejects an invalid partial allocation and keeps non-hybrid components unchanged', () => {
+  it('rejects partial allocation equal to the full component maximum', () => {
     const data = {
       ...teacherData,
       exams: [],
@@ -134,8 +134,9 @@ describe('Hybrid examination score allocation', () => {
     fireEvent.change(screen.getByLabelText('Exam title'), { target: { value: 'Hybrid exam' } })
     fireEvent.click(screen.getByLabelText(/Use part for CBT, reserve the rest for theory/i))
     fireEvent.change(screen.getByLabelText('CBT marks'), { target: { value: '50' } })
+    expect(screen.getByLabelText('CBT marks')).toBeInvalid()
     fireEvent.click(screen.getByRole('button', { name: /Create Draft Exam/i }))
-    expect(screen.getByText(/Choose CBT marks greater than zero and below 50/)).toBeInTheDocument()
+    expect(screen.getByLabelText('CBT marks')).toBeInvalid()
   })
 })
 
