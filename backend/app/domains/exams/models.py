@@ -346,7 +346,8 @@ class Exam(Base):
     # Optional draft choice. None means the full component score is allocated to CBT.
     # The existing component_maximum_score is the *effective* maximum frozen at sealing.
     cbt_maximum_score: Mapped[Decimal | None] = mapped_column(
-        Numeric(8, 2), nullable=True,
+        Numeric(8, 2),
+        nullable=True,
     )
     component_maximum_score: Mapped[Decimal | None] = mapped_column(
         Numeric(8, 2),
