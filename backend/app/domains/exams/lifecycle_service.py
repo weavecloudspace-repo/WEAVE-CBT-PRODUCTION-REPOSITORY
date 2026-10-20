@@ -219,7 +219,9 @@ class ExamLifecycleServiceMixin:
                 "Assessment component does not belong to the examination assessment scheme"
             )
         # Validate again at submission as cloud configuration may have changed.
-        resolved_cbt_allocation(assessment_component, getattr(exam, "cbt_maximum_score", None))
+        resolved_cbt_allocation(
+            assessment_component, getattr(exam, "cbt_maximum_score", None)
+        )
 
         question_bank = await QuestionRepository.get_bank_by_id(
             db,
