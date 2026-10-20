@@ -32,8 +32,8 @@ from app.domains.exams.models import (
 from app.domains.exams.repository import ExamRepository
 from app.domains.exams.schedule_validation import validate_normal_entry_window
 from app.domains.exams.schemas import ExamCreate, ExamUpdate, ManualQuestionRemove
-from app.domains.exams.timetable_service import ExamTimetableService
 from app.domains.exams.score_allocation import resolved_cbt_allocation
+from app.domains.exams.timetable_service import ExamTimetableService
 from app.domains.questions.repository import QuestionRepository
 from app.workers.producer import arq_producer
 
