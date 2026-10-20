@@ -209,6 +209,31 @@
 }
 .exam-paper-options__lead, .exam-paper-options__colour { min-width: 0; }
 .exam-option-label { display: block; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+/* Hybrid allocation lives inside the existing paper-details grid. */
+.exam-authoring-page .exam-score-allocation {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border: 1px solid rgb(var(--color-border) / .65);
+  border-radius: 8px;
+  padding: 12px;
+}
+.exam-authoring-page .exam-score-allocation__choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.exam-authoring-page .exam-score-allocation__choice input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  flex: 0 0 16px;
+  padding: 0;
+}
+.exam-authoring-page .exam-score-allocation .teacher-exam-field { display: flex; flex-direction: column; gap: 5px; margin: 8px 0; max-width: 320px; }
+.exam-authoring-page .exam-score-allocation > small { display: block; margin-top: 8px; font-size: 12px; opacity: .8; }
+
 .exam-paper-options .exam-palette { gap: 9px; }
 .exam-paper-options .exam-palette button { width: 24px; height: 24px; }
 .exam-paper-options .exam-ownership-status:empty { display: none; }
