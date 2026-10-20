@@ -512,7 +512,9 @@ class ExamLifecycleServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertLess(order.index("sync_lock"), order.index("authorize"))
         self.assertEqual(result.status, ExamStatus.SEALED)
         self.assertEqual(result.roster_status, ExamRosterStatus.PENDING)
-        self.assertEqual(result.component_maximum_score, Decimal(5))  # Frozen CBT portion
+        self.assertEqual(
+            result.component_maximum_score, Decimal(5)
+        )  # Frozen CBT portion
 
     async def test_seal_rolls_back_if_snapshot_transaction_fails(self) -> None:
         db = AsyncMock()
