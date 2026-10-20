@@ -170,6 +170,7 @@ class WeaveAssessmentComponentSnapshot(SyncContractBase):
     maximum_score: Decimal
     position: int
     is_active: bool
+    is_hybrid: bool = False
 
 
 class WeaveAdminSnapshot(SyncContractBase):
@@ -325,6 +326,10 @@ class WeaveResultBulkRequest(BaseModel):
     curriculum_subject_id: UUID
     assessment_component_id: UUID
     exam_date: date
+    # Frozen score allocation for this exam, delivered with approved results.
+    cbt_maximum_score: Decimal | None = Field(
+        default=None, gt=0, le=100, max_digits=5, decimal_places=2
+    )
     scores: list[WeaveResultScore] = Field(min_length=1, max_length=1000)
 
     @model_validator(mode="after")
