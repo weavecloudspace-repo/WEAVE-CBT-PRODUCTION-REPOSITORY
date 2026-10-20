@@ -20,6 +20,19 @@ describe('large-monitor login card alignment', () => {
     expect(wideRules).not.toMatch(/(?:\.weave-login-panel|\.weave-login-form\b|\.weave-login-stage-nav)\s*\{/)
   })
 
+  it('centers both login panels only on television-sized viewports', () => {
+    const css = readFileSync(authCssPath, 'utf8')
+    const tvRules = css.match(/\/\* TV-sized viewports:[\s\S]*?(?=\n@media \(max-width: 980px\))/)?.[0]
+
+    expect(tvRules).toBeDefined()
+    expect(tvRules).toMatch(/@media screen and \(min-width: 1680px\) and \(min-height: 850px\)/)
+    expect(tvRules).toMatch(/\.weave-login-page\s*\{\s*padding-inline: 0;/)
+    expect(tvRules).toMatch(/\.weave-login-welcome\s*\{[^}]*max-width: none;[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/)
+    expect(tvRules).toMatch(/\.weave-login-page--staff \.weave-login-card/)
+    expect(tvRules).toMatch(/\.weave-login-page--student \.weave-login-card/)
+    expect(tvRules).toMatch(/translate: none;/)
+  })
+
   it('keeps staff email and password submission unchanged', () => {
     const onSubmit = vi.fn()
     render(

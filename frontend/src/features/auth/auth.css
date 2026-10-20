@@ -342,6 +342,29 @@
   }
 }
 
+/* TV-sized viewports: align each side to its own half of the screen.
+   Do not alter standard laptop/desktop breakpoints or form sizing. */
+@media screen and (min-width: 1680px) and (min-height: 850px) {
+  .weave-login-page {
+    padding-inline: 0;
+  }
+
+  .weave-login-welcome {
+    width: 100%;
+    max-width: none;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .weave-login-panel__brand {
+    left: max(48px, calc(50% - 210px));
+  }
+
+  .weave-login-page--staff .weave-login-card,
+  .weave-login-page--student .weave-login-card {
+    translate: none;
+  }
+}
+
 @media (max-width: 980px) {
   .weave-login-page::before { display: none; }
   .weave-login-welcome {

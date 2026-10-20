@@ -15,6 +15,17 @@ describe('student exam question positioning on wide monitors', () => {
     expect(css).toMatch(/\.premium-exam-frame \{\s*display: grid;\s*grid-template-columns: 258px minmax\(0, 1fr\);/)
   })
 
+  it('vertically centers only on TV-sized viewports without clipping long questions', () => {
+    const css = readFileSync('src/features/student/student.css', 'utf8')
+    const tvRules = css.match(/\/\* Only TV-sized screens[\s\S]*?(?=\n@media \(max-width: 900px\))/)?.[0]
+
+    expect(tvRules).toBeDefined()
+    expect(tvRules).toMatch(/@media screen and \(min-width: 1680px\) and \(min-height: 850px\)/)
+    expect(tvRules).toMatch(/\.premium-exam-shell--session \.premium-exam-content\s*\{\s*justify-content: safe center;/)
+    expect(tvRules).toMatch(/\.premium-exam-shell--session \.premium-exam-content > \.premium-question-paper\s*\{\s*margin-block: 0;/)
+    expect(tvRules).not.toMatch(/\.premium-exam-(?:frame|rail|stage|header|navigation)\s*\{/)
+  })
+
   it('preserves the same candidate question, answer and navigation components', () => {
     const source = readFileSync('src/features/student/StudentWorkspace.jsx', 'utf8')
     expect(source).toContain('className="premium-exam-shell premium-exam-shell--session"')

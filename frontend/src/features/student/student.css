@@ -932,6 +932,18 @@
   }
 }
 
+/* Only TV-sized screens vertically center the question in the available
+   stage height. Safe centering falls back to the top for long content. */
+@media screen and (min-width: 1680px) and (min-height: 850px) {
+  .premium-exam-shell--session .premium-exam-content {
+    justify-content: safe center;
+  }
+
+  .premium-exam-shell--session .premium-exam-content > .premium-question-paper {
+    margin-block: 0;
+  }
+}
+
 @media (max-width: 900px) {
   .premium-exam-frame { grid-template-columns: 210px minmax(0, 1fr); }
   .premium-exam-shell .premium-exam-header--session .premium-exam-header__inner { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 10px 20px; }

@@ -38,7 +38,7 @@ function setup({ suspended = false, save, stage = 'active', availability = 'read
   return { gateway, returnToSignIn }
 }
 
-afterEach(() => vi.useRealTimers())
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
 it('keeps the shared CBT loader visible until the active exam opens, with retry on failure', async () => {
   render(<ToastHost />)
@@ -101,14 +101,18 @@ it('uses school branding and clean navigation labels', async () => {
 
 it('counts down between heartbeats and resynchronizes with the server', async () => {
   vi.useFakeTimers()
+  vi.spyOn(Math, 'random').mockReturnValue(0.5) // first heartbeat at 10 seconds
   const { gateway } = setup()
   await act(async () => { await Promise.resolve() })
   expect(screen.getByText('45:00')).toBeInTheDocument()
   await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
   expect(screen.getByText('44:57')).toBeInTheDocument()
   gateway.attempts.heartbeatCurrentAttempt.mockResolvedValue({ status: 'in_progress', remaining_seconds: 2670, exam_suspended: false, next_heartbeat_after_seconds: 20 })
-  await act(async () => { await vi.advanceTimersByTimeAsync(17000) })
+  await act(async () => { await vi.advanceTimersByTimeAsync(7000) })
+  expect(gateway.attempts.heartbeatCurrentAttempt).toHaveBeenCalledOnce()
   expect(screen.getByText('44:30')).toBeInTheDocument()
+  await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+  expect(screen.getByText('44:20')).toBeInTheDocument()
 })
 
 it('blocks a suspended restored attempt and requests suspension handling once', async () => {
@@ -140,11 +144,12 @@ it('rolls back review marking when saving fails', async () => {
 
 it('detects suspension during a live heartbeat and removes exam controls', async () => {
   vi.useFakeTimers()
+  vi.spyOn(Math, 'random').mockReturnValue(0.5)
   const onSuspended = vi.fn()
   const { gateway } = setup({ onSuspended })
   await act(async () => { await Promise.resolve() })
   gateway.attempts.heartbeatCurrentAttempt.mockResolvedValue({ status: 'in_progress', remaining_seconds: 2680, exam_suspended: true, next_heartbeat_after_seconds: 20 })
-  await act(async () => { await vi.advanceTimersByTimeAsync(20000) })
+  await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
   expect(onSuspended).toHaveBeenCalledOnce()
   expect(screen.queryByText('First question')).not.toBeInTheDocument()
 })
@@ -212,9 +217,13 @@ it('warns that logging out does not pause an active attempt', async () => {
 })
 
 it('leaves a stale exam screen when the server reports the student session is terminal', async () => {
+  vi.useFakeTimers()
+  vi.spyOn(Math, 'random').mockReturnValue(0.5)
   const returnToSignIn = vi.fn()
   const heartbeat = vi.fn().mockRejectedValue(Object.assign(new Error('unauthorized'), { status: 401 }))
   setup({ heartbeat, returnToSignIn })
-  await screen.findByText('First question')
-  await waitFor(() => expect(returnToSignIn).toHaveBeenCalledOnce())
+  await act(async () => { await Promise.resolve() })
+  expect(screen.getByText('First question')).toBeInTheDocument()
+  await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+  expect(returnToSignIn).toHaveBeenCalledOnce()
 })
