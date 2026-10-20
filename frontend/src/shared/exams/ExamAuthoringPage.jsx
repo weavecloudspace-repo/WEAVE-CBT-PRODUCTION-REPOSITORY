@@ -615,7 +615,7 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
                 )}
                 <small>The allocation is frozen when the exam is sealed and sent with approved results.</small>
               </fieldset>
-            )
+            )}
             <div className="exam-paper-options">
             <div className="exam-paper-options__lead">
             {isAdmin ? (
