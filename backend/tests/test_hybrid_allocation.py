@@ -6,6 +6,7 @@ import os
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -105,3 +106,59 @@ def test_result_batch_carries_frozen_allocation_and_zero_marks() -> None:
     payload = WeaveResultBulkRequest(**common, cbt_maximum_score=Decimal("20"))
     assert payload.model_dump(mode="json")["cbt_maximum_score"] == "20"
     assert WeaveResultBulkRequest(**common).cbt_maximum_score is None
+
+
+@pytest.mark.asyncio
+async def test_approved_result_sync_sends_the_frozen_allocation() -> None:
+    from app.domains.academics.repository import AcademicRepository
+    from app.domains.candidates.repository import CandidateRepository
+    from app.domains.exams.execution_models import ExamResultDisposition
+    from app.domains.exams.execution_repository import ExamExecutionRepository
+    from app.domains.exams.repository import ExamRepository
+    from app.domains.results.models import ResultSyncStatus
+    from app.domains.results.repository import ResultRepository
+    from app.domains.results.sync_service import ResultSyncService
+
+    exam_id = uuid4()
+    candidate_id = uuid4()
+    result_id = uuid4()
+    student_id = uuid4()
+    allocated = Decimal("20")
+    paper = SimpleNamespace(
+        id=exam_id,
+        session_id=uuid4(),
+        term_id=uuid4(),
+        curriculum_subject_id=uuid4(),
+        assessment_component_id=uuid4(),
+        component_maximum_score=allocated,
+    )
+    result = SimpleNamespace(
+        id=result_id,
+        exam_id=exam_id,
+        candidate_id=candidate_id,
+        sync_status=ResultSyncStatus.SYNCING,
+        voided_at=None,
+        exam_date=date(2026, 10, 10),
+        component_score=Decimal("16"),
+        component_maximum_score=allocated,
+    )
+    subject = SimpleNamespace(id=paper.curriculum_subject_id, curriculum_id=uuid4())
+    curriculum = SimpleNamespace(id=subject.curriculum_id, academic_level_id=uuid4())
+    candidate = SimpleNamespace(id=candidate_id, exam_id=exam_id, student_id=student_id)
+    with (
+        patch.object(ResultRepository, "list_results_for_sync_batch", new=AsyncMock(return_value=[result])),
+        patch.object(ExamRepository, "get_exam_by_id", new=AsyncMock(return_value=paper)),
+        patch.object(
+            ExamExecutionRepository,
+            "get_control",
+            new=AsyncMock(return_value=SimpleNamespace(result_disposition=ExamResultDisposition.APPROVED)),
+        ),
+        patch.object(AcademicRepository, "get_curriculum_subject_by_id", new=AsyncMock(return_value=subject)),
+        patch.object(AcademicRepository, "get_curriculum_by_id", new=AsyncMock(return_value=curriculum)),
+        patch.object(CandidateRepository, "list_candidates_by_ids", new=AsyncMock(return_value=[candidate])),
+    ):
+        prepared = await ResultSyncService()._prepare_batch(AsyncMock(), batch_id=uuid4())
+    assert prepared.payload.cbt_maximum_score == allocated
+    assert prepared.payload.scores[0].score == Decimal("16")
+    assert prepared.payload.scores[0].student_id == student_id
+    assert prepared.payload.source_exam_id == exam_id
