@@ -172,6 +172,7 @@ class ExamServiceTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(
                     return_value=SimpleNamespace(
                         id=component_id, assessment_scheme_id=scheme_id
+                        maximum_score=50,
                     )
                 ),
             ),
@@ -262,6 +263,7 @@ class ExamServiceTests(unittest.IsolatedAsyncioTestCase):
                     return_value=SimpleNamespace(
                         id=current_exam.assessment_component_id,
                         assessment_scheme_id=current_exam.assessment_scheme_id,
+                        maximum_score=50,
                     )
                 ),
             ),
