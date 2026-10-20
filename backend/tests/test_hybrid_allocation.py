@@ -1,4 +1,11 @@
-"""Regression coverage for WEAVE's hybrid assessment allocation contract."""
+            ResultRepository,
+            "list_results_for_sync_batch",
+            new=AsyncMock(return_value=[result]),
+        ),
+        patch.object(
+            ExamRepository, "get_exam_by_id", new=AsyncMock(return_value=paper)
+        ),
+        patch.object("""Regression coverage for WEAVE's hybrid assessment allocation contract."""
 
 from __future__ import annotations
 
@@ -36,7 +43,9 @@ def _component(*, hybrid: bool, maximum: str = "50") -> SimpleNamespace:
     return SimpleNamespace(maximum_score=Decimal(maximum), is_hybrid=hybrid)
 
 
-def test_hybrid_projection_is_backward_compatible_without_schema_version_change() -> None:
+def test_hybrid_projection_is_backward_compatible_without_schema_version_change() -> (
+    None
+):
     assert SYNC_SCHEMA_VERSION == 5
     sample = {
         "id": uuid4(),
@@ -146,18 +155,35 @@ async def test_approved_result_sync_sends_the_frozen_allocation() -> None:
     curriculum = SimpleNamespace(id=subject.curriculum_id, academic_level_id=uuid4())
     candidate = SimpleNamespace(id=candidate_id, exam_id=exam_id, student_id=student_id)
     with (
-        patch.object(ResultRepository, "list_results_for_sync_batch", new=AsyncMock(return_value=[result])),
-        patch.object(ExamRepository, "get_exam_by_id", new=AsyncMock(return_value=paper)),
+
         patch.object(
             ExamExecutionRepository,
             "get_control",
-            new=AsyncMock(return_value=SimpleNamespace(result_disposition=ExamResultDisposition.APPROVED)),
+            new=AsyncMock(
+                return_value=SimpleNamespace(
+                    result_disposition=ExamResultDisposition.APPROVED
+                )
+            ),
         ),
-        patch.object(AcademicRepository, "get_curriculum_subject_by_id", new=AsyncMock(return_value=subject)),
-        patch.object(AcademicRepository, "get_curriculum_by_id", new=AsyncMock(return_value=curriculum)),
-        patch.object(CandidateRepository, "list_candidates_by_ids", new=AsyncMock(return_value=[candidate])),
+        patch.object(
+            AcademicRepository,
+            "get_curriculum_subject_by_id",
+            new=AsyncMock(return_value=subject),
+        ),
+        patch.object(
+            AcademicRepository,
+            "get_curriculum_by_id",
+            new=AsyncMock(return_value=curriculum),
+        ),
+        patch.object(
+            CandidateRepository,
+            "list_candidates_by_ids",
+            new=AsyncMock(return_value=[candidate]),
+        ),
     ):
-        prepared = await ResultSyncService()._prepare_batch(AsyncMock(), batch_id=uuid4())
+        prepared = await ResultSyncService()._prepare_batch(
+            AsyncMock(), batch_id=uuid4()
+        )
     assert prepared.payload.cbt_maximum_score == allocated
     assert prepared.payload.scores[0].score == Decimal(16)
     assert prepared.payload.scores[0].student_id == student_id
