@@ -1,11 +1,4 @@
-            ResultRepository,
-            "list_results_for_sync_batch",
-            new=AsyncMock(return_value=[result]),
-        ),
-        patch.object(
-            ExamRepository, "get_exam_by_id", new=AsyncMock(return_value=paper)
-        ),
-        patch.object("""Regression coverage for WEAVE's hybrid assessment allocation contract."""
+"""Regression coverage for WEAVE's hybrid assessment allocation contract."""
 
 from __future__ import annotations
 
@@ -155,7 +148,14 @@ async def test_approved_result_sync_sends_the_frozen_allocation() -> None:
     curriculum = SimpleNamespace(id=subject.curriculum_id, academic_level_id=uuid4())
     candidate = SimpleNamespace(id=candidate_id, exam_id=exam_id, student_id=student_id)
     with (
-
+        patch.object(
+            ResultRepository,
+            "list_results_for_sync_batch",
+            new=AsyncMock(return_value=[result]),
+        ),
+        patch.object(
+            ExamRepository, "get_exam_by_id", new=AsyncMock(return_value=paper)
+        ),
         patch.object(
             ExamExecutionRepository,
             "get_control",
