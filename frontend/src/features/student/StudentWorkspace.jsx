@@ -6,6 +6,7 @@ import { StudentLogoutConfirmation } from './StudentLogoutConfirmation'
 import { StudentMakeupContinuation } from './StudentMakeupContinuation'
 import { ProductLoadingScreen } from '../../app/ProductLoadingScreen'
 import { getLocalBrandLogoSrc } from '../../api/branding'
+import { initialHeartbeatDelayMs, jitteredHeartbeatDelayMs, singleFlight } from './heartbeatTiming'
 import { RiCheckboxCircleFill, RiFlagFill, RiLogoutBoxRLine, RiDatabase2Line, RiArrowLeftLine, RiArrowRightLine } from '@remixicon/react'
 
 const HEARTBEAT_RETRY_MS = 10_000
@@ -123,7 +124,7 @@ function StudentWorkspaceContent({ exam, resolution, gateway, dispatch, returnTo
       if (!stopped) timerId = window.setTimeout(sendHeartbeat, milliseconds)
     }
 
-    const sendHeartbeat = async () => {
+    const sendHeartbeat = singleFlight(async () => {
       try {
         const heartbeat = await gateway.attempts.heartbeatCurrentAttempt()
         if (stopped) return
@@ -135,7 +136,7 @@ function StudentWorkspaceContent({ exam, resolution, gateway, dispatch, returnTo
           exam_suspended: heartbeat.exam_suspended,
         } : currentAttempt)
         const nextSeconds = Number(heartbeat.next_heartbeat_after_seconds) || 20
-        schedule(Math.max(5, nextSeconds) * 1000)
+        schedule(jitteredHeartbeatDelayMs(Math.max(5, nextSeconds) * 1000))
       } catch (error) {
         if (error?.status === 401) {
           if (!stopped) returnToSignIn()
@@ -151,11 +152,12 @@ function StudentWorkspaceContent({ exam, resolution, gateway, dispatch, returnTo
           }
         }
         // Connectivity loss alone never changes academic state.
-        schedule(HEARTBEAT_RETRY_MS)
+        schedule(jitteredHeartbeatDelayMs(HEARTBEAT_RETRY_MS))
       }
-    }
+    })
 
-    sendHeartbeat()
+    // Spread the first heartbeat across a full interval to avoid a login-time burst.
+    schedule(initialHeartbeatDelayMs())
     const handleVisibility = () => {
       if (!document.hidden && !stopped) {
         if (timerId) window.clearTimeout(timerId)
