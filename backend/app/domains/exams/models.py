@@ -418,6 +418,10 @@ class Exam(Base):
             name="ck_exams_component_maximum_positive",
         ),
         CheckConstraint(
+            "cbt_maximum_score IS NULL OR cbt_maximum_score > 0",
+            name="ck_exams_cbt_maximum_score_positive",
+        ),
+        CheckConstraint(
             "lead_assigned_at IS NULL OR lead_assigned_by_actor_id IS NOT NULL",
             name="ck_exams_lead_assignment_actor_required",
         ),
