@@ -340,7 +340,9 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
           expected_authoring_version: editingExam.authoringVersion || 1,
           assessment_scheme_id: schemeId,
           assessment_component_id: componentId,
-          cbt_maximum_score: partialAllocation ? selectedCbtMaximum : null,
+          ...(partialAllocation || editingExam?.cbtMaximumScore != null
+            ? { cbt_maximum_score: partialAllocation ? selectedCbtMaximum : null }
+            : {}),
           title: title.trim(),
           instructions: instructions.trim() || null,
           folder_color: folderColor,
@@ -370,7 +372,7 @@ function ExamAuthoringForm({ state, dispatch, teacherData, gateway, active = tru
           curriculum_subject_id: subjectId,
           assessment_scheme_id: schemeId,
           assessment_component_id: componentId,
-          cbt_maximum_score: partialAllocation ? selectedCbtMaximum : null,
+          ...(partialAllocation ? { cbt_maximum_score: selectedCbtMaximum } : {}),
           question_bank_id: bankId,
           question_selection_mode: selectionMode,
           question_count: Number(questionCount),
