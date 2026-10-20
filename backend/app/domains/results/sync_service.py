@@ -348,6 +348,9 @@ class ResultSyncService:
             curriculum_subject_id=exam.curriculum_subject_id,
             assessment_component_id=exam.assessment_component_id,
             exam_date=rows[0].exam_date,
+            # Sealing freezes the effective CBT score maximum. Send it with
+            # every result batch; no separate allocation sync is required.
+            cbt_maximum_score=exam.component_maximum_score,
             scores=scores,
         )
         return _PreparedResultBatch(
