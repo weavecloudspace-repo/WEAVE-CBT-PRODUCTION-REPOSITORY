@@ -122,7 +122,7 @@ class WindowsPlatform(BasePlatform):
                 command,
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=60,
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
