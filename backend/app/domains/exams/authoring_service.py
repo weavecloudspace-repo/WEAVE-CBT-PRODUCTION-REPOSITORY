@@ -25,7 +25,6 @@ from app.domains.exams.models import (
     ExamStatus,
 )
 from app.domains.exams.repository import ExamRepository
-from app.domains.exams.score_allocation import resolved_cbt_allocation
 from app.domains.exams.schedule_validation import validate_normal_entry_window
 from app.domains.exams.schemas import (
     ExamCreate,
@@ -35,6 +34,7 @@ from app.domains.exams.schemas import (
     ManualQuestionRemove,
     ManualQuestionReorder,
 )
+from app.domains.exams.score_allocation import resolved_cbt_allocation
 from app.domains.questions.repository import QuestionRepository
 
 
