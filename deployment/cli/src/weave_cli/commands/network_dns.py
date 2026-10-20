@@ -126,7 +126,7 @@ def _read_exact(sock: socket.socket, length: int) -> bytes:
     return bytes(chunks)
 
 
-def _dns_answer(address: str, name: str, *, timeout: float = 2.5, tcp: bool = False) -> bool:
+def _dns_answer(address: str, name: str, *, timeout: float = 5.0, tcp: bool = False) -> bool:
     """Query the configured resolver directly; never use the Windows hosts file."""
     query_id = 0x493B
     qname = b"".join(bytes([len(chunk)]) + chunk.encode("ascii") for chunk in name.split(".")) + b"\0"
