@@ -102,6 +102,7 @@ class AtomicExamLeadCreationTests(unittest.IsolatedAsyncioTestCase):
                     return_value=SimpleNamespace(
                         id=current_payload.assessment_component_id,
                         assessment_scheme_id=current_payload.assessment_scheme_id,
+                        maximum_score=50,
                     )
                 ),
             ),

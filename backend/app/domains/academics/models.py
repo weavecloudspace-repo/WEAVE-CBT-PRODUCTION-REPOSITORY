@@ -389,6 +389,10 @@ class AssessmentComponent(WeaveProjectionMixin, Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true"), index=True
     )
+    # Projected from WEAVE; old snapshots default to CBT-only.
+    is_hybrid: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
 
     __table_args__ = (
         Index(

@@ -34,6 +34,7 @@ from app.domains.exams.schemas import (
     ManualQuestionRemove,
     ManualQuestionReorder,
 )
+from app.domains.exams.score_allocation import resolved_cbt_allocation
 from app.domains.questions.repository import QuestionRepository
 
 
@@ -172,6 +173,7 @@ class ExamService:
             raise AcademicScopeError(
                 "Assessment component does not belong to the selected assessment scheme"
             )
+        resolved_cbt_allocation(assessment_component, payload.cbt_maximum_score)
 
         question_bank = await QuestionRepository.get_bank_by_id(
             db,
@@ -240,6 +242,7 @@ class ExamService:
             revision_of_exam_id=None,
             created_by_actor_id=actor.id,
             component_maximum_score=None,
+            cbt_maximum_score=payload.cbt_maximum_score,
         )
 
         try:
@@ -384,6 +387,12 @@ class ExamService:
             raise AcademicScopeError(
                 "Assessment component does not belong to the selected assessment scheme"
             )
+        chosen_allocation = (
+            payload.cbt_maximum_score
+            if "cbt_maximum_score" in fields
+            else getattr(exam, "cbt_maximum_score", None)
+        )
+        resolved_cbt_allocation(assessment_component, chosen_allocation)
 
         question_bank = await QuestionRepository.get_bank_by_id(
             db,
@@ -444,6 +453,8 @@ class ExamService:
             exam.assessment_scheme_id = assessment_scheme.id
         if "assessment_component_id" in fields:
             exam.assessment_component_id = assessment_component.id
+        if "cbt_maximum_score" in fields:
+            exam.cbt_maximum_score = payload.cbt_maximum_score
         if "title" in fields:
             exam.title = next_title
         if "instructions" in fields:

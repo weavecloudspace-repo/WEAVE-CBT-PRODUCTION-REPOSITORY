@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.database import Base
 from app.core.database_bootstrap import bootstrap_database, verify_database_schema
+from app.core.migrations import migration_head
 from app.domains.auth.models import LocalActorSession, LocalRefreshToken
 
 
@@ -98,7 +99,7 @@ async def test_api_startup_verifies_migrated_database_read_only(fresh_database):
     async with fresh_database.connect() as connection:
         assert (
             await connection.execute(text("SELECT version_num FROM alembic_version"))
-        ).scalar_one() == "20261006_initial_schema"
+        ).scalar_one() == migration_head()
 
 
 @pytest.mark.asyncio
@@ -151,7 +152,7 @@ async def test_fresh_startup_and_restart_preserve_data(fresh_database):
         )
         assert (
             await connection.execute(text("SELECT version_num FROM alembic_version"))
-        ).scalar_one() == "20261006_initial_schema"
+        ).scalar_one() == migration_head()
         await connection.execute(
             text("CREATE TABLE public.bootstrap_sentinel (value text NOT NULL)")
         )
@@ -303,7 +304,7 @@ async def test_future_migration_does_not_duplicate_current_model_column(
         "from alembic import op\n"
         "import sqlalchemy as sa\n"
         'revision = "future_probe"\n'
-        'down_revision = "20261006_initial_schema"\n'
+        f'down_revision = "{migration_head()}"\n'
         "def upgrade():\n"
         '    op.add_column("school_profiles", sa.Column("future_probe", sa.String(40)))\n',
         encoding="utf-8",
