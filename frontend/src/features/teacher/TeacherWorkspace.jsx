@@ -383,6 +383,7 @@ function normalizeAssessmentComponent(component) {
     name: component.name,
     code: component.code,
     maximumScore: Number(component.maximum_score),
+    isHybrid: component.is_hybrid === true,
     position: component.position,
     isActive: component.is_active,
   };
@@ -452,6 +453,7 @@ function normalizeExam(exam, subjectByCurriculum, componentById) {
     closedAt: exam.closed_at || null,
     cancelledAt: exam.cancelled_at || null,
     componentMaximumScore: exam.component_maximum_score,
+    cbtMaximumScore: exam.cbt_maximum_score ?? null,
     createdAt: exam.created_at,
     updatedAt: exam.updated_at,
   };
