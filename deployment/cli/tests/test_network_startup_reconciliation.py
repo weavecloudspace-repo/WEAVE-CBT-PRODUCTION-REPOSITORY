@@ -75,7 +75,8 @@ class StartupNetworkReconciliationTests(unittest.TestCase):
                 network._startup_reconcile(self.stack(data, admin=False))
 
     def test_keeper_runs_startup_command_not_legacy_refresh(self):
-        script = task_script("WeaveCBT")
+        with patch("weave_cli.platforms.wsl_session._encoded", side_effect=lambda script: script):
+            script = task_script("WeaveCBT")
         self.assertIn("network startup-reconcile", script)
         self.assertNotIn("network refresh | Out-Null", script)
         self.assertIn("Get-Content -LiteralPath $helperPath -Raw", script)
