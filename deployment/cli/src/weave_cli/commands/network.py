@@ -625,7 +625,10 @@ def _startup_reconcile(stack, *, attempts: int = 5, delay: float = 2.0) -> bool:
             ports = _expected_ports(data)
             if 443 in ports and not (data / "tls-lan.json").exists():
                 raise LanError("HTTPS requires its saved WEAVE LAN TLS binding.")
-            _windows_refresh_health(saved, ports, repair=False)
+            # On the final attempt, allow the existing guarded IP Helper
+            # recovery: it restarts the service only for missing listeners
+            # after confirming both the rule ownership and WSL backend.
+            _windows_refresh_health(saved, ports, repair=attempt == attempts - 1)
             return True
         except (LanError, OSError) as exc:
             failures.append(str(exc))
