@@ -81,7 +81,7 @@ if ($task) {{
         $task.Actions[0].Execute -ne $wscriptExecutable -or
         $task.Actions[0].Arguments -ne $arguments -or
         -not (Test-Path -LiteralPath $helperPath) -or
-        ((Get-Content -LiteralPath $helperPath -Raw -ErrorAction SilentlyContinue) -ne $vbBody)
+        ((Get-Content -LiteralPath $helperPath -Raw -ErrorAction SilentlyContinue).TrimEnd() -ne $vbBody.TrimEnd())
 }}
 if ($needsUpdate) {{
     $principalCheck = New-Object Security.Principal.WindowsPrincipal($identity)
