@@ -57,7 +57,7 @@ while ($true) {{
     if ((Test-Path -LiteralPath $manager) -and $LASTEXITCODE -eq 0) {{
         # The CLI returns successfully when LAN forwarding was never enabled.
         # A forwarding error must not terminate the session keeping Docker alive.
-        & $manager network refresh | Out-Null
+        & $manager network startup-reconcile | Out-Null
     }}
     & $wslExecutable --distribution {_literal(distribution)} --user root --exec /bin/sh -c 'exec sleep infinity'
     Start-Sleep -Seconds 5
@@ -70,12 +70,18 @@ $wscriptExecutable = Join-Path $env:SystemRoot 'System32\wscript.exe'
 $helperDirectory = Join-Path $env:ProgramFiles 'WeaveCBT'
 $helperPath = Join-Path $helperDirectory 'weave-wsl-keeper.vbs'
 $arguments = '//B //NoLogo "' + $helperPath + '"'
+$powerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$commandLine = '"' + $powerShell + '" -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand {_encoded(keeper)}'
+$vbCommand = $commandLine.Replace('"', '""')
+$vbBody = 'Set shell = CreateObject("WScript.Shell")' + [Environment]::NewLine +
+    'result = shell.Run("' + $vbCommand + '", 0, True)' + [Environment]::NewLine
 $needsUpdate = -not $task
 if ($task) {{
     $needsUpdate = @($task.Actions).Count -ne 1 -or
         $task.Actions[0].Execute -ne $wscriptExecutable -or
         $task.Actions[0].Arguments -ne $arguments -or
-        -not (Test-Path -LiteralPath $helperPath)
+        -not (Test-Path -LiteralPath $helperPath) -or
+        ((Get-Content -LiteralPath $helperPath -Raw -ErrorAction SilentlyContinue).TrimEnd() -ne $vbBody.TrimEnd())
 }}
 if ($needsUpdate) {{
     $principalCheck = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -85,11 +91,6 @@ if ($needsUpdate) {{
     if ($task) {{ Stop-ScheduledTask -TaskName $taskName }}
     New-Item -ItemType Directory -Path $helperDirectory -Force | Out-Null
     # Only Administrators and SYSTEM may modify the script that runs elevated.
-    $powerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $commandLine = '"' + $powerShell + '" -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand {_encoded(keeper)}'
-    $vbCommand = $commandLine.Replace('"', '""')
-    $vbBody = 'Set shell = CreateObject("WScript.Shell")' + [Environment]::NewLine +
-        'result = shell.Run("' + $vbCommand + '", 0, True)' + [Environment]::NewLine
     Set-Content -LiteralPath $helperPath -Value $vbBody -Encoding Ascii
     & icacls.exe $helperPath /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
     if ($LASTEXITCODE -ne 0) {{ throw 'Unable to secure the windowless runtime launcher.' }}
