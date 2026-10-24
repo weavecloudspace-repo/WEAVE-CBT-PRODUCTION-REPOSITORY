@@ -79,7 +79,7 @@ class WslSessionTests(unittest.TestCase):
         match = re.search(r"-EncodedCommand ([A-Za-z0-9+/=]+)", generated)
         self.assertIsNotNone(match)
         keeper = base64.b64decode(match.group(1)).decode("utf-16le")
-        self.assertIn("network refresh", keeper)
+        self.assertIn("network startup-reconcile", keeper)
         self.assertIn("exec sleep infinity", keeper)
         self.assertIn("-AtLogOn", generated)
         self.assertIn("wscript.exe", generated)
