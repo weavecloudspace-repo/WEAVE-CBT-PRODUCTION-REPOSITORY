@@ -57,7 +57,7 @@ while ($true) {{
     if ((Test-Path -LiteralPath $manager) -and $LASTEXITCODE -eq 0) {{
         # The CLI returns successfully when LAN forwarding was never enabled.
         # A forwarding error must not terminate the session keeping Docker alive.
-        & $manager network refresh | Out-Null
+        & $manager network startup-reconcile | Out-Null
     }}
     & $wslExecutable --distribution {_literal(distribution)} --user root --exec /bin/sh -c 'exec sleep infinity'
     Start-Sleep -Seconds 5
