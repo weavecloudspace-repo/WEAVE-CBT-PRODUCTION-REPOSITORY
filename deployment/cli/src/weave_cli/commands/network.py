@@ -593,6 +593,63 @@ def network_refresh(
         raise typer.Exit(code=1) from exc
 
 
+def _startup_reconcile(stack, *, attempts: int = 5, delay: float = 2.0) -> bool:
+    """Reconcile only an opted-in Windows school listener after WSL boots.
+
+    This must never guess an adapter, silently recreate missing ownership state,
+    or make runtime startup depend on an unconfigured LAN.
+    """
+    from weave_cli.commands import lan, lan_tls
+
+    if stack.installation.runtime_type != "wsl2":
+        return False
+    data = stack.installation.data_directory
+    if not (data / "lan.json").exists():
+        if (data / "tls-lan.json").exists():
+            raise LanError("HTTPS LAN configuration exists without base LAN state; repair manually.")
+        return False
+    if not stack.platform.is_admin():
+        raise LanError("Configured network reconciliation requires Administrator permissions.")
+
+    failures: list[str] = []
+    for attempt in range(attempts):
+        try:
+            # The stored host address and subnet remain authoritative; configure
+            # checks the selected host IP and never substitutes another adapter.
+            lan.configure(data, refresh=True)
+            if (data / "tls-lan.json").exists():
+                lan_tls.reconcile(data)
+            saved = lan._read_state(data)
+            if saved is None:
+                raise LanError("Configured LAN state disappeared during reconciliation.")
+            ports = _expected_ports(data)
+            if 443 in ports and not (data / "tls-lan.json").exists():
+                raise LanError("HTTPS requires its saved WEAVE LAN TLS binding.")
+            _windows_refresh_health(saved, ports, repair=False)
+            return True
+        except (LanError, OSError) as exc:
+            failures.append(str(exc))
+            if attempt + 1 < attempts:
+                time.sleep(delay)
+    raise LanError(
+        f"Startup network reconciliation failed after {attempts} attempts: {failures[-1]}"
+    )
+
+
+@app.command("startup-reconcile", hidden=True)
+def startup_reconcile() -> None:
+    """Unattended, bounded school network recovery invoked by the WSL keeper."""
+    try:
+        stack = get_stack()
+        if _startup_reconcile(stack):
+            success("Saved WEAVE school network is accepting TCP connections.")
+        else:
+            info("No school LAN binding configured; skipping network reconciliation.")
+    except (LanError, OSError, InstallationStateError, PlatformError) as exc:
+        error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
 @app.command("remove")
 def network_remove(
     yes: bool = typer.Option(False, "--yes", help="Confirm removal of only WEAVE-owned forwarding."),
