@@ -22,7 +22,18 @@ def _candidate(name: str) -> dict:
     ]
     if len(matches) != 1:
         raise LanError("Select exactly one connected interface with a private IPv4 address.")
-    row = matches[0]
+    row = dict(matches[0])
+    if sys.platform == "win32":
+        alias = _ps_quote(row["name"])
+        identity = _powershell(
+            "$ErrorActionPreference='Stop';"
+            f"$a=Get-NetAdapter -Name {alias} -ErrorAction Stop;"
+            "if (-not $a.HardwareInterface -or $a.Status -ne 'Up') "
+            "{ throw 'Physical school adapter must be connected' };"
+            "$a.InterfaceGuid.ToString()",
+            context="Identify approved physical adapter",
+        ).strip()
+        row["guid"] = identity
     subnet = ipaddress.ip_network(row["network"])
     if (not row["private"] or subnet.prefixlen < 20
             or row["name"].lower().startswith(("vethernet", "wsl", "docker", "vmware", "virtualbox"))
@@ -42,7 +53,9 @@ def _profile(row: dict) -> None:
     subnet = ipaddress.ip_network(row["network"])
     script = (
         "$ErrorActionPreference='Stop';"
-        f"$a=Get-NetAdapter -InterfaceDescription (Get-NetAdapter | Where-Object {{ $_.InterfaceGuid.ToString() -eq {guid} }} | Select-Object -First 1).InterfaceDescription -ErrorAction Stop;"
+        f"$a=@(Get-NetAdapter | Where-Object {{ $_.InterfaceGuid.ToString() -eq {guid} }});"
+        "if ($a.Count -ne 1) { throw 'Approved adapter identity changed' };"
+        "$a=$a[0];"
         f"if ($a.InterfaceGuid.ToString() -ne {guid} -or $a.Status -ne 'Up') {{ throw 'Approved network interface not found' }};"
         "$ips=@(Get-NetIPAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction Stop);"
         f"if (@($ips | Where-Object {{ $_.IPAddress -eq {address} -and $_.PrefixLength -eq {subnet.prefixlen} }}).Count -ne 1) {{ throw 'Approved static IP changed' }};"
