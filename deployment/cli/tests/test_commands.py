@@ -54,7 +54,9 @@ class CommandTests(unittest.TestCase):
     def test_start_does_not_continue_when_persistence_fails(self):
         stack = stack_fixture()
         stack.platform.ensure_runtime_persistence.side_effect = PlatformError("Task failed")
-        with patch.object(start, "get_stack", return_value=stack):
+        with patch.object(start, "get_stack", return_value=stack), \
+             patch.object(start, "upgrade_deployment", return_value=False), \
+             patch.object(start, "reconcile_access"):
             result = self.invoke(start)
         self.assertEqual(result.exit_code, 1, result.output)
         stack.compose.start.assert_not_called()
@@ -87,7 +89,9 @@ class CommandTests(unittest.TestCase):
     def test_start_recovers_stopped_engine(self):
         stack = stack_fixture()
         stack.runtime.docker_engine_running.side_effect = [False, True]
-        with patch.object(start, "get_stack", return_value=stack):
+        with patch.object(start, "get_stack", return_value=stack), \
+             patch.object(start, "upgrade_deployment", return_value=False), \
+             patch.object(start, "reconcile_access"):
             result = self.invoke(start)
         self.assertEqual(result.exit_code, 0, result.output)
         stack.platform.start_docker_engine.assert_called_once()
@@ -104,7 +108,7 @@ class CommandTests(unittest.TestCase):
     def test_restart_uses_restart(self):
         stack = stack_fixture()
         with patch.object(restart, "get_stack", return_value=stack), \
-             patch.object(restart, "upgrade_deployment"), \
+             patch.object(restart, "upgrade_deployment", return_value=False), \
              patch.object(restart, "reconcile_access"):
             result = self.invoke(restart)
         self.assertEqual(result.exit_code, 0, result.output)
