@@ -95,12 +95,14 @@ def _container_state(stack) -> str:
 
 
 @app.command("auth")
-def ngrok_auth() -> None:
+def ngrok_auth(stdin: bool = typer.Option(False, "--stdin", hidden=True)) -> None:
     """Read an authtoken via hidden input, never arguments or the Docker env."""
     try:
         stack = get_stack()
         _ensure_owner(stack)
-        token = getpass.getpass("Ngrok agent authtoken (hidden): ").strip()
+        # The GUI uses a private QProcess stdin pipe, never a command argument.
+        token = (sys.stdin.readline() if stdin else
+                 getpass.getpass("Ngrok agent authtoken (hidden): ")).strip()
         if not _TOKEN.fullmatch(token):
             raise NgrokError("Invalid ngrok agent authtoken format.")
         # JSON string quotes are valid YAML double-quoted scalar strings.
