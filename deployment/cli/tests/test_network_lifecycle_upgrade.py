@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from typer.testing import CliRunner
+import typer
 
 from weave_cli.networking import state
 from weave_cli.networking import deployment
@@ -135,7 +137,10 @@ class StartIntegrationTests(unittest.TestCase):
              patch.object(start, "upgrade_deployment") as upgrade, \
              patch.object(start, "_snapshot", return_value={"running": True}) as snapshot, \
              patch.object(start, "reconcile_access"):
-            start.start()
+            app = typer.Typer()
+            start.register(app)
+            result = CliRunner().invoke(app, [])
+            self.assertEqual(result.exit_code, 0, result.output)
             self.assertTrue(upgrade.called)
             self.assertTrue(snapshot.called)
             self.assertTrue(stack.platform.ensure_runtime_persistence.called)
