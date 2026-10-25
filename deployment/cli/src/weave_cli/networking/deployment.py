@@ -193,3 +193,30 @@ def rollback(stack) -> None:
     journal = json.loads(journal_path.read_text(encoding="utf-8"))
     _restore(stack, journal)
     _finish_journal(data, journal)
+
+
+def apply(stack) -> bool:
+    """Activate packaged assets using Compose convergence, never plain restart."""
+    from weave_cli.commands.install import _verify_started_stack
+    changed = ensure_current(stack)
+    if not changed:
+        return False
+    try:
+        # Recreate only services whose Compose definition/config changed.
+        # Ngrok belongs to an optional profile and cannot activate here.
+        stack.compose.start()
+        _verify_started_stack(stack.runtime, stack.compose)
+        commit(stack)
+        return True
+    except Exception as upgrade_error:
+        try:
+            rollback(stack)
+            stack.compose.start()
+        except Exception as recovery_error:
+            raise DeploymentUpgradeError(
+                "Deployment upgrade and automatic rollback both failed. "
+                "Preserved state requires manual inspection: " + str(recovery_error)
+            ) from upgrade_error
+        raise DeploymentUpgradeError(
+            "Deployment update failed; previous Compose/Nginx assets restored."
+        ) from upgrade_error
