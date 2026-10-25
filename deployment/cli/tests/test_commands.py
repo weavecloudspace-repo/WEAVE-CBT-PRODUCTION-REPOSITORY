@@ -43,7 +43,9 @@ class CommandTests(unittest.TestCase):
 
     def test_start_configures_persistence_even_when_docker_is_running(self):
         stack = stack_fixture()
-        with patch.object(start, "get_stack", return_value=stack):
+        with patch.object(start, "get_stack", return_value=stack), \
+             patch.object(start, "upgrade_deployment"), \
+             patch.object(start, "reconcile_access"):
             result = self.invoke(start)
         self.assertEqual(result.exit_code, 0, result.output)
         stack.platform.ensure_runtime_persistence.assert_called_once()
@@ -101,7 +103,9 @@ class CommandTests(unittest.TestCase):
 
     def test_restart_uses_restart(self):
         stack = stack_fixture()
-        with patch.object(restart, "get_stack", return_value=stack):
+        with patch.object(restart, "get_stack", return_value=stack), \
+             patch.object(restart, "upgrade_deployment"), \
+             patch.object(restart, "reconcile_access"):
             result = self.invoke(restart)
         self.assertEqual(result.exit_code, 0, result.output)
         stack.compose.restart.assert_called_once()
