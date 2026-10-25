@@ -678,6 +678,12 @@ def _perform_install(
     compose.pull_postgres_image()
     compose.pull_redis_image()
     compose.pull_nginx_image()
+    # Ngrok is bundled as an optional image, never an active service.
+    # Registry outages must not block a school from installing offline CBT.
+    try:
+        compose.pull_optional_ngrok_image()
+    except (DockerComposeError, DockerRuntimeError) as exc:
+        _log(f"Optional ngrok image unavailable; it can be fetched when enabled: {exc}")
 
     _log("Starting PostgreSQL, Redis, API replicas, workers, and Nginx.")
     compose.start()
