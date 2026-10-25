@@ -17,6 +17,28 @@ from weave_cli.networking.state import load_or_import
 app = typer.Typer(help="Show or plan WSL networking mode changes.")
 
 
+
+def reconcile_access(stack) -> None:
+    """Heal network on manual start/restart without running asset migration twice."""
+    from weave_cli.commands.network_prefer import restore
+    from weave_cli.commands.network_ngrok import reconcile as start_remote
+    from weave_cli.commands.lan import refresh_if_configured
+
+    state = load_or_import(
+        stack.installation.data_directory, runtime_type=stack.installation.runtime_type
+    )
+    restore(stack)
+    if state["transport"] == "nat":
+        refresh_if_configured(
+            stack.installation.data_directory,
+            runtime_type=stack.installation.runtime_type,
+        )
+    try:
+        start_remote(stack)
+    except Exception as exc:
+        warning("Optional ngrok tunnel failed; school LAN remains independent: " + str(exc))
+
+
 def reconcile(stack) -> None:
     from weave_cli.commands.network_prefer import restore
     from weave_cli.commands.network_ngrok import reconcile as start_remote
