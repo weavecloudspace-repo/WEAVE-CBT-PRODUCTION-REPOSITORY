@@ -5,6 +5,7 @@ import typer
 from weave_cli.commands.update_recovery import guard_pending_update
 from weave_cli.commands.lan import refresh_if_configured, LanError
 from weave_cli.networking.deployment import apply as upgrade_deployment, DeploymentUpgradeError
+from weave_cli.commands.network_runtime import reconcile_access
 
 from weave_cli.commands._shared import (
     COMMAND_ERRORS, banner, fail, get_stack, info, success,
@@ -31,7 +32,7 @@ def restart() -> None:
         # upgrade used 'up -d'; normal explicit restart retains old semantics.
         if not deployment_changed:
             stack.compose.restart()
-        refresh_if_configured(stack.installation.data_directory, runtime_type=stack.installation.runtime_type)
+        reconcile_access(stack)
         success("Restart completed. Use 'weave status' to inspect readiness.")
     except (*COMMAND_ERRORS, RuntimeError, LanError, DeploymentUpgradeError) as exc:
         fail(exc)
