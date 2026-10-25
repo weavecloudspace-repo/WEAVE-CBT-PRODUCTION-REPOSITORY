@@ -5,6 +5,7 @@ import typer
 from weave_cli.commands import (
     network_prefer,
     network_ngrok,
+    network_mode,
     network_runtime,
     doctor,
     install,
@@ -56,6 +57,7 @@ for command in (
 # Extend the existing network command tree without duplicating its CLI app.
 network_prefer.register(network.app)
 network_ngrok.register(network.app)
+network_mode.register(network.app)
 network_runtime.register(network.app)
 
 
