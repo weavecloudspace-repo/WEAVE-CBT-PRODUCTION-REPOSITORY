@@ -227,7 +227,10 @@ def reconcile(stack) -> None:
 
 def remove(stack, *, purge: bool) -> None:
     """Stop the optional tunnel before Compose project removal."""
-    _compose(stack, ["stop", "ngrok"])
+    # Old installations may not have the ngrok service in their Compose file.
+    compose_text = stack.compose.compose_file.read_text(encoding="utf-8")
+    if "  ngrok:" in compose_text:
+        _compose(stack, ["stop", "ngrok"])
     if purge:
         config = _config(stack)
         if config.is_symlink():
