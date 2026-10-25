@@ -167,6 +167,7 @@ def mode_set(
     target: str = typer.Argument(...),
     maintenance: bool = typer.Option(False, "--maintenance"),
     yes: bool = typer.Option(False, "--yes"),
+    client_verified: bool = typer.Option(False, "--client-verified"),
 ) -> None:
     """Change WSL mode with backups; never a background/startup operation."""
     try:
@@ -201,21 +202,30 @@ def mode_set(
         if previous and len(previous) > 512 * 1024:
             raise ModeError("Unexpectedly large .wslconfig; inspect manually.")
         original_text = previous.decode("utf-8-sig") if previous else ""
-        updated = edit_config(original_text, target)
+        import base64
         owner = stack.installation.data_directory / OWNER
-        if owner.exists():
-            raise ModeError("A previous WSL mode change is recorded; review/restore before another change.")
+        previous_owner = json.loads(owner.read_text(encoding="utf-8")) if owner.exists() else None
         old_nat = (stack.installation.data_directory / "lan.json").is_file()
         old_https = (stack.installation.data_directory / "tls-lan.json").is_file()
-        # Save exact previous global configuration before touching it.
-        import base64
-        _atomic_json(owner, {
-            "original": base64.b64encode(previous or b"").decode("ascii"),
-            "original_exists": previous is not None,
-            "target": target,
-            "legacy_nat": old_nat,
-            "legacy_https": old_https,
-        })
+        if previous_owner:
+            if target != "nat" or previous_owner.get("target") != "mirrored":
+                raise ModeError("An owned mirrored WSL change is already recorded.")
+            owned_original = base64.b64decode(previous_owner["original"], validate=True)
+            original_owned = owned_original.decode("utf-8-sig")
+            if original_text != edit_config(original_owned, "mirrored"):
+                raise ModeError("Another program modified .wslconfig; refusing to overwrite it.")
+            updated = original_owned if previous_owner["original_exists"] else ""
+            old_nat = bool(previous_owner["legacy_nat"])
+            old_https = bool(previous_owner["legacy_https"])
+        else:
+            updated = edit_config(original_text, target)
+            _atomic_json(owner, {
+                "original": base64.b64encode(previous or b"").decode("ascii"),
+                "original_exists": previous is not None,
+                "target": target,
+                "legacy_nat": old_nat,
+                "legacy_https": old_https,
+            })
         try:
             if target == "mirrored":
                 if old_nat:
@@ -233,13 +243,15 @@ def mode_set(
                     lan_tls.reconcile(stack.installation.data_directory)
             if not all(_socket_open(state["address"], port) for port in (80, 443)):
                 raise ModeError("School IP ports 80/443 did not pass host verification.")
-            if not yes and not typer.confirm(
+            if not client_verified and not typer.confirm(
                 "Did a separate school computer successfully open the HTTPS student URL?",
                 default=False,
             ):
                 raise ModeError("School-device verification was not confirmed.")
             state["transport"] = target
             save(stack.installation.data_directory, state)
+            if target == "nat":
+                owner.unlink(missing_ok=True)
             success("WSL network mode changed to " + target)
             warning("The previous .wslconfig is backed up in WEAVE metadata for explicit restoration.")
         except Exception:
