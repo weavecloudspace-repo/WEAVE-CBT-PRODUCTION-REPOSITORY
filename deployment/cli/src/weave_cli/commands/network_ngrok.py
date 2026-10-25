@@ -231,6 +231,7 @@ def remove(stack, *, purge: bool) -> None:
     compose_text = stack.compose.compose_file.read_text(encoding="utf-8")
     if "  ngrok:" in compose_text:
         _compose(stack, ["stop", "ngrok"])
+        _compose(stack, ["rm", "-f", "-s", "ngrok"])
     if purge:
         config = _config(stack)
         if config.is_symlink():
