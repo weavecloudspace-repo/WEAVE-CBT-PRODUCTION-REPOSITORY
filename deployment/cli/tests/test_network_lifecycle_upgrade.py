@@ -107,7 +107,7 @@ class NgrokOptInTests(unittest.TestCase):
             data = Path(root)
             policy = state.load_or_import(data, runtime_type="wsl2")
             stack = SimpleNamespace(installation=SimpleNamespace(
-                data_directory=data, install_directory=data
+                data_directory=data, install_directory=data, runtime_type="wsl2"
             ))
             with patch.object(network_ngrok, "_compose") as run:
                 network_ngrok.reconcile(stack)
