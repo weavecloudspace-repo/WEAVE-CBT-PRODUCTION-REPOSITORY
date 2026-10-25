@@ -227,11 +227,30 @@ def reconcile(stack) -> None:
 
 def remove(stack, *, purge: bool) -> None:
     """Stop the optional tunnel before Compose project removal."""
-    # Old installations may not have the ngrok service in their Compose file.
-    compose_text = stack.compose.compose_file.read_text(encoding="utf-8")
-    if "  ngrok:" in compose_text:
-        _compose(stack, ["stop", "ngrok"])
-        _compose(stack, ["rm", "-f", "-s", "ngrok"])
+    # A purge/reinstall preflight may have only installation + runtime,
+    # without a constructed Compose manager; build it from owned paths.
+    installation = stack.installation
+    compose_path = installation.install_directory / "compose.yaml"
+    env_path = installation.data_directory / "runtime.env"
+    if compose_path.is_file() and "  ngrok:" in compose_path.read_text(encoding="utf-8"):
+        if hasattr(stack, "compose"):
+            compose = stack.compose
+        elif env_path.is_file() and hasattr(stack, "runtime"):
+            from weave_cli.docker.compose import DockerCompose
+            compose = DockerCompose(
+                compose_file=compose_path,
+                env_file=env_path,
+                runtime=stack.runtime,
+                project_name="weave-cbt",
+            )
+        else:
+            raise NgrokError("Cannot verify optional tunnel ownership before cleanup.")
+        compose._run_compose_command(
+            command=["--profile", _PROFILE, "stop", "ngrok"], timeout=120,
+        )
+        compose._run_compose_command(
+            command=["--profile", _PROFILE, "rm", "-f", "-s", "ngrok"], timeout=120,
+        )
     if purge:
         config = _config(stack)
         if config.is_symlink():
