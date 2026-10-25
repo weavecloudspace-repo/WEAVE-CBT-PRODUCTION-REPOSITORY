@@ -110,7 +110,3 @@ def mode_plan_alias() -> None:
 
 def register(network_app: typer.Typer) -> None:
     network_app.command("boot-reconcile", hidden=True)(boot_reconcile)
-    mode = typer.Typer(help="Inspect the selected WSL network mode.")
-    mode.command("status")(mode_status_alias)
-    mode.command("plan")(mode_plan_alias)
-    network_app.add_typer(mode, name="mode")
