@@ -27,12 +27,12 @@ def _quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def _approved(stack, state: dict) -> tuple[str, str, str]:
+def _approved(stack, state: dict, *, require_admin: bool = True) -> tuple[str, str, str]:
     """No implicit adapter guessing, trust escalation or public-subnet exposure."""
     from weave_cli.commands.network_prefer import _candidate
     if sys.platform != "win32" or stack.installation.runtime_type != "wsl2":
         raise MirroredFirewallError("Mirrored firewall management requires Windows WSL2.")
-    if not stack.platform.is_admin():
+    if require_admin and not stack.platform.is_admin():
         raise MirroredFirewallError("Administrator permissions are required for mirrored firewall management.")
     if not state.get("restore_private") or not state.get("interface_guid") or not state.get("interface_name"):
         raise MirroredFirewallError("Approve the school interface first: weave network prefer set --interface NAME.")
