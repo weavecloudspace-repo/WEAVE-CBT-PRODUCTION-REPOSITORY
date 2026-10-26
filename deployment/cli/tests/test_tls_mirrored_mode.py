@@ -275,5 +275,31 @@ class MirroredTlsTests(unittest.TestCase):
             nat.assert_not_called()
 
 
+    def test_mirrored_dns_readonly_identity_check_works_without_admin(self):
+        from weave_cli.commands import network_mirrored
+        with tempfile.TemporaryDirectory() as folder:
+            data = Path(folder)
+            stack = make_stack(data)
+            stack.platform.is_admin = lambda: False
+            (data / "tls.enabled").write_text("enabled\n", encoding="utf-8")
+            policy = state.load(data)
+            with (
+                patch.object(network_dns.sys, "platform", "win32"),
+                patch("weave_cli.commands.network_prefer._candidate", return_value={
+                    "name": "Ethernet",
+                    "guid": policy["interface_guid"],
+                    "address": ADDRESS,
+                    "network": SUBNET,
+                    "category": "Private",
+                }),
+                patch("weave_cli.commands.network._https_hostname", return_value=HOSTNAME),
+            ):
+                result = network_dns._get_ip_and_hostname(stack)
+                self.assertEqual(result, (HOSTNAME, ADDRESS, SUBNET))
+                with self.assertRaisesRegex(network_mirrored.MirroredFirewallError,
+                                            "Administrator"):
+                    network_mirrored.configure(stack, policy)
+
+
 if __name__ == "__main__":
     unittest.main()
