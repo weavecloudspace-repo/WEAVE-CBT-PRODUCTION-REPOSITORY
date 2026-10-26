@@ -14,6 +14,8 @@ from weave_cli.commands import lan
 WINDOWS_RULE = "WEAVE-CBT-MIRRORED-LAN"
 HYPERV_RULE = "WEAVE-CBT-MIRRORED"
 WSL_GUID = "{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}"
+LEGACY_WRONG_RULE = "WEAVE-CBT-MIRRORED-HTTP"
+LEGACY_WRONG_GUID = "{40E0AC32-46A5-43A1-A68E-17B7C1D4C7D1}"
 PORTS = ("80", "443")
 
 
@@ -51,7 +53,7 @@ def _snapshot() -> dict:
         "$ErrorActionPreference='Stop';"
         "if (-not (Get-Command Get-NetFirewallHyperVRule -ErrorAction SilentlyContinue)) "
         "{ throw 'WSL Hyper-V firewall cmdlets are unavailable' };"
-        "$data=@{windows=$null;hyperv=$null};"
+        "$data=@{windows=$null;hyperv=$null;orphan=$null};"
         "$w=@(Get-NetFirewallRule -Name '" + WINDOWS_RULE + "' -ErrorAction SilentlyContinue);"
         "if ($w.Count -gt 1) { throw 'Ambiguous WEAVE Windows firewall rule' };"
         "if ($w.Count -eq 1) {"
@@ -71,6 +73,14 @@ def _snapshot() -> dict:
         " Enabled=[string]$h[0].Enabled;Protocol=[string]$h[0].Protocol;"
         " Creator=[string]$h[0].VMCreatorId;Ports=@($h[0].LocalPorts);"
         " Remote=@($h[0].RemoteAddresses)};"
+        "};"
+        "$old=@(Get-NetFirewallHyperVRule -Name '" + LEGACY_WRONG_RULE + "' -ErrorAction SilentlyContinue);"
+        "if ($old.Count -gt 1) { throw 'Ambiguous legacy WEAVE Hyper-V firewall rule' };"
+        "if ($old.Count -eq 1) {"
+        " $data.orphan=@{Direction=[string]$old[0].Direction;Action=[string]$old[0].Action;"
+        " Enabled=[string]$old[0].Enabled;Protocol=[string]$old[0].Protocol;"
+        " Creator=[string]$old[0].VMCreatorId;Ports=@($old[0].LocalPorts);"
+        " Remote=@($old[0].RemoteAddresses)};"
         "};"
         "[Console]::Out.Write((ConvertTo-Json -InputObject $data -Compress -Depth 6))"
     )
@@ -142,12 +152,28 @@ def _validate_hyperv(rule: dict | None, subnet: str) -> bool:
     raise MirroredFirewallError("Existing WEAVE Hyper-V rule has an unexpected remote scope.")
 
 
+def _validate_old_orphan(rule: dict | None, subnet: str) -> None:
+    """Identify a narrowly scoped rule written by the short-lived wrong-GUID release."""
+    if rule is None:
+        return
+    if (not isinstance(rule, dict)
+            or str(rule.get("Creator", "")).casefold() != LEGACY_WRONG_GUID.casefold()
+            or str(rule.get("Direction", "")).lower() != "inbound"
+            or str(rule.get("Action", "")).lower() != "allow"
+            or str(rule.get("Enabled", "")).lower() != "true"
+            or str(rule.get("Protocol", "")).lower() not in ("tcp", "6")
+            or set(_values(rule.get("Ports"))) not in ({"80"}, set(PORTS))
+            or not _network_equal(rule.get("Remote"), subnet)):
+        raise MirroredFirewallError("Unexpected legacy WEAVE Hyper-V rule; review it before migration.")
+
+
 def verify(ip: str, subnet: str, *, alias: str | None = None) -> dict:
     """Fail closed when an existing rule is not the expected WEAVE-owned rule."""
     ip = lan._private_address(ip)
     subnet = lan._private_subnet(subnet, ip)
     snapshot = _snapshot()
     _validate_windows(snapshot["windows"], ip, subnet, alias)
+    _validate_old_orphan(snapshot.get("orphan"), subnet)
     snapshot["legacy_hyperv"] = _validate_hyperv(snapshot["hyperv"], subnet)
     snapshot["upgrade_windows_ports"] = bool(snapshot["windows"] and set(_values(snapshot["windows"]["Ports"])) != set(PORTS))
     snapshot["upgrade_hyperv_ports"] = bool(snapshot["hyperv"] and set(_values(snapshot["hyperv"]["Ports"])) != set(PORTS))
@@ -198,7 +224,13 @@ def configure(stack, state: dict) -> None:
             context="Create restricted WEAVE Windows mirrored firewall rule",
         )
     after = verify(ip, subnet, alias=alias)
-    if (after["windows"] is None or after["hyperv"] is None or after["legacy_hyperv"]
+    if before.get("orphan") is not None and after["windows"] and after["hyperv"] and not after["legacy_hyperv"]:
+        lan._powershell(
+            "Remove-NetFirewallHyperVRule -Name '" + LEGACY_WRONG_RULE + "' -ErrorAction Stop",
+            context="Remove legacy WEAVE rule with incorrect WSL creator",
+        )
+        after = verify(ip, subnet, alias=alias)
+    if (after.get("orphan") is not None or after["windows"] is None or after["hyperv"] is None or after["legacy_hyperv"]
             or after["upgrade_windows_ports"] or after["upgrade_hyperv_ports"]):
         raise MirroredFirewallError("WEAVE mirrored firewall validation failed after reconciliation.")
 
@@ -206,6 +238,11 @@ def configure(stack, state: dict) -> None:
 def remove(ip: str, subnet: str) -> None:
     """Delete only exact, ownership-validated WEAVE rules; safe when absent."""
     current = verify(ip, subnet)
+    if current.get("orphan") is not None:
+        lan._powershell(
+            "Remove-NetFirewallHyperVRule -Name '" + LEGACY_WRONG_RULE + "' -ErrorAction Stop",
+            context="Remove owned legacy WEAVE Hyper-V rule",
+        )
     if current["hyperv"] is not None:
         lan._powershell(
             "Remove-NetFirewallHyperVRule -Name '" + HYPERV_RULE + "' -ErrorAction Stop",
@@ -217,5 +254,5 @@ def remove(ip: str, subnet: str) -> None:
             context="Remove owned WEAVE mirrored Windows firewall rule",
         )
     after = _snapshot()
-    if after["hyperv"] is not None or after["windows"] is not None:
+    if after["hyperv"] is not None or after["windows"] is not None or after.get("orphan") is not None:
         raise MirroredFirewallError("WEAVE mirrored firewall rules remain after removal.")
