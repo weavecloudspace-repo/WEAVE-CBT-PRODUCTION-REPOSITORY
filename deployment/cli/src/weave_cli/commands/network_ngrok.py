@@ -94,6 +94,27 @@ def _container_state(stack) -> str:
         return "unknown"
 
 
+def _read_authtoken() -> str:
+    """Use Windows' native secure prompt; getpass can lose pasted console input."""
+    if os.name != "nt":
+        return getpass.getpass("Ngrok agent authtoken (hidden): ")
+    # The script is constant: credentials are never passed as command arguments.
+    script = (
+        "$s = Read-Host 'Ngrok agent authtoken (hidden)' -AsSecureString; "
+        "$p = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($s); "
+        "try { [Console]::Out.WriteLine("
+        "[Runtime.InteropServices.Marshal]::PtrToStringBSTR($p)) } "
+        "finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($p) }"
+    )
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True, text=True, timeout=120, check=False,
+    )
+    if result.returncode:
+        raise NgrokError("Could not read ngrok authtoken securely from Windows console.")
+    return result.stdout.rstrip("\\r\\n")
+
+
 @app.command("auth")
 def ngrok_auth(stdin: bool = typer.Option(False, "--stdin", hidden=True)) -> None:
     """Read an authtoken via hidden input, never arguments or the Docker env."""
@@ -101,8 +122,7 @@ def ngrok_auth(stdin: bool = typer.Option(False, "--stdin", hidden=True)) -> Non
         stack = get_stack()
         _ensure_owner(stack)
         # The GUI uses a private QProcess stdin pipe, never a command argument.
-        token = (sys.stdin.readline() if stdin else
-                 getpass.getpass("Ngrok agent authtoken (hidden): ")).strip()
+        token = (sys.stdin.readline() if stdin else _read_authtoken()).strip()
         if not _TOKEN.fullmatch(token):
             raise NgrokError("Invalid ngrok agent authtoken format.")
         # JSON string quotes are valid YAML double-quoted scalar strings.
