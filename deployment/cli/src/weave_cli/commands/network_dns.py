@@ -112,7 +112,7 @@ def _get_ip_and_hostname(stack) -> tuple[str, str, str]:
     )
     if policy["transport"] == "mirrored":
         from weave_cli.commands.network_mirrored import _approved
-        address, subnet, _ = _approved(stack, policy)
+        address, subnet, _ = _approved(stack, policy, require_admin=False)
         # Windows CoreDNS binds to the physical school adapter in both modes.
         # Mirrored WSL has no NAT lan.json record or Windows portproxy.
     elif policy["transport"] == "nat":
