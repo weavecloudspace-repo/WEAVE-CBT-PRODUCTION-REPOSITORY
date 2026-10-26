@@ -3,6 +3,10 @@
 import typer
 
 from weave_cli.commands import (
+    network_prefer,
+    network_ngrok,
+    network_mode,
+    network_runtime,
     doctor,
     install,
     lan,
@@ -49,6 +53,12 @@ for command in (
     uninstall,
 ):
     command.register(app)
+
+# Extend the existing network command tree without duplicating its CLI app.
+network_prefer.register(network.app)
+network_ngrok.register(network.app)
+network_mode.register(network.app)
+network_runtime.register(network.app)
 
 
 def main() -> None:

@@ -35,6 +35,9 @@ def uninstall(
                 warning("Data deletion cancelled.")
                 return
 
+        # Stop optional public ingress BEFORE tearing down Nginx or volumes.
+        from weave_cli.commands.network_ngrok import remove as remove_ngrok
+        remove_ngrok(stack, purge=True)
         info("Removing application containers...")
         if purge_volumes:
             # Run host ownership checks BEFORE destroying irreplaceable exam data.

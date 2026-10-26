@@ -1,0 +1,264 @@
+"""Opt-in ngrok Docker tunnel. No host ports, no CLI argument credentials."""
+from __future__ import annotations
+
+import getpass
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+import typer
+
+from weave_cli.commands._shared import error, get_stack, info, success, warning
+from weave_cli.networking.state import load_or_import, save
+
+app = typer.Typer(help="Manage optional public CBT access using Docker ngrok.")
+_TOKEN = re.compile(r"^[A-Za-z0-9_.\-]{10,512}$")
+_PROFILE = "remote-access"
+
+
+class NgrokError(RuntimeError):
+    pass
+
+
+def _config(stack) -> Path:
+    return stack.installation.install_directory / "ngrok" / "ngrok.yml"
+
+
+def _secure_file(path: Path, content: str) -> None:
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise NgrokError("Unsafe ngrok configuration path.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=path.parent, prefix=".ngrok-", encoding="utf-8",
+            delete=False,
+        ) as f:
+            tmp = Path(f.name)
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.name == "nt":
+            # Inherit no broad Users/Everyone grants for the saved authtoken.
+            acl = subprocess.run(
+                ["icacls", str(tmp), "/inheritance:r", "/grant:r",
+                 "*S-1-5-18:F", "*S-1-5-32-544:F"],
+                capture_output=True, text=True, timeout=20, check=False,
+            )
+            if acl.returncode:
+                raise NgrokError("Could not protect ngrok credentials with Windows ACLs.")
+        else:
+            os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+    finally:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
+
+
+def _compose(stack, args: list[str]):
+    # Always activate profile explicitly; normal WEAVE Compose startup doesn't.
+    return stack.compose._run_compose_command(
+        command=["--profile", _PROFILE, *args], timeout=120,
+    )
+
+
+def _policy(stack) -> dict:
+    return load_or_import(
+        stack.installation.data_directory,
+        runtime_type=stack.installation.runtime_type,
+    )
+
+
+def _ensure_owner(stack):
+    if not stack.platform.is_admin():
+        raise NgrokError("Administrator privileges are required to change online access.")
+
+
+def _container_state(stack) -> str:
+    try:
+        rows = _compose(stack, ["ps", "-a", "--format", "json", "ngrok"]).stdout.strip()
+    except Exception:
+        return "unavailable"
+    if not rows:
+        return "not-created"
+    try:
+        record = json.loads(rows)
+        if isinstance(record, list):
+            record = record[0] if record else {}
+        return str(record.get("State", "unknown")).lower()
+    except (ValueError, TypeError, AttributeError):
+        return "unknown"
+
+
+@app.command("auth")
+def ngrok_auth(stdin: bool = typer.Option(False, "--stdin", hidden=True)) -> None:
+    """Read an authtoken via hidden input, never arguments or the Docker env."""
+    try:
+        stack = get_stack()
+        _ensure_owner(stack)
+        # The GUI uses a private QProcess stdin pipe, never a command argument.
+        token = (sys.stdin.readline() if stdin else
+                 getpass.getpass("Ngrok agent authtoken (hidden): ")).strip()
+        if not _TOKEN.fullmatch(token):
+            raise NgrokError("Invalid ngrok agent authtoken format.")
+        # JSON string quotes are valid YAML double-quoted scalar strings.
+        content = (
+            "version: 3\nagent:\n  authtoken: "
+            + json.dumps(token) + "\n"
+        )
+        _secure_file(_config(stack), content)
+        success("Ngrok agent credentials stored. Internet access remains disabled.")
+        info("Run 'weave network ngrok enable' to expose CBT.")
+    except (OSError, RuntimeError, EOFError) as exc:
+        error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("enable")
+def ngrok_enable(yes: bool = typer.Option(False, "--yes")) -> None:
+    try:
+        stack = get_stack()
+        _ensure_owner(stack)
+        config = _config(stack)
+        if not config.is_file() or config.is_symlink():
+            raise NgrokError("Configure ngrok first: weave network ngrok auth.")
+        if not yes and not typer.confirm(
+            "Expose this CBT server over the public internet?", default=False
+        ):
+            return
+        if not stack.runtime.docker_engine_running():
+            raise NgrokError("Start WEAVE Docker first.")
+        from weave_cli.networking.deployment import apply
+        apply(stack)  # New manager upgrades old installed Compose on first use.
+        _compose(stack, ["up", "-d", "--no-deps", "ngrok"])
+        if _container_state(stack) != "running":
+            raise NgrokError("Ngrok container did not reach the running state.")
+        state = _policy(stack)
+        state["remote_enabled"] = True
+        save(stack.installation.data_directory, state)
+        success("Ngrok container started; public access requested.")
+        warning("Verify public endpoint, login, redirects and access controls before an exam.")
+    except Exception as exc:
+        error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("disable")
+def ngrok_disable(yes: bool = typer.Option(False, "--yes")) -> None:
+    try:
+        stack = get_stack()
+        _ensure_owner(stack)
+        if not yes and not typer.confirm("Disable public access?", default=False):
+            return
+        _compose(stack, ["stop", "ngrok"])
+        state = _policy(stack)
+        state["remote_enabled"] = False
+        save(stack.installation.data_directory, state)
+        success("Ngrok disabled. School LAN and application services are unchanged.")
+    except Exception as exc:
+        error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("status")
+def ngrok_status() -> None:
+    try:
+        stack = get_stack()
+        state = _policy(stack)
+        typer.echo(json.dumps({
+            "bundled": True,
+            "authenticated": _config(stack).is_file(),
+            "enabled": state["remote_enabled"],
+            "container": _container_state(stack),
+            "upstream": "http://nginx:8080",
+            "public_connectivity_verified": False,
+        }, indent=2))
+    except Exception as exc:
+        error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("logs")
+def ngrok_logs() -> None:
+    try:
+        stack = get_stack()
+        output = _compose(stack, ["logs", "--tail", "60", "ngrok"]).stdout
+        # Avoid re-emitting any accidental credential in service diagnostics.
+        output = re.sub(r"(?i)(authtoken\s*[:=]\s*)\S+", r"\1[REDACTED]", output)
+        typer.echo(output)
+    except Exception as exc:
+        error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("logout")
+def ngrok_logout(yes: bool = typer.Option(False, "--yes")) -> None:
+    try:
+        stack = get_stack()
+        _ensure_owner(stack)
+        if not yes and not typer.confirm(
+            "Disable ngrok and delete the stored authtoken?", default=False
+        ):
+            return
+        _compose(stack, ["stop", "ngrok"])
+        state = _policy(stack)
+        state["remote_enabled"] = False
+        save(stack.installation.data_directory, state)
+        config = _config(stack)
+        if config.is_symlink():
+            raise NgrokError("Refusing to delete a linked credential file.")
+        config.unlink(missing_ok=True)
+        success("Ngrok credentials deleted and public tunnel stopped.")
+    except Exception as exc:
+        error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+def reconcile(stack) -> None:
+    """Restore only a previously enabled optional tunnel after WSL login."""
+    if _policy(stack)["remote_enabled"]:
+        if not _config(stack).is_file():
+            raise NgrokError("Ngrok enabled but saved credentials are missing.")
+        if _container_state(stack) != "running":
+            _compose(stack, ["up", "-d", "--no-deps", "ngrok"])
+
+
+def remove(stack, *, purge: bool) -> None:
+    """Stop the optional tunnel before Compose project removal."""
+    # A purge/reinstall preflight may have only installation + runtime,
+    # without a constructed Compose manager; build it from owned paths.
+    installation = stack.installation
+    compose_path = installation.install_directory / "compose.yaml"
+    env_path = installation.data_directory / "runtime.env"
+    if compose_path.is_file() and "  ngrok:" in compose_path.read_text(encoding="utf-8"):
+        if hasattr(stack, "compose"):
+            compose = stack.compose
+        elif env_path.is_file() and hasattr(stack, "runtime"):
+            from weave_cli.docker.compose import DockerCompose
+            compose = DockerCompose(
+                compose_file=compose_path,
+                env_file=env_path,
+                runtime=stack.runtime,
+                project_name="weave-cbt",
+            )
+        else:
+            raise NgrokError("Cannot verify optional tunnel ownership before cleanup.")
+        compose._run_compose_command(
+            command=["--profile", _PROFILE, "stop", "ngrok"], timeout=120,
+        )
+        compose._run_compose_command(
+            command=["--profile", _PROFILE, "rm", "-f", "-s", "ngrok"], timeout=120,
+        )
+    if purge:
+        config = _config(stack)
+        if config.is_symlink():
+            raise NgrokError("Cannot purge a linked ngrok credential.")
+        config.unlink(missing_ok=True)
+
+
+def register(network_app: typer.Typer) -> None:
+    network_app.add_typer(app, name="ngrok")

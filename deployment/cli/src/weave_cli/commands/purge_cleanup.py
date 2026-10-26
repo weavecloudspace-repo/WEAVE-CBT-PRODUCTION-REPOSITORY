@@ -114,6 +114,8 @@ def preflight(stack) -> HostSnapshot:
 def cleanup_host(stack, *, purge_files: bool = True) -> None:
     """Unregister DNS, then HTTPS, then HTTP; leave other services untouched."""
     data = stack.installation.data_directory
+    from weave_cli.commands.network_ngrok import remove as remove_ngrok
+    remove_ngrok(stack, purge=True)
     remove_if_configured(stack, purge_files=purge_files)
     if stack.installation.runtime_type == "wsl2":
         # HTTPS removal must work even when lan.json is missing.
@@ -183,6 +185,10 @@ def clear_active_config(data: Path, install: Path) -> None:
     scheduled persistence and delete the installation registration.
     """
     targets = (
+        data / "network-policy.json",
+        data / "deployment-assets.json",
+        data / "deployment-upgrade.json",
+        install / "ngrok" / "ngrok.yml",
         data / "tls.enabled",
         data / "runtime.env",
         data / "lan.json",
