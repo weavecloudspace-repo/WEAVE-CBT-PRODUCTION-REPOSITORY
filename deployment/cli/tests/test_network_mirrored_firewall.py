@@ -57,7 +57,7 @@ class MirroredFirewallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             state = approved()
             state["restore_private"] = False
-            with patch.object(mirror.sys, "platform", "win32"), \\
+            with patch.object(mirror.sys, "platform", "win32"), \
                  patch.object(mirror, "_snapshot") as snapshot:
                 with self.assertRaisesRegex(mirror.MirroredFirewallError, "Approve"):
                     mirror.configure(stack(Path(tmp)), state)
@@ -65,7 +65,7 @@ class MirroredFirewallTests(unittest.TestCase):
 
     def test_rejects_changed_interface_identity_before_rule_query(self):
         with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(mirror.sys, "platform", "win32"), \\
+            with patch.object(mirror.sys, "platform", "win32"), \
                  patch("weave_cli.commands.network_prefer._candidate", return_value={
                      "name": "Ethernet", "address": IP, "network": SUBNET,
                      "guid": "unexpected", "category": "Private"
@@ -89,7 +89,7 @@ class MirroredFirewallTests(unittest.TestCase):
     def test_hyperv_wrong_creator_refuses_to_touch_foreign_rule(self):
         bad = hyperv()
         bad["Creator"] = "{40E0AC32-46A5-43A1-A68E-17B7C1D4C7D1}"
-        with patch.object(mirror, "_snapshot", return_value={"windows": windows(), "hyperv": bad}), \\
+        with patch.object(mirror, "_snapshot", return_value={"windows": windows(), "hyperv": bad}), \
              patch.object(mirror.lan, "_powershell") as run:
             with self.assertRaisesRegex(mirror.MirroredFirewallError, "modified"):
                 mirror.remove(IP, SUBNET)
@@ -98,16 +98,16 @@ class MirroredFirewallTests(unittest.TestCase):
     def test_missing_rules_created_with_restricted_scope(self):
         empty = {"windows": None, "hyperv": None}
         ready = {"windows": windows(), "hyperv": hyperv()}
-        with tempfile.TemporaryDirectory() as tmp, \\
-             patch.object(mirror.sys, "platform", "win32"), \\
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(mirror.sys, "platform", "win32"), \
              patch("weave_cli.commands.network_prefer._candidate", return_value={
                  "name": "Ethernet", "address": IP, "network": SUBNET,
                  "guid": GUID, "category": "Private",
-             }), patch.object(mirror, "_snapshot", side_effect=[empty, ready]), \\
+             }), patch.object(mirror, "_snapshot", side_effect=[empty, ready]), \
              patch.object(mirror.lan, "_powershell") as run:
             mirror.configure(stack(Path(tmp)), approved())
             self.assertEqual(run.call_count, 2)
-            commands = "\\n".join(call.args[0] for call in run.call_args_list)
+            commands = "\n".join(call.args[0] for call in run.call_args_list)
             self.assertIn("-VMCreatorId '" + mirror.WSL_GUID + "'", commands)
             self.assertIn("-RemoteAddresses '" + SUBNET + "'", commands)
             self.assertIn("-RemoteAddress '" + SUBNET + "'", commands)
@@ -117,12 +117,12 @@ class MirroredFirewallTests(unittest.TestCase):
     def test_legacy_hyperv_unrestricted_remote_is_narrowed_not_recreated(self):
         legacy = {"windows": windows(), "hyperv": hyperv(["Any"])}
         ready = {"windows": windows(), "hyperv": hyperv()}
-        with tempfile.TemporaryDirectory() as tmp, \\
-             patch.object(mirror.sys, "platform", "win32"), \\
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(mirror.sys, "platform", "win32"), \
              patch("weave_cli.commands.network_prefer._candidate", return_value={
                  "name": "Ethernet", "address": IP, "network": SUBNET,
                  "guid": GUID, "category": "Private",
-             }), patch.object(mirror, "_snapshot", side_effect=[legacy, ready]), \\
+             }), patch.object(mirror, "_snapshot", side_effect=[legacy, ready]), \
              patch.object(mirror.lan, "_powershell") as run:
             mirror.configure(stack(Path(tmp)), approved())
             run.assert_called_once()
@@ -132,7 +132,7 @@ class MirroredFirewallTests(unittest.TestCase):
     def test_remove_checks_ownership_then_removes_only_two_weave_rules(self):
         ready = {"windows": windows(), "hyperv": hyperv()}
         empty = {"windows": None, "hyperv": None}
-        with patch.object(mirror, "_snapshot", side_effect=[ready, empty]), \\
+        with patch.object(mirror, "_snapshot", side_effect=[ready, empty]), \
              patch.object(mirror.lan, "_powershell") as run:
             mirror.remove(IP, SUBNET)
         self.assertEqual(run.call_count, 2)
@@ -142,11 +142,11 @@ class MirroredFirewallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             st = stack(Path(tmp))
             state = approved()
-            with patch.object(network_runtime, "load_or_import", return_value=state), \\
-                 patch("weave_cli.commands.network_prefer.restore"), \\
-                 patch("weave_cli.commands.network_ngrok.reconcile"), \\
-                 patch.object(network_runtime, "_reconcile_mirrored_firewall") as owned, \\
-                 patch.object(network_runtime, "upgrade_deployment"), \\
+            with patch.object(network_runtime, "load_or_import", return_value=state), \
+                 patch("weave_cli.commands.network_prefer.restore"), \
+                 patch("weave_cli.commands.network_ngrok.reconcile"), \
+                 patch.object(network_runtime, "_reconcile_mirrored_firewall") as owned, \
+                 patch.object(network_runtime, "upgrade_deployment"), \
                  patch("weave_cli.commands.network._startup_reconcile") as nat:
                 network_runtime.reconcile_access(st)
                 network_runtime.reconcile(st)
@@ -157,7 +157,7 @@ class MirroredFirewallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             data = Path(tmp)
             user_config = data / ".wslconfig"
-            original = b"[wsl2]\\nnetworkingMode=nat\\n"
+            original = b"[wsl2]\nnetworkingMode=nat\n"
             user_config.write_text(network_mode.edit_config(original.decode(), "mirrored"))
             (data / network_mode.OWNER).write_text(json.dumps({
                 "target": "mirrored",
@@ -174,10 +174,10 @@ class MirroredFirewallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             data = Path(tmp)
             user_config = data / ".wslconfig"
-            user_config.write_text("[wsl2]\\nnetworkingMode=mirrored\\nprocessors=6\\n")
+            user_config.write_text("[wsl2]\nnetworkingMode=mirrored\nprocessors=6\n")
             (data / network_mode.OWNER).write_text(json.dumps({
                 "target": "mirrored",
-                "original": base64.b64encode(b"[wsl2]\\nnetworkingMode=nat\\n").decode("ascii"),
+                "original": base64.b64encode(b"[wsl2]\nnetworkingMode=nat\n").decode("ascii"),
                 "original_exists": True,
             }))
             with patch.object(network_mode, "_config", return_value=user_config):
