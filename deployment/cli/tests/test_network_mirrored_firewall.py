@@ -158,7 +158,7 @@ class MirroredFirewallTests(unittest.TestCase):
             data = Path(tmp)
             user_config = data / ".wslconfig"
             original = b"[wsl2]\nnetworkingMode=nat\n"
-            user_config.write_text(network_mode.edit_config(original.decode(), "mirrored"))
+            user_config.write_bytes(network_mode.edit_config(original.decode(), "mirrored").encode("utf-8"))
             (data / network_mode.OWNER).write_text(json.dumps({
                 "target": "mirrored",
                 "original": base64.b64encode(original).decode("ascii"),
