@@ -18,6 +18,70 @@ app = typer.Typer(help="Show or plan WSL networking mode changes.")
 
 
 
+def _reconcile_mirrored_firewall(stack, state: dict) -> None:
+    """Converge only WEAVE-owned scoped rules for an explicitly approved school LAN."""
+    import ipaddress
+    import sys
+    from weave_cli.commands.lan import _powershell
+    from weave_cli.commands.network_prefer import _candidate, _ps_quote
+
+    if sys.platform != "win32" or stack.installation.runtime_type != "wsl2":
+        return
+    if not state.get("restore_private") or not state.get("interface_guid"):
+        warning("Mirrored firewall setup requires an approved school adapter: weave network prefer set --interface NAME")
+        return
+    if not stack.platform.is_admin():
+        warning("Mirrored firewall reconciliation requires Administrator privileges.")
+        return
+    row = _candidate(state["interface_name"])
+    if (row.get("guid", "").casefold() != state["interface_guid"].casefold()
+            or row["address"] != state["address"] or row["network"] != state["subnet"]):
+        warning("School adapter identity or subnet changed; refusing firewall modifications.")
+        return
+    network = ipaddress.ip_network(state["subnet"], strict=True)
+    if not network.is_private:
+        warning("School subnet is not private; refusing firewall modifications.")
+        return
+    subnet = _ps_quote(str(network))
+    address = _ps_quote(state["address"])
+    alias = _ps_quote(row["name"])
+    ports = "80,443" if (stack.installation.data_directory / "tls.enabled").is_file() else "80"
+    script = (
+        "$ErrorActionPreference='Stop';"
+        "$name='WEAVE-CBT-MIRRORED-LAN';"
+        "$existing=Get-NetFirewallRule -Name $name -ErrorAction SilentlyContinue;"
+        "if ($existing) {"
+        " $a=$existing | Get-NetFirewallAddressFilter;"
+        " $p=$existing | Get-NetFirewallPortFilter;"
+        " $i=$existing | Get-NetFirewallInterfaceFilter;"
+        " if ($existing.Direction -ne 'Inbound' -or $existing.Action -ne 'Allow' -or "
+        " $p.Protocol -ne 'TCP' -or $a.RemoteAddress -ne " + subnet + " -or "
+        " $a.LocalAddress -ne " + address + " -or "
+        " $i.InterfaceAlias -ne " + alias + " -or "
+        " (@($p.LocalPort) -join ',') -ne '" + ports + "') {"
+        " throw 'Existing WEAVE mirrored firewall rule differs; manual review required' }"
+        "} else {"
+        " New-NetFirewallRule -Name $name -DisplayName 'WEAVE CBT Mirrored School LAN' "
+        " -Direction Inbound -Action Allow -Protocol TCP -LocalPort " + ports +
+        " -LocalAddress " + address + " -RemoteAddress " + subnet +
+        " -InterfaceAlias " + alias + " -Profile Private -ErrorAction Stop | Out-Null"
+        "};"
+        "$vm='{40E0AC32-46A5-43A1-A68E-17B7C1D4C7D1}';"
+        "if (-not (Get-Command New-NetFirewallHyperVRule -ErrorAction SilentlyContinue)) "
+        "{ throw 'Hyper-V firewall rule cmdlets unavailable; cannot complete mirrored setup' };"
+        "$hv=Get-NetFirewallHyperVRule -VMCreatorId $vm -Name 'WEAVE-CBT-MIRRORED-HTTP' "
+        "-ErrorAction SilentlyContinue;"
+        "if (-not $hv) {"
+        " New-NetFirewallHyperVRule -Name 'WEAVE-CBT-MIRRORED-HTTP' "
+        "-DisplayName 'WEAVE CBT Mirrored LAN HTTP' -Direction Inbound "
+        "-Action Allow -Protocol TCP -LocalPorts " + ports +
+        " -RemoteAddresses " + subnet + " -VMCreatorId $vm -ErrorAction Stop | Out-Null"
+        "};"
+    )
+    _powershell(script, context="Reconcile approved mirrored school firewall")
+    info("WEAVE-owned mirrored Windows and Hyper-V firewall rules checked.")
+
+
 def reconcile_access(stack) -> None:
     """Heal network on manual start/restart without running asset migration twice."""
     from weave_cli.commands.network_prefer import restore
@@ -33,6 +97,11 @@ def reconcile_access(stack) -> None:
             stack.installation.data_directory,
             runtime_type=stack.installation.runtime_type,
         )
+    if state["transport"] == "mirrored":
+        try:
+            _reconcile_mirrored_firewall(stack, state)
+        except Exception as exc:
+            warning("Mirrored firewall reconciliation needs attention: " + str(exc))
     try:
         start_remote(stack)
     except Exception as exc:
