@@ -47,6 +47,17 @@ def uninstall(
             verify_purged_resources(stack.runtime)
             verify_host(stack, snapshot)
         else:
+            # Non-purge uninstall also unregisters only approved WEAVE-owned
+            # mirrored rules and restores its unchanged .wslconfig backup.
+            if stack.installation.runtime_type == "wsl2":
+                from weave_cli.networking.state import load
+                policy = load(stack.installation.data_directory)
+                if policy and policy["transport"] == "mirrored":
+                    from weave_cli.commands import network_mirrored, network_mode
+                    network_mirrored.verify(policy["address"], policy["subnet"])
+                    network_mode.restore_owned_wsl_config(stack, check_only=True)
+                    network_mirrored.remove(policy["address"], policy["subnet"])
+                    network_mode.restore_owned_wsl_config(stack)
             stack.compose.stop()
             from weave_cli.commands.network_dns import remove_if_configured
             remove_if_configured(stack)
