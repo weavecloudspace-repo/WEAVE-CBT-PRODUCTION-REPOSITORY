@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import typer
@@ -94,6 +95,29 @@ def _container_state(stack) -> str:
         return "unknown"
 
 
+def _public_url(stack, *, attempts: int = 1) -> str | None:
+    """Read the agent's local tunnel API without exposing its inspection port."""
+    for attempt in range(attempts):
+        for fetch in (["wget", "-qO-", "http://127.0.0.1:4040/api/tunnels"],
+                      ["curl", "-fsS", "http://127.0.0.1:4040/api/tunnels"]):
+            try:
+                result = _compose(stack, ["exec", "-T", "ngrok", *fetch])
+                payload = json.loads(result.stdout)
+                urls = [
+                    item.get("public_url") for item in payload.get("tunnels", [])
+                    if isinstance(item, dict)
+                    and isinstance(item.get("public_url"), str)
+                    and item["public_url"].startswith("https://")
+                ]
+                if urls:
+                    return urls[0]
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
+                continue
+        if attempt + 1 < attempts:
+            time.sleep(2)
+    return None
+
+
 def _read_authtoken() -> str:
     """Use Windows' native secure prompt; getpass can lose pasted console input."""
     if os.name != "nt":
@@ -161,6 +185,11 @@ def ngrok_enable(yes: bool = typer.Option(False, "--yes")) -> None:
         state["remote_enabled"] = True
         save(stack.installation.data_directory, state)
         success("Ngrok container started; public access requested.")
+        public_url = _public_url(stack, attempts=10)
+        if public_url:
+            info("Public CBT URL: " + public_url)
+        else:
+            warning("Ngrok public URL is not yet available; check tunnel logs and status.")
         warning("Verify public endpoint, login, redirects and access controls before an exam.")
     except Exception as exc:
         error(str(exc))
@@ -195,6 +224,7 @@ def ngrok_status() -> None:
             "enabled": state["remote_enabled"],
             "container": _container_state(stack),
             "upstream": "http://nginx:8080",
+            "public_url": _public_url(stack) if _container_state(stack) == "running" else None,
             "public_connectivity_verified": False,
         }, indent=2))
     except Exception as exc:
