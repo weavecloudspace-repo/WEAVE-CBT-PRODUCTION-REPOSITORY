@@ -461,37 +461,23 @@ def _windows_listening_ports(address: str) -> set[int]:
         raise LanError("Windows returned invalid TCP listener information.") from exc
 
 
-def _mirrored_firewall_check() -> None:
-    """Read-only Windows firewall inspection; never widen inbound access."""
-    script = (
-        "$wslId = '{40E0AC32-46A5-43A1-A68E-17B7C1D4C7D1}'; "
-        "$profiles = @(Get-NetConnectionProfile -ErrorAction SilentlyContinue | "
-        "Select-Object InterfaceAlias,NetworkCategory); "
-        "$hyperv = $null; "
-        "if (Get-Command Get-NetFirewallHyperVVMSetting -ErrorAction SilentlyContinue) { "
-        "$hyperv = Get-NetFirewallHyperVVMSetting -PolicyStore ActiveStore "
-        "-Name $wslId -ErrorAction SilentlyContinue | "
-        "Select-Object Enabled,DefaultInboundAction,AllowHostPolicyMerge }; "
-        "[Console]::Out.Write((@{profiles=$profiles;hyperv=$hyperv} | "
-        "ConvertTo-Json -Depth 5 -Compress))"
-    )
+def _mirrored_firewall_check(state: dict) -> bool:
+    """Read-only validation of both WEAVE-owned Windows and WSL firewall rules."""
+    from weave_cli.commands import network_mirrored
     try:
-        result = json.loads(_powershell(script, context="Inspect WSL mirrored firewall"))
-    except (LanError, ValueError, OSError) as exc:
-        warning("Could not inspect mirrored-mode firewall policy: " + str(exc))
-        return
-    profiles = result.get("profiles") or []
-    if isinstance(profiles, dict):
-        profiles = [profiles]
-    if any(p.get("NetworkCategory") == "Public" for p in profiles):
-        warning("Windows has a Public network profile; check the school interface profile.")
-    hv = result.get("hyperv")
-    if hv is None:
-        warning("WSL Hyper-V firewall policy unavailable; verify inbound access from a client.")
-    elif str(hv.get("DefaultInboundAction", "")).lower() == "block":
-        warning("WSL Hyper-V firewall defaults to blocking inbound connections; explicit scoped rules may be required.")
-    else:
-        success("WSL Hyper-V firewall policy was inspected (client reachability still needs testing).")
+        result = network_mirrored.verify(state["address"], state["subnet"])
+        if not result["windows"] or not result["hyperv"]:
+            error("Mirrored Windows or WSL Hyper-V firewall rule is missing; run weave start as Administrator.")
+            return False
+        if result["legacy_hyperv"]:
+            error("Legacy WSL Hyper-V rule permits an unrestricted remote range; run weave start as Administrator.")
+            return False
+        success("Mirrored Windows and WSL Hyper-V firewall rules have the approved school subnet scope.")
+        return True
+    except (LanError, OSError, ValueError) as exc:
+        error("Mirrored firewall validation failed: " + str(exc))
+        return False
+
 
 
 def _ip_helper_status() -> str:
@@ -607,6 +593,19 @@ def network_refresh(
             return
         if not stack.platform.is_admin():
             raise LanError("Administrator permissions are required.")
+        from weave_cli.networking.state import load_or_import
+        state = load_or_import(data, runtime_type="wsl2")
+        if state["transport"] == "mirrored":
+            from weave_cli.commands import network_mirrored
+            network_mirrored.configure(stack, state)
+            for port in _expected_ports(data):
+                if not _tcp_open(state["address"], port):
+                    raise LanError(
+                        f"Mirrored school IP {state['address']}:{port} is unreachable. "
+                        "Inspect Docker/NGINX, DNS and student-device connectivity."
+                    )
+            success("Mirrored Windows/Hyper-V firewall rules are reconciled and school IP accepts TCP.")
+            return
         if not configure(data, refresh=True):
             warning("No school network mapping is configured.")
             return
@@ -699,6 +698,10 @@ def network_remove(
             raise LanError("Administrator permissions are required.")
         if not yes and not typer.confirm("Remove WEAVE school LAN access? Student connections will stop.", default=False):
             return
+        from weave_cli.networking.state import load_or_import
+        policy = load_or_import(stack.installation.data_directory, runtime_type="wsl2")
+        if policy["transport"] == "mirrored":
+            raise LanError("Mirrored firewall rules are managed automatically. Switch to NAT in maintenance mode or uninstall to remove them.")
         if configure(stack.installation.data_directory, remove=True):
             success("WEAVE-owned LAN access removed.")
         else:
@@ -726,91 +729,101 @@ def network_doctor() -> None:
             stack = get_stack()
             data = stack.installation.data_directory
             ports = _expected_ports(data)
+            mode = None
+            if stack.installation.runtime_type == "wsl2":
+                from weave_cli.networking.state import load_or_import
+                policy = load_or_import(data, runtime_type="wsl2")
+                mode = policy["transport"]
             for port in ports:
                 if _tcp_open("127.0.0.1", port):
                     success(f"Localhost TCP/{port} accepts connections (HTTP contents not verified).")
                 else:
-                    error(f"Localhost TCP/{port} is unavailable; check Docker and NGINX.")
-                    failed = True
+                    if mode == "mirrored":
+                        warning(f"Localhost TCP/{port} is unavailable; test the school IP separately (mirrored WSL localhost can differ).")
+                    else:
+                        error(f"Localhost TCP/{port} is unavailable; check Docker and NGINX.")
+                        failed = True
 
             if stack.installation.runtime_type == "wsl2":
-                from weave_cli.networking.state import load_or_import
-                mode = load_or_import(data, runtime_type="wsl2")["transport"]
                 if mode == "mirrored":
-                    _mirrored_firewall_check()
-                    if selected:
-                        for port in ports:
-                            if _tcp_open(selected["address"], port):
-                                success(f"Mirrored school LAN {selected['address']}:{port} accepts TCP.")
-                            else:
-                                error(f"Mirrored school LAN {selected['address']}:{port} is unreachable.")
-                                failed = True
-                    saved = None
-                else:
-                    saved = _read_state(data)
-                if not saved:
-                    warning("Windows school LAN forwarding has not been configured.")
-                else:
-                    from weave_cli.commands import lan, lan_tls
-                    address = saved["listen_address"]
-                    try:
-                        state = _ip_helper_status()
-                        if state == "Running":
-                            success("Windows IP Helper service is running.")
-                        else:
-                            error(f"Windows IP Helper is {state}; manual repair may be needed.")
-                            failed = True
-                    except LanError as exc:
-                        error(str(exc))
+                    if not _mirrored_firewall_check(policy):
                         failed = True
-
-                    if not lan._firewall_exists():
-                        error("The WEAVE-owned HTTP Windows Firewall rule is missing.")
+                    address = policy.get("address")
+                    if not address:
+                        error("Mirrored mode has no approved school IP; configure weave network prefer.")
                         failed = True
                     else:
-                        lan._verify_firewall(address, saved["client_subnet"])
-                        success("WEAVE HTTP firewall scope matches the saved school network.")
-
-                    for port in ports:
-                        destination = (
-                            lan._mapped_destination(address) if port == 80
-                            else lan_tls._destination(address)
-                        )
-                        if destination != f"{saved['wsl_address']}/{port}":
-                            error(
-                                f"Windows TCP/{port} portproxy does not match the saved WSL "
-                                "destination; run 'weave network refresh'."
-                            )
-                            failed = True
-                        if port == 443:
-                            if not (data / "tls-lan.json").is_file():
-                                error("HTTPS activation exists but the WEAVE TCP/443 forwarding record is missing.")
-                                failed = True
-                            elif not lan_tls._firewall_exists():
-                                error("The WEAVE-owned HTTPS Windows Firewall rule is missing.")
-                                failed = True
+                        for port in ports:
+                            if _tcp_open(address, port):
+                                success(f"Mirrored school LAN {address}:{port} accepts TCP.")
                             else:
-                                lan_tls._verify_firewall(address, saved["client_subnet"])
-                                success("WEAVE HTTPS firewall scope matches the school network.")
+                                error(f"Mirrored school LAN {address}:{port} is unreachable.")
+                                failed = True
+                else:
+                    saved = _read_state(data)
+                    if not saved:
+                        warning("Windows school LAN forwarding has not been configured.")
+                    else:
+                        from weave_cli.commands import lan, lan_tls
+                        address = saved["listen_address"]
+                        try:
+                            state = _ip_helper_status()
+                            if state == "Running":
+                                success("Windows IP Helper service is running.")
+                            else:
+                                error(f"Windows IP Helper is {state}; manual repair may be needed.")
+                                failed = True
+                        except LanError as exc:
+                            error(str(exc))
+                            failed = True
 
-                    listeners = _windows_listening_ports(address)
-                    for port in ports:
-                        if port not in listeners:
-                            error(
-                                f"TCP/{port} has no active Windows listener at {address}. "
-                                "If the WSL backend is reachable, run 'weave network refresh --repair' as Administrator."
+                        if not lan._firewall_exists():
+                            error("The WEAVE-owned HTTP Windows Firewall rule is missing.")
+                            failed = True
+                        else:
+                            lan._verify_firewall(address, saved["client_subnet"])
+                            success("WEAVE HTTP firewall scope matches the saved school network.")
+
+                        for port in ports:
+                            destination = (
+                                lan._mapped_destination(address) if port == 80
+                                else lan_tls._destination(address)
                             )
-                            failed = True
-                        if _tcp_open(address, port):
-                            success(f"Windows school LAN {address}:{port} accepts TCP connections.")
-                        else:
-                            error(f"Windows school LAN {address}:{port} refuses TCP connections.")
-                            failed = True
-                        if _tcp_open(saved["wsl_address"], port):
-                            success(f"WSL backend {saved['wsl_address']}:{port} accepts TCP connections.")
-                        else:
-                            error(f"WSL backend {saved['wsl_address']}:{port} is unreachable; inspect NGINX/Docker.")
-                            failed = True
+                            if destination != f"{saved['wsl_address']}/{port}":
+                                error(
+                                    f"Windows TCP/{port} portproxy does not match the saved WSL "
+                                    "destination; run 'weave network refresh'."
+                                )
+                                failed = True
+                            if port == 443:
+                                if not (data / "tls-lan.json").is_file():
+                                    error("HTTPS activation exists but the WEAVE TCP/443 forwarding record is missing.")
+                                    failed = True
+                                elif not lan_tls._firewall_exists():
+                                    error("The WEAVE-owned HTTPS Windows Firewall rule is missing.")
+                                    failed = True
+                                else:
+                                    lan_tls._verify_firewall(address, saved["client_subnet"])
+                                    success("WEAVE HTTPS firewall scope matches the school network.")
+
+                        listeners = _windows_listening_ports(address)
+                        for port in ports:
+                            if port not in listeners:
+                                error(
+                                    f"TCP/{port} has no active Windows listener at {address}. "
+                                    "If the WSL backend is reachable, run 'weave network refresh --repair' as Administrator."
+                                )
+                                failed = True
+                            if _tcp_open(address, port):
+                                success(f"Windows school LAN {address}:{port} accepts TCP connections.")
+                            else:
+                                error(f"Windows school LAN {address}:{port} refuses TCP connections.")
+                                failed = True
+                            if _tcp_open(saved["wsl_address"], port):
+                                success(f"WSL backend {saved['wsl_address']}:{port} accepts TCP connections.")
+                            else:
+                                error(f"WSL backend {saved['wsl_address']}:{port} is unreachable; inspect NGINX/Docker.")
+                                failed = True
             elif selected:
                 address = selected["address"]
                 for port in ports:
