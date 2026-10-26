@@ -205,5 +205,64 @@ class MirroredTlsTests(unittest.TestCase):
             nat.assert_not_called()
 
 
+    def test_mirrored_network_url_returns_student_https_without_nat_mapping(self):
+        from typer.testing import CliRunner
+        from weave_cli.main import app
+        from weave_cli.commands import network
+        with tempfile.TemporaryDirectory() as folder:
+            data = Path(folder)
+            stack = make_stack(data)
+            with (
+                patch.object(network, "get_stack", return_value=stack),
+                patch.object(network, "_read_state") as nat,
+                patch.object(network, "_https_hostname", return_value=HOSTNAME),
+            ):
+                result = CliRunner().invoke(app, ["network", "url", "--json"])
+            self.assertEqual(result.exit_code, 0, result.output)
+            payload = json.loads(result.output)
+            self.assertEqual(payload["address"], ADDRESS)
+            self.assertEqual(payload["url"], "https://" + HOSTNAME + "/student")
+            nat.assert_not_called()
+
+    def test_mirrored_network_status_displays_approved_ip_without_nat_mapping(self):
+        from typer.testing import CliRunner
+        from weave_cli.main import app
+        from weave_cli.commands import network
+        with tempfile.TemporaryDirectory() as folder:
+            data = Path(folder)
+            stack = make_stack(data)
+            with (
+                patch.object(network, "get_stack", return_value=stack),
+                patch.object(network, "inventory", return_value=[]),
+                patch.object(network, "_read_state") as nat,
+            ):
+                result = CliRunner().invoke(app, ["network", "status", "--json"])
+            self.assertEqual(result.exit_code, 0, result.output)
+            payload = json.loads(result.output)
+            self.assertEqual(payload["transport"], "mirrored")
+            self.assertEqual(payload["school_network"]["listen_address"], ADDRESS)
+            self.assertEqual(payload["school_network"]["client_subnet"], SUBNET)
+            nat.assert_not_called()
+
+    def test_mirrored_network_url_rejects_unapproved_interface(self):
+        from typer.testing import CliRunner
+        from weave_cli.main import app
+        from weave_cli.commands import network
+        with tempfile.TemporaryDirectory() as folder:
+            data = Path(folder)
+            stack = make_stack(data)
+            policy = state.load(data)
+            policy["restore_private"] = False
+            state.save(data, policy)
+            with (
+                patch.object(network, "get_stack", return_value=stack),
+                patch.object(network, "_read_state") as nat,
+            ):
+                result = CliRunner().invoke(app, ["network", "url", "--json"])
+            self.assertNotEqual(result.exit_code, 0)
+            self.assertIn("prefer set", result.output)
+            nat.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
