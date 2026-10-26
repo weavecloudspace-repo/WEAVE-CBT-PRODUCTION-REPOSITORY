@@ -43,6 +43,17 @@ def make_stack(data: Path, transport: str = "mirrored"):
 
 
 class MirroredTlsTests(unittest.TestCase):
+    def setUp(self):
+        # GitHub Windows test runners use a legacy stdout encoding; mock only
+        # presentation so the tests exercise TLS behavior, not console glyphs.
+        for name in ("banner", "info", "success"):
+            active = patch.object(tls, name)
+            active.start()
+            self.addCleanup(active.stop)
+        failed = patch.object(tls, "fail", side_effect=typer.Exit(code=1))
+        failed.start()
+        self.addCleanup(failed.stop)
+
     def test_first_tls_issuance_uses_mirrored_firewall_without_nat_lan_or_portproxy(self):
         with tempfile.TemporaryDirectory() as folder:
             data = Path(folder)
