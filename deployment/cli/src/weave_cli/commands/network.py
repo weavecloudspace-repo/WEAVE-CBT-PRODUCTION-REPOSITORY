@@ -269,10 +269,22 @@ def network_url(
     try:
         stack = get_stack()
         if stack.installation.runtime_type == "wsl2":
-            saved = _read_state(stack.installation.data_directory)
-            if not saved:
-                raise LanError("Set up the school network first: weave network setup.")
-            address = saved["listen_address"]
+            from weave_cli.networking.state import load
+            from weave_cli.commands.lan import _private_address, _private_subnet
+            policy = load(stack.installation.data_directory)
+            if policy and policy["transport"] == "mirrored":
+                if not (policy.get("restore_private") and policy.get("interface_guid")
+                        and policy.get("interface_name")):
+                    raise LanError(
+                        "Approve the mirrored school interface with 'weave network prefer set' first."
+                    )
+                address = _private_address(policy["address"])
+                _private_subnet(policy["subnet"], address)
+            else:
+                saved = _read_state(stack.installation.data_directory)
+                if not saved:
+                    raise LanError("Set up the school network first: weave network setup.")
+                address = saved["listen_address"]
         else:
             selected = recommend(inventory())
             if selected:
@@ -312,19 +324,38 @@ def network_status(
         selected = recommend(adapters)
         try:
             stack = get_stack()
-            mapping = _read_state(stack.installation.data_directory) if stack.installation.runtime_type == "wsl2" else None
+            mapping = None
+            transport = "native" if stack.installation.runtime_type != "wsl2" else "nat"
+            if stack.installation.runtime_type == "wsl2":
+                from weave_cli.networking.state import load
+                policy = load(stack.installation.data_directory)
+                if policy and policy["transport"] == "mirrored":
+                    transport = "mirrored"
+                    mapping = {
+                        "listen_address": policy["address"],
+                        "client_subnet": policy["subnet"],
+                        "interface_name": policy["interface_name"],
+                    }
+                else:
+                    mapping = _read_state(stack.installation.data_directory)
             tls_active = (stack.installation.data_directory / "tls.enabled").is_file()
         except (InstallationStateError, PlatformError, OSError):
             mapping, tls_active = None, False
         snapshot = {"interfaces": adapters, "recommended": selected,
-                    "school_network": mapping, "tls_enabled": tls_active}
+                    "school_network": mapping, "transport": transport,
+                    "tls_enabled": tls_active}
         if json_output:
             typer.echo(json.dumps(snapshot, separators=(",", ":")))
             return
         banner("School network")
         _display(adapters)
         if mapping:
-            info(f"Saved school listener: {mapping['listen_address']} ({mapping['client_subnet']})")
+            if transport == "mirrored":
+                info(f"Approved mirrored school IP: {mapping['listen_address']} ({mapping['client_subnet']})")
+            else:
+                info(f"Saved school listener: {mapping['listen_address']} ({mapping['client_subnet']})")
+        elif transport == "mirrored":
+            warning("Approved mirrored school interface is missing.")
         else:
             warning("School forwarding is not configured on Windows, or not required on Linux.")
         info("HTTPS activation: " + ("configured" if tls_active else "not configured"))
