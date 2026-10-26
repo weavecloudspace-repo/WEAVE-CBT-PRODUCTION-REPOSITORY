@@ -171,6 +171,14 @@ def _configuration(token: str, domain: str | None) -> str:
     return content
 
 
+def _ensure_tunnel_config(stack) -> None:
+    """Migrate old token-only agent configuration on first startup."""
+    token, domain = _credentials(stack)
+    path = _config(stack)
+    if "tunnels:" not in path.read_text(encoding="utf-8"):
+        _secure_file(path, _configuration(token, domain))
+
+
 def _staff(url: str | None) -> str | None:
     return url.rstrip("/") + "/staff" if url else None
 
@@ -232,6 +240,7 @@ def ngrok_enable(yes: bool = typer.Option(False, "--yes")) -> None:
         if not stack.runtime.docker_engine_running():
             raise NgrokError("Start WEAVE Docker first.")
         from weave_cli.networking.deployment import apply
+        _ensure_tunnel_config(stack)
         apply(stack)  # New manager upgrades old installed Compose on first use.
         _compose(stack, ["up", "-d", "--no-deps", "--force-recreate", "ngrok"])
         if _container_state(stack) != "running":
@@ -329,6 +338,7 @@ def reconcile(stack) -> None:
     if _policy(stack)["remote_enabled"]:
         if not _config(stack).is_file():
             raise NgrokError("Ngrok enabled but saved credentials are missing.")
+        _ensure_tunnel_config(stack)
         if _container_state(stack) != "running":
             _compose(stack, ["up", "-d", "--no-deps", "ngrok"])
 
