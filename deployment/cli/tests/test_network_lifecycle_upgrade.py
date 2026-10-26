@@ -1,5 +1,6 @@
 """Regression tests for the network update bootstrap and opt-in public tunnel."""
 import json
+import base64
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,7 +11,7 @@ import typer
 
 from weave_cli.networking import state
 from weave_cli.networking import deployment
-from weave_cli.commands import network_ngrok
+from weave_cli.commands import network_ngrok, network_mode
 
 
 class PolicyMigrationTests(unittest.TestCase):
@@ -101,6 +102,57 @@ class DeploymentUpgradeTests(unittest.TestCase):
                     "old:" + relative,
                 )
             self.assertFalse((stack.installation.data_directory / deployment.JOURNAL).exists())
+
+
+class MirroredJournalRecoveryTests(unittest.TestCase):
+    def _journal(self, directory, original, existed=True):
+        owner = directory / network_mode.OWNER
+        owner.write_text(json.dumps({
+            "target": "mirrored",
+            "original": base64.b64encode(original).decode("ascii"),
+            "original_exists": existed,
+            "legacy_nat": True,
+            "legacy_https": False,
+        }), encoding="utf-8")
+        return owner
+
+    def test_retries_when_original_config_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            original = b"[wsl2]\\nnetworkingMode=nat\\n"
+            owner = self._journal(directory, original)
+            self.assertTrue(network_mode._recover_unstarted_mirror(
+                owner, json.loads(owner.read_text()), original, {"transport": "nat"}))
+            self.assertFalse(owner.exists())
+
+    def test_retries_when_original_config_did_not_exist(self):
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            owner = self._journal(directory, b"", existed=False)
+            self.assertTrue(network_mode._recover_unstarted_mirror(
+                owner, json.loads(owner.read_text()), None, {"transport": "nat"}))
+            self.assertFalse(owner.exists())
+
+    def test_refuses_changed_config_or_completed_policy(self):
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            owner = self._journal(directory, b"original")
+            record = json.loads(owner.read_text())
+            self.assertFalse(network_mode._recover_unstarted_mirror(
+                owner, record, b"changed", {"transport": "nat"}))
+            self.assertFalse(network_mode._recover_unstarted_mirror(
+                owner, record, b"original", {"transport": "mirrored"}))
+            self.assertTrue(owner.exists())
+
+    def test_refuses_corrupt_backup(self):
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            owner = self._journal(directory, b"original")
+            record = json.loads(owner.read_text())
+            record["original"] = "not-base64!!"
+            self.assertFalse(network_mode._recover_unstarted_mirror(
+                owner, record, b"original", {"transport": "nat"}))
+            self.assertTrue(owner.exists())
 
 
 class NgrokOptInTests(unittest.TestCase):
