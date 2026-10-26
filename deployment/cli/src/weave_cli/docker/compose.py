@@ -363,6 +363,13 @@ psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
 
         return self._pull_with_retry(["nginx"])
 
+    def pull_optional_ngrok_image(self) -> CommandResult:
+        """Cache optional ngrok without enabling the remote-access profile."""
+        return self._run_compose_command(
+            command=["--profile", "remote-access", "pull", "ngrok"],
+            timeout=240,
+        )
+
     def logs(
         self,
         service: str | None = None,

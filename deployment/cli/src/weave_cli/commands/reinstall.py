@@ -46,6 +46,8 @@ def _archive_stale_files(install_dir: Path, data_dir: Path) -> Path | None:
     """Move only known WEAVE-owned configuration to a private backup folder."""
     targets = (
         (data_dir / "runtime.env", "runtime.env"),
+        (data_dir / "network-policy.json", "network-policy.json"),
+        (data_dir / "deployment-assets.json", "deployment-assets.json"),
         (data_dir / "tls.enabled", "tls.enabled"),
         (data_dir / "lan.json", "lan.json"),
         (data_dir / "tls-lan.json", "tls-lan.json"),

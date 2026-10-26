@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QGridLayout,
+    QInputDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -675,10 +676,33 @@ class ControlCenter(QMainWindow):
         form.addLayout(self.row(self.lan_configure, self.lan_refresh, self.lan_remove))
         form.addLayout(self.row(
             action("Trust selected network", self.trust_network),
+            action("Remember preferred interface", self.prefer_network),
             action("Configure local DNS", lambda: self.run("network", ["dns", "setup"]), "primary"),
             action("DNS status", lambda: self.run("network", ["dns", "status"])),
         ))
         body.addWidget(settings)
+
+        remote, remote_options = panel()
+        remote_options.addWidget(heading("Optional internet access (ngrok)", 17))
+        remote_options.addWidget(label(
+            "Disabled by default. A public tunnel connects only to the internal "
+            "Nginx Docker listener; local school exams never depend on ngrok.",
+            "muted", True,
+        ))
+        remote_options.addLayout(self.row(
+            action("Add ngrok credentials", self.configure_ngrok_auth),
+            action("Enable internet access", self.enable_ngrok, "primary"),
+            action("Disable internet access", self.disable_ngrok, "danger"),
+        ))
+        remote_options.addLayout(self.row(
+            action("Ngrok status", lambda: self.run("network", ["ngrok", "status"])),
+            action("View ngrok logs", lambda: self.run("network", ["ngrok", "logs"])),
+            action("WSL mode", lambda: self.run("network", ["mode", "status"])),
+            action("Plan mirrored mode", lambda: self.run(
+                "network", ["mode", "plan", "--preferred", "mirrored"]
+            )),
+        ))
+        body.addWidget(remote)
 
         certificate, tls_options = panel()
         tls_options.addWidget(heading("Secure HTTPS access", 17))
@@ -840,7 +864,14 @@ class ControlCenter(QMainWindow):
         if not self.desktop.server_installed:
             return None
         try:
-            path = Path(self.desktop.installation["data_directory"]) / "lan.json"
+            directory = Path(self.desktop.installation["data_directory"])
+            policy = directory / "network-policy.json"
+            if policy.is_file():
+                saved = json.loads(policy.read_text(encoding="utf-8"))
+                if saved.get("transport") == "mirrored" and saved.get("address") and saved.get("subnet"):
+                    return {"listen_address": saved["address"],
+                            "client_subnet": saved["subnet"], "transport": "mirrored"}
+            path = directory / "lan.json"
             obj = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(obj, dict) and obj.get("listen_address") and obj.get("client_subnet"):
                 return obj
@@ -931,7 +962,7 @@ class ControlCenter(QMainWindow):
                 "Unable to compare releases until both the server and manager are installed."
             )
         )
-        self.server_update.setEnabled(present and manager and valid_release and bool(existing) and not match and not self.busy)
+        self.server_update.setEnabled(present and manager and valid_release and bool(existing) and not self.busy)
         if not present:
             self.status = None
             self.connection.setText("NOT INSTALLED")
@@ -1094,8 +1125,8 @@ class ControlCenter(QMainWindow):
             ranges = [ipaddress.IPv4Network(x) for x in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")]
             if not any(host in parent for parent in ranges) or not any(network.subnet_of(parent) for parent in ranges):
                 raise ValueError("Choose an RFC1918 private host address and subnet.")
-            if network.prefixlen < 24 or host not in network:
-                raise ValueError("The school subnet must be /24 or narrower and include the host IP.")
+            if network.prefixlen < 20 or host not in network:
+                raise ValueError("The school subnet must be /20 or narrower and include the host IP.")
         except ValueError as exc:
             self._message("Invalid LAN scope", str(exc), error=True)
             return
@@ -1109,6 +1140,41 @@ class ControlCenter(QMainWindow):
             return
         if self.confirm("Trust school network", f"Is '{interface}' a private, school-controlled network? Windows will change it from Public to Private."):
             self.run("network", ["trust", "--interface", interface, "--yes"])
+
+    def prefer_network(self):
+        interface = self.selected_network_name()
+        if not interface:
+            self._message("Select a school network", "Detect and choose the school's Ethernet adapter.", error=True)
+            return
+        if self.confirm(
+            "Remember school interface",
+            f"Save '{interface}' as WEAVE's preferred school adapter and approve automatic "
+            "Private-profile recovery only for its verified static IP and adapter identity?",
+        ):
+            self.run("network", ["prefer", "set", "--interface", interface, "--yes"])
+
+    def configure_ngrok_auth(self):
+        if sys.platform == "win32" and not is_admin():
+            self._message("Administrator required", "Relaunch WEAVE Desktop Manager as Administrator before entering ngrok credentials.")
+            return
+        token, accepted = QInputDialog.getText(
+            self, "Ngrok agent authentication", "Paste ngrok agent authtoken:",
+            QLineEdit.Password,
+        )
+        if accepted and token.strip():
+            self._pending_ngrok_token = token.strip()
+            self.run("network", ["ngrok", "auth", "--stdin"])
+
+    def enable_ngrok(self):
+        if self.confirm("Enable public CBT access",
+                        "Make this WEAVE CBT server accessible from the public internet? "
+                        "Only enable after verifying student login and application host security."):
+            self.run("network", ["ngrok", "enable", "--yes"])
+
+    def disable_ngrok(self):
+        if self.confirm("Disable internet access",
+                        "Stop WEAVE's ngrok tunnel? Local school exams will continue."):
+            self.run("network", ["ngrok", "disable", "--yes"])
 
     def selected_network_name(self):
         return self.network_selector.currentData() or ""
@@ -1197,12 +1263,18 @@ class ControlCenter(QMainWindow):
         # values are independently validated again by the CLI.
         if command == "network":
             simple = (["status", "--json"], ["doctor"], ["url", "--json"], ["refresh"],
-                      ["remove", "--yes"], ["dns", "status"], ["dns", "setup"])
+                      ["remove", "--yes"], ["dns", "status"], ["dns", "setup"],
+                      ["ngrok", "status"], ["ngrok", "logs"],
+                      ["ngrok", "auth", "--stdin"], ["ngrok", "enable", "--yes"],
+                      ["ngrok", "disable", "--yes"], ["mode", "status"],
+                      ["mode", "plan", "--preferred", "mirrored"])
             manual = (len(args) == 6 and args[0:2] == ["setup", "--listen-address"]
                       and args[3] == "--client-subnet" and args[5] == "--yes")
             trust = (len(args) == 4 and args[0:2] == ["trust", "--interface"]
                      and args[3] == "--yes")
-            if args not in simple and not manual and not trust:
+            prefer = (len(args) == 5 and args[:3] == ["prefer", "set", "--interface"]
+                      and args[4] == "--yes")
+            if args not in simple and not manual and not trust and not prefer:
                 return
         if command == "logs":
             allowed = [[], *[[s] for s in SERVICES]]
@@ -1243,7 +1315,10 @@ class ControlCenter(QMainWindow):
         if command == "self-update" and args == ["--yes"] and sys.platform == "win32":
             args.extend(["--manager-pid", str(os.getpid())])
         privileged = (command in MUTATIONS or
-                      (command == "network" and (args[0] in {"setup", "trust", "refresh", "remove"} or args[:2] == ["dns", "setup"]
+                      (command == "network" and (args[0] in {"setup", "trust", "refresh", "remove"} or
+                                                  args[:2] in (["prefer", "set"], ["ngrok", "auth"],
+                                                               ["ngrok", "enable"], ["ngrok", "disable"]) or
+                                                  args[:2] == ["dns", "setup"]
                           or (sys.platform.startswith("linux") and args[:2] == ["dns", "status"]))) or
                       (command == "self-update" and args[0:1] == ["--yes"]) or (sys.platform.startswith("linux") and command in {"doctor", "status", "logs"}))
         if privileged and not is_admin() and sys.platform == "win32":
@@ -1287,7 +1362,14 @@ class ControlCenter(QMainWindow):
         self.process.setProcessEnvironment(cli_qprocess_environment())
         self.process.start()
         if not self.process.waitForStarted(2500):
+            self._pending_ngrok_token = None
             self.finished(1, QProcess.CrashExit)
+        elif command == "network" and args == ["ngrok", "auth", "--stdin"]:
+            secret = getattr(self, "_pending_ngrok_token", None)
+            self._pending_ngrok_token = None
+            if secret:
+                self.process.write((secret + "\n").encode("utf-8"))
+                self.process.closeWriteChannel()
 
     def consume(self):
         data = bytes(self.process.readAllStandardOutput()).decode("utf-8", "replace")

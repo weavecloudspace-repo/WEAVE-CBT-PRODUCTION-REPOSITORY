@@ -118,6 +118,18 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # Bundled with every installation; never starts without explicit opt-in.
+  ngrok:
+    image: ngrok/ngrok:3-alpine
+    profiles: ["remote-access"]
+    command: ["http", "http://nginx:8080", "--config", "/etc/ngrok/ngrok.yml"]
+    volumes:
+      - ./ngrok/ngrok.yml:/etc/ngrok/ngrok.yml:ro
+    depends_on:
+      nginx:
+        condition: service_started
+    restart: unless-stopped
+
   certbot-renew:
     image: certbot/certbot:v4.2.0
     profiles: ["tls"]

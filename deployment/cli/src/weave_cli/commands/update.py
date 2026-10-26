@@ -19,6 +19,7 @@ from weave_cli.commands._shared import (
     warning,
 )
 from weave_cli.commands.install import _verify_started_stack, _assets_root, _read_release_manifest
+from weave_cli.networking.deployment import apply as upgrade_deployment, DeploymentUpgradeError
 from weave_cli.commands.update_recovery import (
     UpdateRecovery,
     guard_pending_update,
@@ -141,6 +142,9 @@ def update(
         if not stack.runtime.docker_engine_running():
             raise RuntimeError("Docker Engine is not running. Run 'weave start' first.")
 
+        # An image-only equality check must never suppress first-time
+        # deployment/Nginx/network asset upgrades from the newer CLI.
+        upgrade_deployment(stack)
         data_dir = stack.installation.data_directory
         env_file = data_dir / "runtime.env"
         original = env_file.read_bytes()
@@ -230,7 +234,7 @@ def update(
             "A matching pre-update PostgreSQL snapshot is retained for 'weave rollback'. "
             "Rolling back later discards records written since this update."
         )
-    except (*COMMAND_ERRORS, ValueError, RuntimeError, UnicodeError, PermissionError) as exc:
+    except (*COMMAND_ERRORS, ValueError, RuntimeError, UnicodeError, PermissionError, DeploymentUpgradeError) as exc:
         error(str(exc))
         raise typer.Exit(code=1) from exc
 
