@@ -186,5 +186,73 @@ class MirroredFirewallTests(unittest.TestCase):
             self.assertTrue((data / network_mode.OWNER).exists())
 
 
+    def test_orphan_wrong_guid_is_removed_only_after_correct_rule_verified(self):
+        wrong = {
+            "Direction": "Inbound", "Action": "Allow", "Enabled": "True",
+            "Protocol": "TCP", "Creator": mirror.LEGACY_WRONG_GUID,
+            "Ports": ["80"], "Remote": [SUBNET],
+        }
+        old = {"windows": windows(), "hyperv": hyperv(), "orphan": wrong}
+        ready = {"windows": windows(), "hyperv": hyperv(), "orphan": None}
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(mirror, "_approved", return_value=(IP, SUBNET, "Ethernet")), \
+             patch.object(mirror, "_snapshot", side_effect=[old, old, ready]), \
+             patch.object(mirror.lan, "_powershell") as run:
+            mirror.configure(stack(Path(tmp)), approved())
+            run.assert_called_once()
+            self.assertIn("Remove-NetFirewallHyperVRule", run.call_args.args[0])
+            self.assertIn(mirror.LEGACY_WRONG_RULE, run.call_args.args[0])
+
+    def test_wrong_guid_orphan_with_unexpected_scope_is_not_removed(self):
+        wrong = {
+            "Direction": "Inbound", "Action": "Allow", "Enabled": "True",
+            "Protocol": "TCP", "Creator": mirror.LEGACY_WRONG_GUID,
+            "Ports": ["80"], "Remote": ["Any"],
+        }
+        with patch.object(mirror, "_snapshot", return_value={
+            "windows": windows(), "hyperv": hyperv(), "orphan": wrong,
+        }), patch.object(mirror.lan, "_powershell") as run:
+            with self.assertRaisesRegex(mirror.MirroredFirewallError, "legacy"):
+                mirror.remove(IP, SUBNET)
+            run.assert_not_called()
+
+    def test_mirrored_purge_preflights_before_removing_firewall(self):
+        from weave_cli.commands import purge_cleanup
+        from weave_cli.networking import state
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            policy = state.load_or_import(directory, runtime_type="wsl2")
+            policy.update(approved())
+            state.save(directory, policy)
+            st = stack(directory)
+            with patch.object(purge_cleanup.sys, "platform", "win32"), \
+                 patch.object(purge_cleanup.lan, "_read_state", return_value=None), \
+                 patch.object(purge_cleanup, "_windows_unowned_resources"), \
+                 patch.object(mirror, "verify") as verified, \
+                 patch.object(network_mode, "restore_owned_wsl_config", return_value=True) as restore:
+                snapshot = purge_cleanup.preflight(st)
+            self.assertTrue(snapshot.mirrored)
+            verified.assert_called_once_with(IP, SUBNET)
+            restore.assert_called_once_with(st, check_only=True)
+
+            with patch.object(purge_cleanup.sys, "platform", "win32"), \
+                 patch("weave_cli.commands.network_ngrok.remove"), \
+                 patch.object(purge_cleanup, "remove_if_configured"), \
+                 patch.object(mirror, "remove") as remove, \
+                 patch.object(network_mode, "restore_owned_wsl_config") as restore:
+                purge_cleanup.cleanup_host(st)
+            remove.assert_called_once_with(IP, SUBNET)
+            restore.assert_called_once_with(st)
+
+            with patch.object(purge_cleanup.sys, "platform", "win32"), \
+                 patch.object(purge_cleanup.lan, "_firewall_exists", return_value=False), \
+                 patch("weave_cli.commands.lan_tls._firewall_exists", return_value=False), \
+                 patch("weave_cli.commands.network_dns._service_exists", return_value=False), \
+                 patch.object(mirror, "_snapshot", return_value={
+                     "windows": None, "hyperv": None, "orphan": None,
+                 }):
+                purge_cleanup.verify_host(st, snapshot)
+
+
 if __name__ == "__main__":
     unittest.main()
