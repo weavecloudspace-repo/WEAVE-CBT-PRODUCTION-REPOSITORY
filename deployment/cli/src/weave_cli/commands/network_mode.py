@@ -17,7 +17,7 @@ from pathlib import Path
 import typer
 
 from weave_cli.commands._shared import get_stack, error, success, info, warning
-from weave_cli.commands import lan, lan_tls
+from weave_cli.commands import lan, lan_tls, network_mirrored
 from weave_cli.networking.state import load_or_import, save
 from weave_cli.networking.deployment import _atomic_bytes, _atomic_json
 
@@ -85,35 +85,6 @@ def _socket_open(ip: str, port: int) -> bool:
     except OSError:
         return False
 
-
-def _mirror_rules(ip: str, subnet: str, *, remove: bool = False) -> None:
-    ipq, netq = lan._private_address(ip), lan._private_subnet(subnet, ip)
-    if remove:
-        for rule in (WINDOWS_RULE,):
-            lan._powershell(
-                f"Get-NetFirewallRule -Name '{rule}' -ErrorAction SilentlyContinue | Remove-NetFirewallRule",
-                context="Remove WEAVE mirrored firewall",
-            )
-        lan._powershell(
-            f"Get-NetFirewallHyperVRule -Name '{HYPERV_RULE}' -ErrorAction SilentlyContinue | Remove-NetFirewallHyperVRule",
-            context="Remove WEAVE Hyper-V firewall",
-        )
-    else:
-        lan._powershell(
-            "$ErrorActionPreference='Stop';"
-            f"if(Get-NetFirewallRule -Name '{WINDOWS_RULE}' -ErrorAction SilentlyContinue) {{ throw 'Mirrored firewall rule already exists' }};"
-            f"New-NetFirewallRule -Name '{WINDOWS_RULE}' -DisplayName '{WINDOWS_RULE}' "
-            f"-Direction Inbound -Action Allow -Protocol TCP -LocalPort 80,443 "
-            f"-LocalAddress '{ipq}' -RemoteAddress '{netq}' -Profile Private | Out-Null",
-            context="Configure scoped mirrored LAN firewall",
-        )
-        lan._powershell(
-            "$ErrorActionPreference='Stop';"
-            f"if(Get-NetFirewallHyperVRule -Name '{HYPERV_RULE}' -ErrorAction SilentlyContinue) {{ throw 'Hyper-V rule already exists' }};"
-            f"New-NetFirewallHyperVRule -Name '{HYPERV_RULE}' -DisplayName '{HYPERV_RULE}' "
-            f"-Direction Inbound -VMCreatorId '{GUID}' -Protocol TCP -LocalPorts 80,443 | Out-Null",
-            context="Configure scoped WSL Hyper-V ports",
-        )
 
 
 def _recover_unstarted_mirror(owner: Path, previous_owner: dict, current: bytes | None, state: dict) -> bool:
@@ -259,20 +230,22 @@ def mode_set(
             })
         try:
             if target == "mirrored":
+                network_mirrored._approved(stack, state)
                 if old_nat:
                     lan.configure(stack.installation.data_directory, remove=True)
-                _mirror_rules(state["address"], state["subnet"])
+                network_mirrored.configure(stack, state)
             _atomic_bytes(wslconfig, updated.encode("utf-8"))
             _restart_wsl(stack)
             if target == "nat":
-                _mirror_rules(state["address"], state["subnet"], remove=True)
+                network_mirrored.remove(state["address"], state["subnet"])
                 lan.configure(
                     stack.installation.data_directory,
                     listen_address=state["address"], client_subnet=state["subnet"],
                 )
                 if old_https or (stack.installation.data_directory / "tls.enabled").exists():
                     lan_tls.reconcile(stack.installation.data_directory)
-            if not all(_socket_open(state["address"], port) for port in (80, 443)):
+            from weave_cli.commands.network import _expected_ports
+            if not all(_socket_open(state["address"], port) for port in _expected_ports(stack.installation.data_directory)):
                 raise ModeError("School IP ports 80/443 did not pass host verification.")
             if not client_verified and not typer.confirm(
                 "Did a separate school computer successfully open the HTTPS student URL?",
@@ -292,8 +265,10 @@ def mode_set(
                 else:
                     wslconfig.unlink(missing_ok=True)
                 _restart_wsl(stack)
+                if target == "nat":
+                    network_mirrored.configure(stack, state)
                 if target == "mirrored":
-                    _mirror_rules(state["address"], state["subnet"], remove=True)
+                    network_mirrored.remove(state["address"], state["subnet"])
                     if old_nat:
                         lan.configure(
                             stack.installation.data_directory,
