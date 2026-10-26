@@ -232,7 +232,13 @@ psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \\
             down
         """
 
-        return self._run_compose_command(command=["down"], timeout=None)
+        # The opt-in ngrok tunnel lives under a separate Compose profile.
+        # Without explicitly enabling that profile, 'down' only removes core
+        # services and can leave public access running after 'weave stop'.
+        # Activating a profile for 'down' cannot start optional containers.
+        return self._run_compose_command(
+            command=["--profile", "remote-access", "down"], timeout=None
+        )
 
     def restart(
         self,
