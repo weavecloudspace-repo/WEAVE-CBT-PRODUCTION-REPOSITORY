@@ -118,6 +118,40 @@ def _restart_wsl(stack) -> None:
     stack.compose.start()
 
 
+def restore_owned_wsl_config(stack, *, check_only: bool = False) -> bool:
+    """Restore only the byte-verified .wslconfig that WEAVE changed.
+
+    Never shut down unrelated WSL distributions during uninstall; the restored
+    configuration takes effect on their next normal WSL start.
+    """
+    import base64
+    owner = stack.installation.data_directory / OWNER
+    if not owner.exists():
+        return False
+    if owner.is_symlink() or not owner.is_file():
+        raise ModeError("Unsafe WSL network ownership journal.")
+    try:
+        record = json.loads(owner.read_text(encoding="utf-8"))
+        if record.get("target") != "mirrored" or type(record.get("original_exists")) is not bool:
+            raise ValueError("Unknown ownership journal")
+        original = base64.b64decode(record["original"], validate=True)
+        previous_text = original.decode("utf-8-sig") if record["original_exists"] else ""
+        expected = edit_config(previous_text, "mirrored").encode("utf-8")
+        path = _config()
+        if path.is_symlink() or not path.is_file() or path.read_bytes() != expected:
+            raise ValueError("Global WSL config differs from WEAVE-owned mirrored change")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ModeError("Refusing to overwrite modified or unrecognized .wslconfig; manual review required.") from exc
+    if check_only:
+        return True
+    if record["original_exists"]:
+        _atomic_bytes(path, original)
+    else:
+        path.unlink()
+    owner.unlink()
+    return True
+
+
 @app.command("status")
 def mode_status() -> None:
     try:
