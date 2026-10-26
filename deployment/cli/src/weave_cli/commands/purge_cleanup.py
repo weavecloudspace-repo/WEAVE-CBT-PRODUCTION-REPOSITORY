@@ -163,7 +163,7 @@ def verify_host(stack, snapshot: HostSnapshot) -> None:
         if snapshot.mirrored:
             from weave_cli.commands import network_mirrored, network_mode
             rules = network_mirrored._snapshot()
-            if rules["windows"] is not None or rules["hyperv"] is not None:
+            if rules["windows"] is not None or rules["hyperv"] is not None or rules.get("orphan") is not None:
                 raise lan.LanError("WEAVE mirrored firewall rules remain after cleanup.")
             if (data / network_mode.OWNER).exists():
                 raise lan.LanError("WEAVE WSL networking ownership journal remains after cleanup.")
