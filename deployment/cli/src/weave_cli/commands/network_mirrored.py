@@ -114,7 +114,7 @@ def _validate_windows(rule: dict | None, ip: str, subnet: str, alias: str | None
             and rule.get("Action", "").lower() == "allow"
             and rule.get("Enabled", "").lower() == "true"
             and str(rule.get("Protocol", "")).lower() in ("tcp", "6")
-            and set(_values(rule.get("Ports"))) == set(PORTS)
+            and set(_values(rule.get("Ports"))) in ({"80"}, set(PORTS))
             and _values(rule.get("Local")) == [ip]
             and _network_equal(rule.get("Remote"), subnet)
             and bool(profiles) and profiles <= {"private", "domain"}
@@ -133,7 +133,7 @@ def _validate_hyperv(rule: dict | None, subnet: str) -> bool:
             and str(rule.get("Action", "")).lower() == "allow"
             and str(rule.get("Enabled", "")).lower() == "true"
             and str(rule.get("Protocol", "")).lower() in ("tcp", "6")
-            and set(_values(rule.get("Ports"))) == set(PORTS)):
+            and set(_values(rule.get("Ports"))) in ({"80"}, set(PORTS))):
         raise MirroredFirewallError("WEAVE Hyper-V mirrored rule was modified; refusing to overwrite it.")
     if _network_equal(rule.get("Remote"), subnet):
         return False
@@ -149,6 +149,8 @@ def verify(ip: str, subnet: str, *, alias: str | None = None) -> dict:
     snapshot = _snapshot()
     _validate_windows(snapshot["windows"], ip, subnet, alias)
     snapshot["legacy_hyperv"] = _validate_hyperv(snapshot["hyperv"], subnet)
+    snapshot["upgrade_windows_ports"] = bool(snapshot["windows"] and set(_values(snapshot["windows"]["Ports"])) != set(PORTS))
+    snapshot["upgrade_hyperv_ports"] = bool(snapshot["hyperv"] and set(_values(snapshot["hyperv"]["Ports"])) != set(PORTS))
     return snapshot
 
 
@@ -172,6 +174,19 @@ def configure(stack, state: dict) -> None:
             + "' -RemoteAddresses " + _quote(subnet) + " -ErrorAction Stop | Out-Null",
             context="Restrict legacy WEAVE Hyper-V firewall scope",
         )
+    if before["hyperv"] is not None and before["upgrade_hyperv_ports"]:
+        lan._powershell(
+            "Set-NetFirewallHyperVRule -Name '" + HYPERV_RULE
+            + "' -LocalPorts 80,443 -ErrorAction Stop | Out-Null",
+            context="Update owned WEAVE Hyper-V TCP ports",
+        )
+    if before["windows"] is not None and before["upgrade_windows_ports"]:
+        lan._powershell(
+            "Get-NetFirewallRule -Name '" + WINDOWS_RULE
+            + "' -ErrorAction Stop | Get-NetFirewallPortFilter | "
+            "Set-NetFirewallPortFilter -LocalPort 80,443 -ErrorAction Stop | Out-Null",
+            context="Update owned WEAVE Windows TCP ports",
+        )
     if before["windows"] is None:
         lan._powershell(
             "New-NetFirewallRule -Name '" + WINDOWS_RULE
@@ -183,7 +198,8 @@ def configure(stack, state: dict) -> None:
             context="Create restricted WEAVE Windows mirrored firewall rule",
         )
     after = verify(ip, subnet, alias=alias)
-    if after["windows"] is None or after["hyperv"] is None or after["legacy_hyperv"]:
+    if (after["windows"] is None or after["hyperv"] is None or after["legacy_hyperv"]
+            or after["upgrade_windows_ports"] or after["upgrade_hyperv_ports"]):
         raise MirroredFirewallError("WEAVE mirrored firewall validation failed after reconciliation.")
 
 
