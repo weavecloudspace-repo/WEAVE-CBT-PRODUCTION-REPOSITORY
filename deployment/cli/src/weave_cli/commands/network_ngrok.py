@@ -139,6 +139,62 @@ def _read_authtoken() -> str:
     return result.stdout.rstrip("\r\n")
 
 
+
+def _domain(value: str) -> str:
+    value = value.strip().lower().removeprefix("https://").rstrip("/")
+    if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", value) or not value.endswith((".ngrok-free.dev", ".ngrok-free.app", ".ngrok.app", ".ngrok.dev")) or ".." in value:
+        raise NgrokError("Enter a valid ngrok-assigned static domain without a path.")
+    return value
+
+
+def _credentials(stack) -> tuple[str, str | None]:
+    path = _config(stack)
+    if not path.is_file() or path.is_symlink():
+        raise NgrokError("Configure ngrok first: weave network ngrok auth.")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    values = {}
+    for line in lines:
+        for key in ("authtoken", "domain"):
+            if line.strip().startswith(key + ": "):
+                values[key] = json.loads(line.split(": ", 1)[1])
+    token = values.get("authtoken")
+    if not isinstance(token, str) or not _TOKEN.fullmatch(token):
+        raise NgrokError("Saved ngrok authtoken is invalid.")
+    domain = _domain(values["domain"]) if values.get("domain") else None
+    return token, domain
+
+
+def _configuration(token: str, domain: str | None) -> str:
+    content = "version: 3\\nagent:\\n  authtoken: " + json.dumps(token) + "\\ntunnels:\\n  weave:\\n    proto: http\\n    addr: http://nginx:8080\\n"
+    if domain:
+        content += "    domain: " + json.dumps(domain) + "\\n"
+    return content
+
+
+def _staff(url: str | None) -> str | None:
+    return url.rstrip("/") + "/staff" if url else None
+
+
+@app.command("domain")
+def ngrok_domain(value: str = typer.Argument(..., help="Ngrok-assigned static domain")) -> None:
+    """Update the saved domain without changing the existing authtoken."""
+    try:
+        stack = get_stack()
+        _ensure_owner(stack)
+        token, _ = _credentials(stack)
+        domain = _domain(value)
+        _secure_file(_config(stack), _configuration(token, domain))
+        success("Saved static ngrok domain: " + domain)
+        info("Staff URL: https://" + domain + "/staff")
+        if _policy(stack)["remote_enabled"] and stack.runtime.docker_engine_running():
+            from weave_cli.networking.deployment import apply
+            apply(stack)
+            _compose(stack, ["up", "-d", "--no-deps", "--force-recreate", "ngrok"])
+    except Exception as exc:
+        error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
 @app.command("auth")
 def ngrok_auth(stdin: bool = typer.Option(False, "--stdin", hidden=True)) -> None:
     """Read an authtoken via hidden input, never arguments or the Docker env."""
@@ -149,13 +205,12 @@ def ngrok_auth(stdin: bool = typer.Option(False, "--stdin", hidden=True)) -> Non
         token = (sys.stdin.readline() if stdin else _read_authtoken()).strip()
         if not _TOKEN.fullmatch(token):
             raise NgrokError("Invalid ngrok agent authtoken format.")
-        # JSON string quotes are valid YAML double-quoted scalar strings.
-        content = (
-            "version: 3\nagent:\n  authtoken: "
-            + json.dumps(token) + "\n"
-        )
+        domain = _domain(typer.prompt("Ngrok-assigned static domain")) if not stdin else (_credentials(stack)[1] if _config(stack).is_file() else None)
+        content = _configuration(token, domain)
         _secure_file(_config(stack), content)
         success("Ngrok agent credentials stored. Internet access remains disabled.")
+        if domain:
+            info("Configured staff URL: https://" + domain + "/staff")
         info("Run 'weave network ngrok enable' to expose CBT.")
     except (OSError, RuntimeError, EOFError) as exc:
         error(str(exc))
@@ -178,7 +233,7 @@ def ngrok_enable(yes: bool = typer.Option(False, "--yes")) -> None:
             raise NgrokError("Start WEAVE Docker first.")
         from weave_cli.networking.deployment import apply
         apply(stack)  # New manager upgrades old installed Compose on first use.
-        _compose(stack, ["up", "-d", "--no-deps", "ngrok"])
+        _compose(stack, ["up", "-d", "--no-deps", "--force-recreate", "ngrok"])
         if _container_state(stack) != "running":
             raise NgrokError("Ngrok container did not reach the running state.")
         state = _policy(stack)
@@ -187,7 +242,7 @@ def ngrok_enable(yes: bool = typer.Option(False, "--yes")) -> None:
         success("Ngrok container started; public access requested.")
         public_url = _public_url(stack, attempts=10)
         if public_url:
-            info("Public CBT URL: " + public_url)
+            info("Public CBT staff URL: " + _staff(public_url))
         else:
             warning("Ngrok public URL is not yet available; check tunnel logs and status.")
         warning("Verify public endpoint, login, redirects and access controls before an exam.")
@@ -224,7 +279,8 @@ def ngrok_status() -> None:
             "enabled": state["remote_enabled"],
             "container": _container_state(stack),
             "upstream": "http://nginx:8080",
-            "public_url": _public_url(stack) if _container_state(stack) == "running" else None,
+            "configured_domain": _credentials(stack)[1] if _config(stack).is_file() else None,
+            "public_url": _staff(_public_url(stack)) if _container_state(stack) == "running" else None,
             "public_connectivity_verified": False,
         }, indent=2))
     except Exception as exc:
