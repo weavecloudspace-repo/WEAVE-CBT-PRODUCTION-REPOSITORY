@@ -322,6 +322,7 @@ def network_status(
     try:
         adapters = inventory()
         selected = recommend(adapters)
+        transport = "unknown"
         try:
             stack = get_stack()
             mapping = None
