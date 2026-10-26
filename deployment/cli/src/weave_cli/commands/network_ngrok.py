@@ -165,9 +165,9 @@ def _credentials(stack) -> tuple[str, str | None]:
 
 
 def _configuration(token: str, domain: str | None) -> str:
-    content = "version: 3\\nagent:\\n  authtoken: " + json.dumps(token) + "\\ntunnels:\\n  weave:\\n    proto: http\\n    addr: http://nginx:8080\\n"
+    content = "version: 3\nagent:\n  authtoken: " + json.dumps(token) + "\ntunnels:\n  weave:\n    proto: http\n    addr: http://nginx:8080\n"
     if domain:
-        content += "    domain: " + json.dumps(domain) + "\\n"
+        content += "    domain: " + json.dumps(domain) + "\n"
     return content
 
 
