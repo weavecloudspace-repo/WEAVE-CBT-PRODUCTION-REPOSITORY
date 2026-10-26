@@ -122,7 +122,7 @@ services:
   ngrok:
     image: ngrok/ngrok:3-alpine
     profiles: ["remote-access"]
-    command: ["http", "http://nginx:8080", "--config", "/etc/ngrok/ngrok.yml"]
+    command: ["start", "weave", "--config", "/etc/ngrok/ngrok.yml"]
     volumes:
       - ./ngrok/ngrok.yml:/etc/ngrok/ngrok.yml:ro
     depends_on:
