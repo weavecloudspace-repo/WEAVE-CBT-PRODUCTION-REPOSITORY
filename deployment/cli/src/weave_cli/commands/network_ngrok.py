@@ -107,12 +107,12 @@ def _read_authtoken() -> str:
         "finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($p) }"
     )
     result = subprocess.run(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+        ["powershell.exe", "-NoProfile", "-Command", script],
         capture_output=True, text=True, timeout=120, check=False,
     )
     if result.returncode:
         raise NgrokError("Could not read ngrok authtoken securely from Windows console.")
-    return result.stdout.rstrip("\\r\\n")
+    return result.stdout.rstrip("\r\n")
 
 
 @app.command("auth")
