@@ -31,15 +31,34 @@ def tls(
             raise RuntimeError("--dry-run, --renew, and --activate cannot be combined")
         stack = get_stack()
         guard_pending_update(stack.installation.data_directory)
+        wsl_transport = None
         if stack.installation.runtime_type == "wsl2" and not (dry_run or renew):
             if not stack.platform.is_admin():
                 raise RuntimeError(
                     "Enable HTTPS from an elevated Administrator session so WEAVE "
-                    "can configure the restricted Windows TCP/443 listener."
+                    "can configure the restricted Windows TCP/443 access."
                 )
-            if not (stack.installation.data_directory / "lan.json").is_file():
+            from weave_cli.networking.state import load_or_import
+            policy = load_or_import(
+                stack.installation.data_directory, runtime_type="wsl2"
+            )
+            wsl_transport = policy["transport"]
+            if wsl_transport == "mirrored":
+                # Mirrored WSL exposes Docker ports directly; no NAT portproxy
+                # or lan.json ownership file exists or should be created.
+                # Validate the approved adapter and reconcile its scoped
+                # Windows + Hyper-V rules *before* contacting the CA.
+                from weave_cli.commands.network_mirrored import configure
+                configure(stack, policy)
+            elif wsl_transport == "nat":
+                if not (stack.installation.data_directory / "lan.json").is_file():
+                    raise RuntimeError(
+                        "Configure the trusted school LAN with 'weave lan' "
+                        "before enabling HTTPS in NAT mode."
+                    )
+            else:
                 raise RuntimeError(
-                    "Configure the trusted school LAN with 'weave lan' before enabling HTTPS."
+                    "Unsupported WSL network mode for TLS; inspect weave network mode status."
                 )
         if not stack.runtime.docker_engine_running():
             stack.platform.start_docker_engine()
@@ -97,9 +116,12 @@ def tls(
             command=["exec", "-T", "nginx", "nginx", "-s", "reload"]
         )
         if stack.installation.runtime_type == "wsl2" and not renew:
-            from weave_cli.commands.lan_tls import reconcile
+            if wsl_transport == "nat":
+                from weave_cli.commands.lan_tls import reconcile
 
-            reconcile(stack.installation.data_directory)
+                reconcile(stack.installation.data_directory)
+            # Mirrored mode already has scoped TCP/443 Windows and WSL Hyper-V
+            # rules; creating a NAT portproxy here would be incorrect.
         # A previously opted-in DNS service follows the currently activated
         # HTTPS hostname. TLS never silently changes a school's router DNS.
         from weave_cli.commands.network_dns import reconcile_if_configured
