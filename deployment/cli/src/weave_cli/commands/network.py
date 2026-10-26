@@ -461,6 +461,39 @@ def _windows_listening_ports(address: str) -> set[int]:
         raise LanError("Windows returned invalid TCP listener information.") from exc
 
 
+def _mirrored_firewall_check() -> None:
+    """Read-only Windows firewall inspection; never widen inbound access."""
+    script = (
+        "$wslId = '{40E0AC32-46A5-43A1-A68E-17B7C1D4C7D1}'; "
+        "$profiles = @(Get-NetConnectionProfile -ErrorAction SilentlyContinue | "
+        "Select-Object InterfaceAlias,NetworkCategory); "
+        "$hyperv = $null; "
+        "if (Get-Command Get-NetFirewallHyperVVMSetting -ErrorAction SilentlyContinue) { "
+        "$hyperv = Get-NetFirewallHyperVVMSetting -PolicyStore ActiveStore "
+        "-Name $wslId -ErrorAction SilentlyContinue | "
+        "Select-Object Enabled,DefaultInboundAction,AllowHostPolicyMerge }; "
+        "[Console]::Out.Write((@{profiles=$profiles;hyperv=$hyperv} | "
+        "ConvertTo-Json -Depth 5 -Compress))"
+    )
+    try:
+        result = json.loads(_powershell(script, context="Inspect WSL mirrored firewall"))
+    except (LanError, ValueError, OSError) as exc:
+        warning("Could not inspect mirrored-mode firewall policy: " + str(exc))
+        return
+    profiles = result.get("profiles") or []
+    if isinstance(profiles, dict):
+        profiles = [profiles]
+    if any(p.get("NetworkCategory") == "Public" for p in profiles):
+        warning("Windows has a Public network profile; check the school interface profile.")
+    hv = result.get("hyperv")
+    if hv is None:
+        warning("WSL Hyper-V firewall policy unavailable; verify inbound access from a client.")
+    elif str(hv.get("DefaultInboundAction", "")).lower() == "block":
+        warning("WSL Hyper-V firewall defaults to blocking inbound connections; explicit scoped rules may be required.")
+    else:
+        success("WSL Hyper-V firewall policy was inspected (client reachability still needs testing).")
+
+
 def _ip_helper_status() -> str:
     """Read-only check for Windows service responsible for portproxy listeners."""
     return _powershell(
@@ -701,7 +734,20 @@ def network_doctor() -> None:
                     failed = True
 
             if stack.installation.runtime_type == "wsl2":
-                saved = _read_state(data)
+                from weave_cli.networking.state import load_or_import
+                mode = load_or_import(data, runtime_type="wsl2")["transport"]
+                if mode == "mirrored":
+                    _mirrored_firewall_check()
+                    if selected:
+                        for port in ports:
+                            if _tcp_open(selected["address"], port):
+                                success(f"Mirrored school LAN {selected['address']}:{port} accepts TCP.")
+                            else:
+                                error(f"Mirrored school LAN {selected['address']}:{port} is unreachable.")
+                                failed = True
+                    saved = None
+                else:
+                    saved = _read_state(data)
                 if not saved:
                     warning("Windows school LAN forwarding has not been configured.")
                 else:
