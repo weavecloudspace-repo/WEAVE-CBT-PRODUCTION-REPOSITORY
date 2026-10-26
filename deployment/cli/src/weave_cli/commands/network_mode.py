@@ -116,6 +116,31 @@ def _mirror_rules(ip: str, subnet: str, *, remove: bool = False) -> None:
         )
 
 
+def _recover_unstarted_mirror(owner: Path, previous_owner: dict, current: bytes | None, state: dict) -> bool:
+    """Clear only a stale journal when the host is still byte-for-byte unchanged.
+
+    A completed/partially applied migration must go through explicit rollback;
+    never discard its original configuration backup.
+    """
+    import base64
+    if (previous_owner.get("target") != "mirrored"
+            or state["transport"] != "nat"):
+        return False
+    try:
+        original = base64.b64decode(previous_owner["original"], validate=True)
+        existed = previous_owner["original_exists"]
+        if type(existed) is not bool:
+            return False
+    except (KeyError, TypeError, ValueError):
+        return False
+    if (current is not None) != existed or (current or b"") != original:
+        return False
+    if owner.is_symlink() or not owner.is_file():
+        raise ModeError("Unsafe WSL migration ownership record.")
+    owner.unlink()
+    return True
+
+
 def _restart_wsl(stack) -> None:
     _run(["wsl.exe", "--shutdown"])
     stack.platform.start_docker_engine()
@@ -207,6 +232,12 @@ def mode_set(
         previous_owner = json.loads(owner.read_text(encoding="utf-8")) if owner.exists() else None
         old_nat = (stack.installation.data_directory / "lan.json").is_file()
         old_https = (stack.installation.data_directory / "tls-lan.json").is_file()
+        if previous_owner and target == "mirrored":
+            if _recover_unstarted_mirror(owner, previous_owner, previous, state):
+                previous_owner = None
+                warning("Recovered an unstarted mirrored migration; retrying with the original configuration.")
+            else:
+                raise ModeError("An owned mirrored WSL change is already recorded; inspect or roll back before retrying.")
         if previous_owner:
             if target != "nat" or previous_owner.get("target") != "mirrored":
                 raise ModeError("An owned mirrored WSL change is already recorded.")
