@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision = "20261027_individual_retakes"
-down_revision = "20261006_initial_schema"
+down_revision = "20261020_hybrid_allocation"
 branch_labels = None
 depends_on = None
 
