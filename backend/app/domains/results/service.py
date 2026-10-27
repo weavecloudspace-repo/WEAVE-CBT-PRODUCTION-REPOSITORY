@@ -275,12 +275,16 @@ class ResultService:
                 db, result.candidate_id, lock=True
             )
             if latest is not None and latest.id != result.attempt_id:
-                raise ExamStateError("Cannot restore a result after a replacement attempt has started")
+                raise ExamStateError(
+                    "Cannot restore a result after a replacement attempt has started"
+                )
             pending = await CandidateRepository.get_active_makeup_authorization(
                 db, result.candidate_id, lock=True
             )
             if pending is not None and pending.consumed_at is None:
-                raise ExamStateError("Revoke the pending makeup authorization before restoring this result")
+                raise ExamStateError(
+                    "Revoke the pending makeup authorization before restoring this result"
+                )
         previous_void = {
             "voided_at": result.voided_at.isoformat()
             if result.voided_at is not None

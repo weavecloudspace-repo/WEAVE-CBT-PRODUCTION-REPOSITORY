@@ -20,9 +20,12 @@ class MakeupReviewService:
         if candidate.status != CandidateStatus.ELIGIBLE:
             return candidate.status.value
         if attempt is not None and attempt.status in {
-            AttemptStatus.IN_PROGRESS, AttemptStatus.INTERRUPTED,
+            AttemptStatus.IN_PROGRESS,
+            AttemptStatus.INTERRUPTED,
         }:
-            return "writing" if attempt.status == AttemptStatus.IN_PROGRESS else "paused"
+            return (
+                "writing" if attempt.status == AttemptStatus.IN_PROGRESS else "paused"
+            )
         if (
             authorization is not None
             and authorization.revoked_at is None
@@ -120,7 +123,9 @@ class MakeupReviewService:
                     )
                     if attempt
                     else None,
-                    "percentage": str(result.percentage) if result and result.voided_at is None else None,
+                    "percentage": str(result.percentage)
+                    if result and result.voided_at is None
+                    else None,
                 }
                 for candidate, authorization, attempt, result, class_name in rows
             ],

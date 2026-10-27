@@ -53,7 +53,10 @@ class CandidateMakeupService:
                 CandidateMakeupAuthorization.candidate_id == ExamCandidate.id,
                 CandidateMakeupAuthorization.revoked_at.is_(None),
             )
-            .order_by(CandidateMakeupAuthorization.approved_at.desc(), CandidateMakeupAuthorization.id.desc())
+            .order_by(
+                CandidateMakeupAuthorization.approved_at.desc(),
+                CandidateMakeupAuthorization.id.desc(),
+            )
             .limit(1)
             .correlate(ExamCandidate)
             .scalar_subquery()

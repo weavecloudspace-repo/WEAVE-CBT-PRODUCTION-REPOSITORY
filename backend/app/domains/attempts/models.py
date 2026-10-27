@@ -116,14 +116,18 @@ class ExamAttempt(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("candidate_id", "attempt_number", name="uq_exam_attempts_candidate_number"),
+        UniqueConstraint(
+            "candidate_id", "attempt_number", name="uq_exam_attempts_candidate_number"
+        ),
         Index(
             "uq_exam_attempts_one_active_candidate",
             "candidate_id",
             unique=True,
             postgresql_where=sql_text("status IN ('in_progress', 'interrupted')"),
         ),
-        CheckConstraint("attempt_number >= 1", name="ck_exam_attempts_attempt_number_positive"),
+        CheckConstraint(
+            "attempt_number >= 1", name="ck_exam_attempts_attempt_number_positive"
+        ),
         CheckConstraint(
             "time_limit_seconds > 0", name="ck_exam_attempts_time_limit_positive"
         ),

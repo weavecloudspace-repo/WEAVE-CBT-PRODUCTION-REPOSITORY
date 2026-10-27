@@ -74,9 +74,7 @@ class MakeupReviewRepository:
                 CandidateMakeupAuthorization.__table__,
                 CandidateMakeupAuthorization.id == authorization_id,
             )
-            .outerjoin(
-                ExamAttempt.__table__, ExamAttempt.id == latest_attempt_id
-            )
+            .outerjoin(ExamAttempt.__table__, ExamAttempt.id == latest_attempt_id)
             .outerjoin(ExamResult.__table__, ExamResult.attempt_id == ExamAttempt.id)
         )
 

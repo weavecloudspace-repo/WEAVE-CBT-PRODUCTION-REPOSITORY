@@ -865,7 +865,9 @@ class CandidateServiceTests(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 AttemptRepository,
                 "get_attempt_by_candidate_id",
-                new=AsyncMock(return_value=SimpleNamespace(id=uuid4(), status="submitted")),
+                new=AsyncMock(
+                    return_value=SimpleNamespace(id=uuid4(), status="submitted")
+                ),
             ),
             patch(
                 "app.domains.candidates.service.ResultRepository.get_result_by_attempt_id",
@@ -928,7 +930,9 @@ class CandidateServiceTests(unittest.IsolatedAsyncioTestCase):
 
         db.commit.assert_not_awaited()
 
-    async def test_approve_individually_voided_result_for_same_existing_candidate(self) -> None:
+    async def test_approve_individually_voided_result_for_same_existing_candidate(
+        self,
+    ) -> None:
         db = AsyncMock()
         admin = actor()
         row = candidate()
@@ -947,14 +951,41 @@ class CandidateServiceTests(unittest.IsolatedAsyncioTestCase):
             return item
 
         with (
-            patch("app.domains.candidates.service.require_current_makeup_term", AsyncMock()),
-            patch("app.domains.candidates.service.ExamExecutionRepository.get_control", AsyncMock(return_value=None)),
-            patch.object(CandidateRepository, "get_candidate_by_id", AsyncMock(return_value=row)),
-            patch.object(ExamRepository, "get_exam_by_id", AsyncMock(return_value=exam(id=row.exam_id, status=ExamStatus.CLOSED))),
-            patch.object(AttemptRepository, "get_attempt_by_candidate_id", AsyncMock(return_value=old_attempt)),
-            patch("app.domains.candidates.service.ResultRepository.get_result_by_attempt_id", AsyncMock(return_value=old_result)),
-            patch.object(CandidateRepository, "get_active_makeup_authorization", AsyncMock(return_value=previous)),
-            patch.object(CandidateRepository, "add_makeup_authorization", AsyncMock(side_effect=add_authorization)) as add,
+            patch(
+                "app.domains.candidates.service.require_current_makeup_term",
+                AsyncMock(),
+            ),
+            patch(
+                "app.domains.candidates.service.ExamExecutionRepository.get_control",
+                AsyncMock(return_value=None),
+            ),
+            patch.object(
+                CandidateRepository, "get_candidate_by_id", AsyncMock(return_value=row)
+            ),
+            patch.object(
+                ExamRepository,
+                "get_exam_by_id",
+                AsyncMock(return_value=exam(id=row.exam_id, status=ExamStatus.CLOSED)),
+            ),
+            patch.object(
+                AttemptRepository,
+                "get_attempt_by_candidate_id",
+                AsyncMock(return_value=old_attempt),
+            ),
+            patch(
+                "app.domains.candidates.service.ResultRepository.get_result_by_attempt_id",
+                AsyncMock(return_value=old_result),
+            ),
+            patch.object(
+                CandidateRepository,
+                "get_active_makeup_authorization",
+                AsyncMock(return_value=previous),
+            ),
+            patch.object(
+                CandidateRepository,
+                "add_makeup_authorization",
+                AsyncMock(side_effect=add_authorization),
+            ) as add,
         ):
             result = await CandidateService.approve_makeup(
                 db, actor=admin, candidate_id=row.id, reason="Original sitting invalid"

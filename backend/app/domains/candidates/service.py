@@ -906,7 +906,9 @@ class CandidateService:
             db, candidate_id=candidate_id, lock=True
         )
         if attempt is not None:
-            previous_result = await ResultRepository.get_result_by_attempt_id(db, attempt.id)
+            previous_result = await ResultRepository.get_result_by_attempt_id(
+                db, attempt.id
+            )
             if (
                 attempt.status != AttemptStatus.SUBMITTED
                 or previous_result is None

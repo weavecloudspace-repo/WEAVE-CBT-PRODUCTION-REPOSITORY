@@ -63,15 +63,19 @@ class MakeupQueueTests(unittest.IsolatedAsyncioTestCase):
     async def test_voided_original_submitted_attempt_allows_new_approved_sitting(self):
         candidate_id = uuid4()
         authorization_id = uuid4()
-        rows = [(
-            SimpleNamespace(id=authorization_id, consumed_at=None),
-            SimpleNamespace(id=candidate_id),
-            SimpleNamespace(id=uuid4()),
-            uuid4(),
-            SimpleNamespace(status=AttemptStatus.SUBMITTED),
-        )]
+        rows = [
+            (
+                SimpleNamespace(id=authorization_id, consumed_at=None),
+                SimpleNamespace(id=candidate_id),
+                SimpleNamespace(id=uuid4()),
+                uuid4(),
+                SimpleNamespace(status=AttemptStatus.SUBMITTED),
+            )
+        ]
         with (
-            patch.object(CandidateMakeupService, "_queue_rows", AsyncMock(return_value=rows)),
+            patch.object(
+                CandidateMakeupService, "_queue_rows", AsyncMock(return_value=rows)
+            ),
             patch(
                 "app.domains.candidates.makeup_service.ExamRepository.has_unfinished_scheduled_exam_for_level",
                 AsyncMock(return_value=False),

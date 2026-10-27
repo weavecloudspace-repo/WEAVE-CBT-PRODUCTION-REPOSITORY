@@ -93,10 +93,21 @@ async def test_individually_voided_original_result_can_be_approved_without_dupli
     candidate = SimpleNamespace(status=CandidateStatus.ELIGIBLE)
     old_attempt = SimpleNamespace(status=AttemptStatus.SUBMITTED)
     old_result = SimpleNamespace(voided_at=datetime.now(UTC))
-    assert MakeupReviewService.state(candidate, None, old_attempt, old_result) == "voided_awaiting_approval"
+    assert (
+        MakeupReviewService.state(candidate, None, old_attempt, old_result)
+        == "voided_awaiting_approval"
+    )
     pending = SimpleNamespace(id=uuid4(), revoked_at=None, consumed_at=None)
-    assert MakeupReviewService.state(candidate, pending, old_attempt, old_result) == "approved"
-    assert MakeupReviewService.state(candidate, None, old_attempt, SimpleNamespace(voided_at=None)) == "completed"
+    assert (
+        MakeupReviewService.state(candidate, pending, old_attempt, old_result)
+        == "approved"
+    )
+    assert (
+        MakeupReviewService.state(
+            candidate, None, old_attempt, SimpleNamespace(voided_at=None)
+        )
+        == "completed"
+    )
 
 
 async def test_makeup_review_is_admin_only():

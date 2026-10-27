@@ -144,18 +144,46 @@ async def test_restore_rejects_superseded_void_result():
     actor = SimpleNamespace(id=uuid4(), role="admin", is_active=True)
     original_id = uuid4()
     result = ExamResult(
-        id=uuid4(), attempt_id=original_id, candidate_id=uuid4(), exam_id=uuid4(),
-        sync_status=ResultSyncStatus.PENDING, voided_at=datetime.now(UTC),
-        voided_by_actor_id=actor.id, void_reason="Void",
+        id=uuid4(),
+        attempt_id=original_id,
+        candidate_id=uuid4(),
+        exam_id=uuid4(),
+        sync_status=ResultSyncStatus.PENDING,
+        voided_at=datetime.now(UTC),
+        voided_by_actor_id=actor.id,
+        void_reason="Void",
     )
     with (
-        patch.object(ResultRepository, "get_result_by_id", AsyncMock(return_value=result)),
-        patch.object(ExamRepository, "get_exam_by_id", AsyncMock(return_value=SimpleNamespace(id=result.exam_id, status=ExamStatus.CLOSED))),
-        patch.object(ExamExecutionRepository, "get_control", AsyncMock(return_value=SimpleNamespace(operation=None, result_disposition=ExamResultDisposition.APPROVED))),
-        patch("app.domains.results.service.AttemptRepository.get_attempt_by_candidate_id", AsyncMock(return_value=SimpleNamespace(id=uuid4()))),
+        patch.object(
+            ResultRepository, "get_result_by_id", AsyncMock(return_value=result)
+        ),
+        patch.object(
+            ExamRepository,
+            "get_exam_by_id",
+            AsyncMock(
+                return_value=SimpleNamespace(
+                    id=result.exam_id, status=ExamStatus.CLOSED
+                )
+            ),
+        ),
+        patch.object(
+            ExamExecutionRepository,
+            "get_control",
+            AsyncMock(
+                return_value=SimpleNamespace(
+                    operation=None, result_disposition=ExamResultDisposition.APPROVED
+                )
+            ),
+        ),
+        patch(
+            "app.domains.results.service.AttemptRepository.get_attempt_by_candidate_id",
+            AsyncMock(return_value=SimpleNamespace(id=uuid4())),
+        ),
         pytest.raises(ExamStateError, match="replacement attempt"),
     ):
-        await ResultService.restore_result(db, actor=actor, result_id=result.id, reason="Undo")
+        await ResultService.restore_result(
+            db, actor=actor, result_id=result.id, reason="Undo"
+        )
     db.commit.assert_not_awaited()
 
 
