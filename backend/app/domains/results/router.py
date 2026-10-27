@@ -60,6 +60,16 @@ async def rollback_result_batch(
     )
 
 
+@router.post("/results/rollbacks/{operation_id}/retry", response_model=LocalRollbackResponse)
+async def retry_result_rollback(
+    operation_id: UUID, db: DbSession, context: CurrentLocalContext,
+):
+    ResultRollbackService._admin(context.actor)
+    return await ResultRollbackService.retry(
+        db, operation_id=operation_id, session_id=context.session.id
+    )
+
+
 @router.get("/results/rollbacks/{operation_id}", response_model=LocalRollbackResponse)
 async def check_result_rollback(
     operation_id: UUID, db: DbSession, actor: CurrentLocalActor,

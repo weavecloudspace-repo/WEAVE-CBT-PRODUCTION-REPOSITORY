@@ -37,6 +37,7 @@ class ResultResponse(BaseModel):
     rollback_requested_at: datetime | None = None
     rolled_back_at: datetime | None = None
     rollback_error: str | None = None
+    rollback_reason: str | None = None
     voided_at: datetime | None = None
     voided_by_actor_id: UUID | None = None
     void_reason: str | None = None

@@ -16,6 +16,7 @@ def upgrade() -> None:
         ("rollback_requested_at", sa.DateTime(timezone=True)),
         ("rolled_back_at", sa.DateTime(timezone=True)),
         ("rollback_error", sa.Text()),
+        ("rollback_reason", sa.Text()),
     ):
         op.add_column("exam_results", sa.Column(name, column, nullable=True))
     op.create_index("ix_exam_results_rollback_operation_id", "exam_results", ["rollback_operation_id"])

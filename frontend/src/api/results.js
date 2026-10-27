@@ -88,3 +88,10 @@ export function resyncResult(resultId, options = {}) {
     successMessage: options.successMessage || 'Result queued for a new Weave synchronization.',
   })
 }
+
+export function retryRollback(operationId, options = {}) {
+  return weaveRequest(`/results/rollbacks/${operationId}/retry`, {
+    ...options, method: 'POST',
+    successMessage: options.successMessage || 'Rollback request retried.',
+  })
+}

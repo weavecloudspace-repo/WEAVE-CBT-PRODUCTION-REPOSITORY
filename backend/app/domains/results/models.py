@@ -259,6 +259,7 @@ class ExamResult(Base):
     rollback_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rollback_error: Mapped[str | None] = mapped_column(Text)
+    rollback_reason: Mapped[str | None] = mapped_column(Text)
 
     sync_attempts: Mapped[int] = mapped_column(
         Integer,

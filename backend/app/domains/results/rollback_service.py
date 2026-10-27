@@ -28,6 +28,7 @@ from app.domains.results.models import ExamResult, ResultSyncStatus
 from app.domains.results.repository import ResultRepository
 from app.domains.results.rollback_schemas import CloudRollbackResponse, LocalRollbackResponse
 from app.integrations.weave.exceptions import WeaveIntegrationError
+from app.domains.auth.service import LocalSessionAuthenticationError
 from app.integrations.weave.results import weave_result_gateway
 
 
@@ -112,6 +113,7 @@ class ResultRollbackService:
             row.rollback_requested_at = now
             row.rolled_back_at = None
             row.rollback_error = None
+            row.rollback_reason = reason
             row.synced_at = None
             row.sync_status = ResultSyncStatus.ROLLBACK_PENDING
         await ResultRepository.save_results(db, rows)
@@ -157,7 +159,13 @@ class ResultRollbackService:
         # original payload hash for the stable operation ID.
         batch_id, student_ids = await cls._payload(db, operation_id)
         await db.rollback()
-        token = await get_or_repair_weave_actor_access_token(db, session_id=session_id)
+        try:
+            token = await get_or_repair_weave_actor_access_token(db, session_id=session_id)
+        except LocalSessionAuthenticationError:
+            return LocalRollbackResponse(
+                operation_id=operation_id, source_batch_id=batch_id,
+                status="rollback_pending", error="Sign in again to authorize this rollback.",
+            )
         identity = node_identity_store.load()
         try:
             cloud = await weave_result_gateway.request_rollback(
@@ -172,6 +180,17 @@ class ResultRollbackService:
                 status="rollback_pending", results=[], error=str(exc),
             )
         return await cls.apply_cloud_status(db, operation_id=operation_id, cloud=cloud)
+
+    @classmethod
+    async def retry(cls, db: AsyncSession, *, operation_id: UUID, session_id: UUID) -> LocalRollbackResponse:
+        rows = await cls._operation_rows(db, operation_id)
+        if not rows or any(row.rollback_reason != rows[0].rollback_reason for row in rows):
+            raise ExamStateError("Rollback reason could not be reconstructed")
+        if all(row.sync_status != ResultSyncStatus.ROLLBACK_PENDING for row in rows):
+            return await cls.poll(db, operation_id=operation_id)
+        reason = rows[0].rollback_reason
+        await db.rollback()
+        return await cls.send(db, operation_id=operation_id, session_id=session_id, reason=reason)
 
     @classmethod
     async def poll(cls, db: AsyncSession, *, operation_id: UUID) -> LocalRollbackResponse:

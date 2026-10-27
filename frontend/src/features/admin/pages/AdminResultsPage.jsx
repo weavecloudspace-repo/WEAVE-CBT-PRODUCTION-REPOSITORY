@@ -325,6 +325,20 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
     }
   }
 
+  const retryRollback = async (operationId) => {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    try {
+      await gateway.results.retryRollback(operationId)
+      setRefreshToken((value) => value + 1)
+    } catch (requestError) {
+      setError(requestError.userMessage || 'Could not retry the Cloud rollback request.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const retrySync = async () => {
     if (busy) return
     setBusy(true)
@@ -421,6 +435,7 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
                 <td>{result.voided_at ? <span className="admin-result-void-audit"><DecisionBadge value="voided" /><small>{result.void_reason}</small><small>{formatCompactDate(result.voided_at)}</small></span> : <SyncBadge value={result.sync_status} error={result.sync_error} />}</td>
                 <td>{result.sync_status === 'synced' && !result.voided_at && disposition !== 'voided' && <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy} onClick={() => { setIndividualResult(result); setReason(''); setDecision('rollback-individual') }}>Rollback</button>}
                 {result.sync_status === 'rollback_pending' && result.rollback_operation_id && <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy} onClick={() => checkRollback(result.rollback_operation_id)}>Check rollback</button>}
+                {result.sync_status === 'rollback_pending' && result.rollback_operation_id && <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy} onClick={() => retryRollback(result.rollback_operation_id)}>Retry</button>}
                 {result.sync_status === 'rolled_back' && !result.voided_at && <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy} onClick={() => { setIndividualResult(result); setReason(''); setDecision('resync-individual') }}>Resync</button>}
                 {!result.voided_at && disposition !== 'voided' && (
                   <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy || !control || Boolean(control.operation) || (Boolean(result.sync_batch_id) && result.sync_status !== 'rolled_back') || !['pending', 'failed', 'rolled_back'].includes(result.sync_status)} title={result.sync_status === 'rolled_back' ? 'Score withdrawn from Weave; this attempt can now be voided.' : 'Void this candidate’s result only'} onClick={() => { setIndividualResult(result); setReason(''); setDecision('void-individual') }}>Void result</button>
