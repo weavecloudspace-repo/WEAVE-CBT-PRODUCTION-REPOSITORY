@@ -17,6 +17,7 @@ from app.domains.audit.models import AuditActorType, AuditEvent
 from app.domains.audit.repository import AuditRepository
 from app.domains.auth.models import LocalActor
 from app.domains.candidates.models import ExamCandidate
+from app.domains.candidates.repository import CandidateRepository
 from app.domains.exams.exceptions import ExamNotFound, ExamStateError
 from app.domains.exams.execution_models import ExamResultDisposition
 from app.domains.exams.execution_repository import ExamExecutionRepository
@@ -267,6 +268,19 @@ class ResultService:
             raise ExamStateError(
                 "This result has entered synchronization. Resolve it in Weave before making a correction"
             )
+        if not voided:
+            # Restoring historical results after a replacement sitting could
+            # resurrect a superseded score; reject before DB uniqueness checks.
+            latest = await AttemptRepository.get_attempt_by_candidate_id(
+                db, result.candidate_id, lock=True
+            )
+            if latest is not None and latest.id != result.attempt_id:
+                raise ExamStateError("Cannot restore a result after a replacement attempt has started")
+            pending = await CandidateRepository.get_active_makeup_authorization(
+                db, result.candidate_id, lock=True
+            )
+            if pending is not None and pending.consumed_at is None:
+                raise ExamStateError("Revoke the pending makeup authorization before restoring this result")
         previous_void = {
             "voided_at": result.voided_at.isoformat()
             if result.voided_at is not None

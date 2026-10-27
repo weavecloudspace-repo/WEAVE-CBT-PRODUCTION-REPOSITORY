@@ -58,6 +58,14 @@ class MakeupReviewRepository:
             .correlate(ExamCandidate)
             .scalar_subquery()
         )
+        latest_attempt_id = (
+            select(ExamAttempt.id)
+            .where(ExamAttempt.candidate_id == ExamCandidate.id)
+            .order_by(ExamAttempt.attempt_number.desc(), ExamAttempt.id.desc())
+            .limit(1)
+            .correlate(ExamCandidate)
+            .scalar_subquery()
+        )
         return (
             ExamCandidate.__table__.join(
                 AcademicClass.__table__, AcademicClass.id == ExamCandidate.class_id
@@ -67,7 +75,7 @@ class MakeupReviewRepository:
                 CandidateMakeupAuthorization.id == authorization_id,
             )
             .outerjoin(
-                ExamAttempt.__table__, ExamAttempt.candidate_id == ExamCandidate.id
+                ExamAttempt.__table__, ExamAttempt.id == latest_attempt_id
             )
             .outerjoin(ExamResult.__table__, ExamResult.attempt_id == ExamAttempt.id)
         )
@@ -87,6 +95,7 @@ class MakeupReviewRepository:
                 or_(
                     ExamAttempt.id.is_(None),
                     CandidateMakeupAuthorization.id.is_not(None),
+                    ExamResult.voided_at.is_not(None),
                 )
             )
         )
@@ -108,12 +117,19 @@ class MakeupReviewRepository:
     @classmethod
     def overview_query(cls):
         state = case(
-            (ExamAttempt.status == "in_progress", "writing"),
-            (ExamAttempt.status == "interrupted", "paused"),
-            (ExamAttempt.status == "submitted", "completed"),
-            (ExamAttempt.status == "terminated", "terminated"),
             (ExamCandidate.status == "blocked", "blocked"),
             (ExamCandidate.status == "withdrawn", "withdrawn"),
+            (
+                CandidateMakeupAuthorization.id.is_not(None)
+                & CandidateMakeupAuthorization.revoked_at.is_(None)
+                & CandidateMakeupAuthorization.consumed_at.is_(None),
+                "approved",
+            ),
+            (ExamAttempt.status == "in_progress", "writing"),
+            (ExamAttempt.status == "interrupted", "paused"),
+            (ExamResult.voided_at.is_not(None), "voided_awaiting_approval"),
+            (ExamAttempt.status == "submitted", "completed"),
+            (ExamAttempt.status == "terminated", "terminated"),
             (CandidateMakeupAuthorization.id.is_(None), "awaiting_approval"),
             (CandidateMakeupAuthorization.revoked_at.is_not(None), "revoked"),
             (CandidateMakeupAuthorization.consumed_at.is_not(None), "needs_review"),
@@ -133,12 +149,14 @@ class MakeupReviewRepository:
                 or_(
                     ExamAttempt.id.is_(None),
                     CandidateMakeupAuthorization.id.is_not(None),
+                    ExamResult.voided_at.is_not(None),
                 ),
             )
             .subquery()
         )
         states = (
             "awaiting_approval",
+            "voided_awaiting_approval",
             "approved",
             "writing",
             "paused",

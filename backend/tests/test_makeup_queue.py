@@ -60,6 +60,32 @@ class MakeupQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.next_candidate_id, first_candidate_id)
         self.assertEqual(result.pending_count, 2)
 
+    async def test_voided_original_submitted_attempt_allows_new_approved_sitting(self):
+        candidate_id = uuid4()
+        authorization_id = uuid4()
+        rows = [(
+            SimpleNamespace(id=authorization_id, consumed_at=None),
+            SimpleNamespace(id=candidate_id),
+            SimpleNamespace(id=uuid4()),
+            uuid4(),
+            SimpleNamespace(status=AttemptStatus.SUBMITTED),
+        )]
+        with (
+            patch.object(CandidateMakeupService, "_queue_rows", AsyncMock(return_value=rows)),
+            patch(
+                "app.domains.candidates.makeup_service.ExamRepository.has_unfinished_scheduled_exam_for_level",
+                AsyncMock(return_value=False),
+            ),
+        ):
+            queue = await CandidateMakeupService.resolve_queue(
+                AsyncMock(), student_id=uuid4(), session_id=uuid4(), term_id=uuid4()
+            )
+        self.assertTrue(queue.available)
+        self.assertFalse(queue.resume_existing_attempt)
+        self.assertEqual(queue.next_candidate_id, candidate_id)
+        self.assertEqual(queue.authorization_id, authorization_id)
+        self.assertEqual(queue.pending_count, 1)
+
     async def test_makeups_remain_locked_while_normal_cycle_is_unfinished(self):
         level_id = uuid4()
         rows = [

@@ -58,12 +58,17 @@ class CandidateRosterQueryRepository:
         offset: int = 0,
         limit: int = 100,
     ) -> list[ExamCandidate]:
+        latest_attempt_id = (
+            select(ExamAttempt.id)
+            .where(ExamAttempt.candidate_id == ExamCandidate.id)
+            .order_by(ExamAttempt.attempt_number.desc(), ExamAttempt.id.desc())
+            .limit(1)
+            .correlate(ExamCandidate)
+            .scalar_subquery()
+        )
         query = (
             select(ExamCandidate)
-            .outerjoin(
-                ExamAttempt,
-                ExamAttempt.candidate_id == ExamCandidate.id,
-            )
+            .outerjoin(ExamAttempt, ExamAttempt.id == latest_attempt_id)
             .where(
                 *cls._filters(
                     exam_id=exam_id,
@@ -94,13 +99,18 @@ class CandidateRosterQueryRepository:
         search: str | None = None,
         attempt_state: CandidateAttemptStateFilter | None = None,
     ) -> int:
+        latest_attempt_id = (
+            select(ExamAttempt.id)
+            .where(ExamAttempt.candidate_id == ExamCandidate.id)
+            .order_by(ExamAttempt.attempt_number.desc(), ExamAttempt.id.desc())
+            .limit(1)
+            .correlate(ExamCandidate)
+            .scalar_subquery()
+        )
         query = (
             select(func.count())
             .select_from(ExamCandidate)
-            .outerjoin(
-                ExamAttempt,
-                ExamAttempt.candidate_id == ExamCandidate.id,
-            )
+            .outerjoin(ExamAttempt, ExamAttempt.id == latest_attempt_id)
             .where(
                 *cls._filters(
                     exam_id=exam_id,

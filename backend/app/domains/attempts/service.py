@@ -429,9 +429,9 @@ class AttemptService:
                 AttemptStatus.IN_PROGRESS,
                 AttemptStatus.INTERRUPTED,
             }:
-                if context.is_makeup and existing.makeup_authorization_id != context.makeup_authorization_id:
+                if context.is_makeup and getattr(existing, "makeup_authorization_id", None) != context.makeup_authorization_id:
                     raise AttemptStateError("This makeup authorization does not own the active attempt")
-                if not context.is_makeup and existing.makeup_authorization_id is not None:
+                if not context.is_makeup and getattr(existing, "makeup_authorization_id", None) is not None:
                     raise AttemptStateError("Active makeup attempt requires a makeup session")
                 return await cls._build_attempt_response(
                     db,
@@ -710,7 +710,7 @@ class AttemptService:
         )
         if attempt is None:
             raise AttemptStateError("Candidate has not started this examination")
-        if context.is_makeup and attempt.makeup_authorization_id != context.makeup_authorization_id:
+        if context.is_makeup and getattr(attempt, "makeup_authorization_id", None) != context.makeup_authorization_id:
             raise AttemptStateError("Authorized makeup has not started yet")
         return attempt, candidate, exam
 

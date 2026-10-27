@@ -190,6 +190,7 @@ class MakeupReviewCounts(OutputBase):
     exam_id: UUID
     total: int
     awaiting_approval: int
+    voided_awaiting_approval: int = 0
     approved: int
     writing: int
     paused: int
