@@ -58,3 +58,33 @@ export function retryExamResultSync(examId, options = {}) {
     successMessage: options.successMessage || 'Failed result synchronization queued for retry.',
   })
 }
+
+export function rollbackResult(resultId, reason, options = {}) {
+  return weaveRequest(`/results/${resultId}/rollback`, {
+    ...options,
+    method: 'POST',
+    body: { reason },
+    successMessage: options.successMessage || 'Result rollback requested from Weave Cloud.',
+  })
+}
+
+export function rollbackBatch(batchId, reason, options = {}) {
+  return weaveRequest(`/results/batches/${batchId}/rollback`, {
+    ...options,
+    method: 'POST',
+    body: { reason },
+    successMessage: options.successMessage || 'Batch rollback requested from Weave Cloud.',
+  })
+}
+
+export function checkRollback(operationId, options = {}) {
+  return weaveRequest(`/results/rollbacks/${operationId}`, options)
+}
+
+export function resyncResult(resultId, options = {}) {
+  return weaveRequest(`/results/${resultId}/resync`, {
+    ...options,
+    method: 'POST',
+    successMessage: options.successMessage || 'Result queued for a new Weave synchronization.',
+  })
+}

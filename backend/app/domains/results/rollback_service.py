@@ -17,7 +17,6 @@ from app.domains.audit.models import AuditActorType, AuditEvent
 from app.domains.audit.repository import AuditRepository
 from app.domains.auth.cloud_access import get_or_repair_weave_actor_access_token
 from app.domains.auth.models import LocalActor
-from app.domains.candidates.models import ExamCandidate
 from app.domains.candidates.repository import CandidateRepository
 from app.domains.exams.exceptions import ExamStateError
 from app.domains.exams.execution_models import ExamResultDisposition
@@ -157,6 +156,7 @@ class ResultRollbackService:
         # Retrying must supply the same original reason: Cloud checks the complete
         # original payload hash for the stable operation ID.
         batch_id, student_ids = await cls._payload(db, operation_id)
+        await db.rollback()
         token = await get_or_repair_weave_actor_access_token(db, session_id=session_id)
         identity = node_identity_store.load()
         try:
@@ -176,6 +176,7 @@ class ResultRollbackService:
     @classmethod
     async def poll(cls, db: AsyncSession, *, operation_id: UUID) -> LocalRollbackResponse:
         batch_id, _ = await cls._payload(db, operation_id)
+        await db.rollback()
         identity = node_identity_store.load()
         cloud = await weave_result_gateway.rollback_status(
             operation_id=operation_id,
