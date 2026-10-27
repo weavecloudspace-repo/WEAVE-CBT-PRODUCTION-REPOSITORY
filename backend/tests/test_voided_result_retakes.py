@@ -127,9 +127,7 @@ async def test_unvoided_historical_result_rejects_another_sitting():
     ):
         await AttemptService.start_current(
             db,
-            context=SimpleNamespace(
-                is_makeup=True, makeup_authorization_id=uuid4()
-            ),
+            context=SimpleNamespace(is_makeup=True, makeup_authorization_id=uuid4()),
         )
     add.assert_not_awaited()
     db.commit.assert_not_awaited()
