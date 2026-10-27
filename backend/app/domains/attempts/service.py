@@ -727,12 +727,13 @@ class AttemptService:
         )
         if attempt is None:
             raise AttemptStateError("Candidate has not started this examination")
-        if (
-            context.is_makeup
-            and getattr(attempt, "makeup_authorization_id", None)
-            != context.makeup_authorization_id
-        ):
-            raise AttemptStateError("Authorized makeup has not started yet")
+        if context.is_makeup:
+            if attempt.makeup_authorization_id != context.makeup_authorization_id:
+                raise AttemptStateError("Authorized makeup has not started yet")
+        elif attempt.makeup_authorization_id is not None:
+            # A session for the original sitting cannot read or mutate a
+            # later authorized replacement sitting.
+            raise AttemptStateError("A makeup sitting requires its own authorization")
         return attempt, candidate, exam
 
     @classmethod

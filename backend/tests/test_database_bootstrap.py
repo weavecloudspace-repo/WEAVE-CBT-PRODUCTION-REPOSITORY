@@ -343,6 +343,7 @@ async def test_existing_baseline_is_upgraded_without_losing_records(fresh_databa
     from app.core.migrations import migration_config
 
     config = migration_config()
+    historical_school_id = uuid4()
 
     def migrate_baseline(connection):
         config.attributes["connection"] = connection
@@ -353,6 +354,13 @@ async def test_existing_baseline_is_upgraded_without_losing_records(fresh_databa
 
     async with fresh_database.begin() as connection:
         await connection.run_sync(migrate_baseline)
+        await connection.execute(
+            text(
+                "INSERT INTO public.school_profiles (id, name, timezone) "
+                "VALUES (:id, 'Historic School', 'Africa/Lagos')"
+            ),
+            {"id": historical_school_id},
+        )
         await connection.execute(
             text("CREATE TABLE public.retake_upgrade_sentinel (value text NOT NULL)")
         )
@@ -372,6 +380,11 @@ async def test_existing_baseline_is_upgraded_without_losing_records(fresh_databa
         assert (
             await connection.execute(text("SELECT value FROM retake_upgrade_sentinel"))
         ).scalar_one() == "preserve historical rows"
+        assert (
+            await connection.execute(
+                text("SELECT id FROM school_profiles WHERE name = 'Historic School'")
+            )
+        ).scalar_one() == historical_school_id
         assert {"attempt_number", "makeup_authorization_id"} <= {
             row[0]
             for row in (
