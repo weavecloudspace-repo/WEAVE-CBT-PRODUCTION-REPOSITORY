@@ -40,11 +40,11 @@ from app.domains.exams.execution_models import ExamResultDisposition
 from app.domains.exams.execution_repository import ExamExecutionRepository
 from app.domains.exams.models import Exam, ExamRosterStatus, ExamStatus
 from app.domains.exams.repository import ExamRepository
-from app.domains.results.repository import ResultRepository
 from app.domains.exams.timetable_service import (
     OPERATIONAL_EXAM_STATUSES,
     ExamTimetableService,
 )
+from app.domains.results.repository import ResultRepository
 from app.domains.sync.repository import SyncRepository
 
 
