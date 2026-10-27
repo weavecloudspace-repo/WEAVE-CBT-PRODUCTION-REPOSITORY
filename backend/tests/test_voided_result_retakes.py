@@ -131,3 +131,57 @@ async def test_unvoided_historical_result_rejects_another_sitting():
         )
     add.assert_not_awaited()
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.parametrize("is_makeup", [True, False])
+async def test_replacement_attempt_rejects_original_or_stale_student_session(is_makeup):
+    db = AsyncMock()
+    candidate = SimpleNamespace(id=uuid4())
+    attempt = SimpleNamespace(id=uuid4(), makeup_authorization_id=uuid4())
+    context = SimpleNamespace(
+        is_makeup=is_makeup,
+        makeup_authorization_id=uuid4() if is_makeup else None,
+    )
+    with (
+        patch.object(
+            AttemptService,
+            "_get_candidate_and_exam",
+            AsyncMock(return_value=(candidate, SimpleNamespace())),
+        ),
+        patch.object(
+            AttemptRepository,
+            "get_attempt_by_candidate_id",
+            AsyncMock(return_value=attempt),
+        ),
+        pytest.raises(AttemptStateError, match="[Mm]akeup"),
+    ):
+        await AttemptService._get_current_attempt(db, context=context)
+
+
+async def test_replacement_attempt_accepts_exact_makeup_authorization():
+    db = AsyncMock()
+    candidate = SimpleNamespace(id=uuid4())
+    exam = SimpleNamespace(id=uuid4())
+    authorization_id = uuid4()
+    attempt = SimpleNamespace(id=uuid4(), makeup_authorization_id=authorization_id)
+    context = SimpleNamespace(is_makeup=True, makeup_authorization_id=authorization_id)
+    with (
+        patch.object(
+            AttemptService,
+            "_get_candidate_and_exam",
+            AsyncMock(return_value=(candidate, exam)),
+        ),
+        patch.object(
+            AttemptRepository,
+            "get_attempt_by_candidate_id",
+            AsyncMock(return_value=attempt),
+        ),
+    ):
+        (
+            found_attempt,
+            found_candidate,
+            found_exam,
+        ) = await AttemptService._get_current_attempt(db, context=context)
+    assert found_attempt is attempt
+    assert found_candidate is candidate
+    assert found_exam is exam
