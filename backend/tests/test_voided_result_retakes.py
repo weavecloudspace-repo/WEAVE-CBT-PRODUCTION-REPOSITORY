@@ -177,9 +177,11 @@ async def test_replacement_attempt_accepts_exact_makeup_authorization():
             AsyncMock(return_value=attempt),
         ),
     ):
-        found_attempt, found_candidate, found_exam = await AttemptService._get_current_attempt(
-            db, context=context
-        )
+        (
+            found_attempt,
+            found_candidate,
+            found_exam,
+        ) = await AttemptService._get_current_attempt(db, context=context)
     assert found_attempt is attempt
     assert found_candidate is candidate
     assert found_exam is exam
