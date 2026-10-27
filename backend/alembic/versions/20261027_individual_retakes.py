@@ -39,7 +39,7 @@ def upgrade() -> None:
         postgresql_where=sa.text("status IN ('in_progress', 'interrupted')"),
     )
     op.create_foreign_key(
-        "fk_exam_attempts_makeup_authorization_id_candidate_make_up_authorizations",
+        "fk_exam_attempts_makeup_auth",
         "exam_attempts", "candidate_make_up_authorizations",
         ["makeup_authorization_id"], ["id"], ondelete="RESTRICT",
     )

@@ -63,7 +63,11 @@ class ExamAttempt(Base):
     )
     # Each consumed makeup authorization creates at most one examination sitting.
     makeup_authorization_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("candidate_make_up_authorizations.id", ondelete="RESTRICT"),
+        ForeignKey(
+            "candidate_make_up_authorizations.id",
+            ondelete="RESTRICT",
+            name="fk_exam_attempts_makeup_auth",
+        ),
         nullable=True,
         unique=True,
     )
