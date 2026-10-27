@@ -16,11 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    # Pull Docker Official Images from their verified Amazon ECR Public mirror.
-    # Docker Hub auth timeouts previously prevented tests from even starting.
+    # Pull Docker Official Images from Google's mirror to avoid the ECR Public
+    # "toomanyrequests: Data limit exceeded" failures during service bootstrap.
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:16-alpine
+        image: mirror.gcr.io/library/postgres:16-alpine
         env:
           POSTGRES_USER: weave
           POSTGRES_PASSWORD: weave
@@ -33,7 +33,7 @@ jobs:
           --health-timeout=5s
           --health-retries=5
       redis:
-        image: public.ecr.aws/docker/library/redis:7-alpine
+        image: mirror.gcr.io/library/redis:7-alpine
         ports:
           - 6379:6379
         options: >-
