@@ -215,6 +215,7 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
   const [busy, setBusy] = useState(false)
   const [refreshToken, setRefreshToken] = useState(0)
   const [individualResult, setIndividualResult] = useState(null)
+  const [rollbackBatchId, setRollbackBatchId] = useState(null)
   const { showError } = useToast()
 
   const total = payload?.total || 0
@@ -277,11 +278,13 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
     { value: 'syncing', label: 'Syncing' },
     { value: 'synced', label: 'Synced' },
     { value: 'failed', label: 'Failed' },
+    { value: 'rollback_pending', label: 'Rollback pending' },
+    { value: 'rolled_back', label: 'Rolled back' },
   ]
 
   const runDecision = async () => {
     if (!decision || busy) return
-    if (decision !== 'approve' && !reason.trim()) {
+    if (!['approve', 'resync-individual'].includes(decision) && !reason.trim()) {
       setError('Enter a reason before voiding this examination result set.')
       return
     }
@@ -292,13 +295,31 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
       if (decision === 'void') await gateway.results.voidExamResults(exam.id, reason.trim())
       if (decision === 'void-individual') await gateway.results.voidResult(individualResult.id, reason.trim())
       if (decision === 'restore-individual') await gateway.results.restoreResult(individualResult.id, reason.trim())
+      if (decision === 'rollback-individual') await gateway.results.rollbackResult(individualResult.id, reason.trim())
+      if (decision === 'rollback-batch') await gateway.results.rollbackBatch(rollbackBatchId, reason.trim())
+      if (decision === 'resync-individual') await gateway.results.resyncResult(individualResult.id)
       setDecision(null)
       setIndividualResult(null)
+      setRollbackBatchId(null)
       setReason('')
       setRefreshToken((value) => value + 1)
     } catch (requestError) {
       if (individualResult) showError(requestError.userMessage || 'Could not update this candidate result.')
       else setError(requestError.userMessage || `Weave could not ${decision} this result set.`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const checkRollback = async (operationId) => {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    try {
+      await gateway.results.checkRollback(operationId)
+      setRefreshToken((value) => value + 1)
+    } catch (requestError) {
+      setError(requestError.userMessage || 'Could not check the Weave rollback status.')
     } finally {
       setBusy(false)
     }
@@ -352,6 +373,19 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
         onRetry={retrySync}
       />
 
+      {disposition === 'approved' && (payload?.results || []).some((item) => item.sync_status === 'synced' && item.sync_batch_id) && (
+        <div className="admin-result-detail__filters">
+          <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy || loading} onClick={() => {
+            const batch = (payload?.results || []).find((item) => item.sync_status === 'synced' && item.sync_batch_id)
+            if (!batch) return
+            setRollbackBatchId(batch.sync_batch_id)
+            setIndividualResult(null)
+            setReason('')
+            setDecision('rollback-batch')
+          }}>Rollback synchronization batch</button>
+        </div>
+      )}
+
       <div className="admin-result-detail__filters">
         <label className="teacher-search-control teacher-search-control--grow">
           <RiSearchLine size={18} aria-hidden="true" />
@@ -385,8 +419,11 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
                 <td><strong>{result.raw_score} / {result.raw_max_score}</strong><small className="admin-result-score-percentage">{formatNumber(result.percentage)}%</small></td>
                 <td><strong>{formatNumber(result.component_score)} / {formatNumber(result.component_maximum_score)}</strong></td>
                 <td>{result.voided_at ? <span className="admin-result-void-audit"><DecisionBadge value="voided" /><small>{result.void_reason}</small><small>{formatCompactDate(result.voided_at)}</small></span> : <SyncBadge value={result.sync_status} error={result.sync_error} />}</td>
-                <td>{!result.voided_at && disposition !== 'voided' && (
-                  <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy || !control || Boolean(control.operation) || Boolean(result.sync_batch_id) || !['pending', 'failed'].includes(result.sync_status)} title={result.sync_batch_id || ['syncing', 'synced'].includes(result.sync_status) ? 'Synchronization has started. Resolve this result in Weave.' : 'Void this candidate’s result only'} onClick={() => { setIndividualResult(result); setReason(''); setDecision('void-individual') }}>Void result</button>
+                <td>{result.sync_status === 'synced' && !result.voided_at && disposition !== 'voided' && <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy} onClick={() => { setIndividualResult(result); setReason(''); setDecision('rollback-individual') }}>Rollback</button>}
+                {result.sync_status === 'rollback_pending' && result.rollback_operation_id && <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy} onClick={() => checkRollback(result.rollback_operation_id)}>Check rollback</button>}
+                {result.sync_status === 'rolled_back' && !result.voided_at && <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy} onClick={() => { setIndividualResult(result); setReason(''); setDecision('resync-individual') }}>Resync</button>}
+                {!result.voided_at && disposition !== 'voided' && (
+                  <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy || !control || Boolean(control.operation) || (Boolean(result.sync_batch_id) && result.sync_status !== 'rolled_back') || !['pending', 'failed', 'rolled_back'].includes(result.sync_status)} title={result.sync_status === 'rolled_back' ? 'Score withdrawn from Weave; this attempt can now be voided.' : 'Void this candidate’s result only'} onClick={() => { setIndividualResult(result); setReason(''); setDecision('void-individual') }}>Void result</button>
                 )}{result.voided_at && disposition !== 'voided' && <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy || !control || Boolean(control.operation)} onClick={() => { setIndividualResult(result); setReason(''); setDecision('restore-individual') }}>Undo void</button>}</td>
               </tr>
             ))}
@@ -410,13 +447,13 @@ export function AdminResultDetailPage({ state, adminData, gateway, onNavigate })
       {decision && (
         <ResultDecisionModal
           action={decision}
-          result={['void-individual', 'restore-individual'].includes(decision) ? individualResult : null}
+          result={['void-individual', 'restore-individual', 'rollback-individual', 'resync-individual'].includes(decision) ? individualResult : null}
           exam={exam}
           count={summary?.result_count ?? total}
           reason={reason}
           setReason={setReason}
           busy={busy}
-          onCancel={() => { if (!busy) { setDecision(null); setIndividualResult(null); setReason(''); setError('') } }}
+          onCancel={() => { if (!busy) { setDecision(null); setIndividualResult(null); setRollbackBatchId(null); setReason(''); setError('') } }}
           onConfirm={runDecision}
         />
       )}
@@ -483,34 +520,34 @@ function ResultDecisionPanel({ disposition, summary, reason, busy, onApprove, on
 function ResultDecisionModal({ action, exam, result, count, reason, setReason, busy, onCancel, onConfirm }) {
   const approving = action === 'approve'
   const restoring = action === 'restore-individual'
-  const positive = approving || restoring
+  const rollback = action === 'rollback-individual' || action === 'rollback-batch'
+  const resync = action === 'resync-individual'
+  const batchRollback = action === 'rollback-batch'
+  const positive = approving || restoring || resync
+  const needsReason = !approving && !resync
+  const title = approving ? 'Approve this result set?' : restoring ? 'Undo this candidate’s result void?' : rollback
+    ? (batchRollback ? 'Rollback this synchronization batch?' : 'Rollback this candidate score from Weave?')
+    : resync ? 'Resynchronize this candidate result?' : result ? 'Void this candidate result?' : 'Void this result set?'
+  const description = rollback
+    ? 'Only DRAFT academic results can be withdrawn from Weave Cloud. Submitted, approved or locked scores remain unchanged. Successful withdrawals can be voided or resynchronized later.'
+    : resync ? 'Publish the same withdrawn result again in a new synchronization batch. The original attempt remains on record.'
+    : approving ? 'Approval authorizes these local CBT scores for synchronization to Weave.'
+    : restoring ? 'This restores the recorded score. Both decisions remain in the audit history.'
+    : result ? 'This score will be excluded from synchronization. The score and reason remain on record.'
+    : 'Voiding prevents this examination sitting from contributing valid academic results.'
   return createPortal(
     <div className="admin-result-modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target && !busy) onCancel() }}>
       <section className={`admin-result-modal${positive ? '' : ' is-danger'}`} role="alertdialog" aria-modal="true" aria-labelledby="result-decision-title">
         <div className="admin-result-modal__heading">
           <span>{positive ? <RiCheckLine size={22} /> : <RiCloseCircleLine size={22} />}</span>
-          <div>
-            <h2 id="result-decision-title">{approving ? 'Approve this result set?' : restoring ? 'Undo this candidate’s result void?' : result ? 'Void this candidate result?' : 'Void this result set?'}</h2>
-            <p>{approving ? 'Approval authorizes these local CBT scores for synchronization to Weave.' : restoring ? 'This restores the recorded score. Both decisions remain in the audit history.' : result ? 'This score will be excluded from synchronization. The score and reason remain on record.' : 'Voiding prevents this examination sitting from contributing valid academic results.'}</p>
-          </div>
+          <div><h2 id="result-decision-title">{title}</h2><p>{description}</p></div>
         </div>
         <div className="admin-result-modal__exam"><span>{result ? 'Candidate' : 'Examination'}</span><strong>{result ? result.candidate_display_name : exam.title}</strong><small>{result ? `${result.admission_number} · ${exam.title}` : `${count} candidate result${count === 1 ? '' : 's'} · ${[exam.academicLevelName, exam.subjectName, exam.assessmentName].filter(Boolean).join(' · ')}`}</small></div>
-        {!approving && (
-          <label className="admin-result-modal__reason">
-            <span>{restoring ? 'Reason for restoring' : 'Reason for voiding'}</span>
-            <textarea rows="4" maxLength={1024} disabled={busy} value={reason} onChange={(event) => setReason(event.target.value)} placeholder={restoring ? 'Explain why this candidate result should be restored...' : result ? 'Explain why this candidate result must be voided...' : 'Explain why this entire examination result set must be voided...'} />
-          </label>
-        )}
-        <div className={`admin-result-modal__warning${positive ? '' : ' is-danger'}`}>
-          {approving
-            ? 'Once synchronization begins, this result set can no longer be voided through the local review workflow.'
-            : restoring ? 'Pending restored scores synchronize automatically once this exam result set is approved. Previously failed scores still require correcting the reported issue and using Retry failed sync.' : result ? 'Only this candidate’s result will be voided. Other candidate results remain eligible for approval and synchronization.' : 'This decision applies to the entire examination result set, not a single candidate.'}
-        </div>
+        {needsReason && <label className="admin-result-modal__reason"><span>Reason</span><textarea rows="4" maxLength={1024} disabled={busy} value={reason} onChange={(event) => setReason(event.target.value)} placeholder={rollback ? 'Explain why this published score should be withdrawn...' : 'Provide the administrative reason...'} /></label>}
+        <div className={`admin-result-modal__warning${positive ? '' : ' is-danger'}`}>{rollback ? 'The rollback is processed by Weave Cloud in the background. Check its status before voiding or resynchronizing.' : resync ? 'A new batch will be created; the original publication history is preserved.' : approving ? 'Once synchronization begins, this result set can no longer be voided through the local review workflow.' : restoring ? 'Restored results retain their original publication state.' : result ? 'Only this candidate result will be affected.' : 'This affects the entire examination result set.'}</div>
         <div className="admin-result-modal__actions">
           <button type="button" className="admin-result-button admin-result-button--secondary" disabled={busy} onClick={onCancel}>Cancel</button>
-          <button type="button" className={`admin-result-button ${positive ? 'admin-result-button--primary' : 'admin-result-button--danger'}`} disabled={busy || (Boolean(result) && !reason.trim())} onClick={onConfirm}>
-            {busy ? 'Working…' : approving ? 'Approve results' : restoring ? 'Restore candidate result' : result ? 'Void candidate result' : 'Void result set'}
-          </button>
+          <button type="button" className={`admin-result-button ${positive ? 'admin-result-button--primary' : 'admin-result-button--danger'}`} disabled={busy || (needsReason && reason.trim().length < (rollback ? 5 : 1))} onClick={onConfirm}>{busy ? 'Working…' : rollback ? 'Request rollback' : resync ? 'Resync result' : approving ? 'Approve results' : restoring ? 'Restore candidate result' : result ? 'Void candidate result' : 'Void result set'}</button>
         </div>
       </section>
     </div>,
