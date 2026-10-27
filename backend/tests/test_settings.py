@@ -98,7 +98,9 @@ class DatabaseSettingsTests(unittest.TestCase):
     def test_compose_passes_pool_defaults_and_overrides_to_database_services(self):
         import yaml
 
-        compose_file = Path(__file__).resolve().parents[2] / "deployment" / "compose.yaml"
+        compose_file = (
+            Path(__file__).resolve().parents[2] / "deployment" / "compose.yaml"
+        )
         compose = yaml.safe_load(compose_file.read_text(encoding="utf-8"))
         defaults = {
             "DATABASE_POOL_SIZE": 10,
