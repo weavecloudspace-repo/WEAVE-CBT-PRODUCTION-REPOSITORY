@@ -63,7 +63,14 @@ class AttemptRepository:
         *,
         lock: bool = False,
     ) -> ExamAttempt | None:
-        query = select(ExamAttempt).where(ExamAttempt.candidate_id == candidate_id)
+        # A candidate may have historical, individually voided sittings.
+        # Always resolve the latest sitting, never an arbitrary scalar row.
+        query = (
+            select(ExamAttempt)
+            .where(ExamAttempt.candidate_id == candidate_id)
+            .order_by(ExamAttempt.attempt_number.desc(), ExamAttempt.id.desc())
+            .limit(1)
+        )
         if lock:
             query = query.with_for_update(of=ExamAttempt)
         return (await db.execute(query)).scalar_one_or_none()

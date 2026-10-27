@@ -47,6 +47,25 @@ class CandidateMakeupService:
         session_id: UUID,
         term_id: UUID,
     ):
+        latest_authorization_id = (
+            select(CandidateMakeupAuthorization.id)
+            .where(
+                CandidateMakeupAuthorization.candidate_id == ExamCandidate.id,
+                CandidateMakeupAuthorization.revoked_at.is_(None),
+            )
+            .order_by(CandidateMakeupAuthorization.approved_at.desc(), CandidateMakeupAuthorization.id.desc())
+            .limit(1)
+            .correlate(ExamCandidate)
+            .scalar_subquery()
+        )
+        latest_attempt_id = (
+            select(ExamAttempt.id)
+            .where(ExamAttempt.candidate_id == ExamCandidate.id)
+            .order_by(ExamAttempt.attempt_number.desc(), ExamAttempt.id.desc())
+            .limit(1)
+            .correlate(ExamCandidate)
+            .scalar_subquery()
+        )
         result = await db.execute(
             select(
                 CandidateMakeupAuthorization,
@@ -65,11 +84,12 @@ class CandidateMakeupService:
                 CurriculumSubject.id == Exam.curriculum_subject_id,
             )
             .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
-            .outerjoin(ExamAttempt, ExamAttempt.candidate_id == ExamCandidate.id)
+            .outerjoin(ExamAttempt, ExamAttempt.id == latest_attempt_id)
             .where(
                 ExamCandidate.student_id == student_id,
                 ExamCandidate.status == CandidateStatus.ELIGIBLE,
                 CandidateMakeupAuthorization.revoked_at.is_(None),
+                CandidateMakeupAuthorization.id == latest_authorization_id,
                 Exam.session_id == session_id,
                 Exam.term_id == term_id,
                 select(AcademicSession.id)
@@ -149,11 +169,28 @@ class CandidateMakeupService:
         pending_count = sum(
             1
             for row in rows
-            if row[4] is None or row[4].status != AttemptStatus.SUBMITTED
+            if row[4] is None
+            or row[4].status != AttemptStatus.SUBMITTED
+            or row[0].consumed_at is None
         )
         for authorization, candidate, exam, _level_id, attempt in rows:
-            if attempt is not None and attempt.status == AttemptStatus.SUBMITTED:
+            if (
+                attempt is not None
+                and attempt.status == AttemptStatus.SUBMITTED
+                and authorization.consumed_at is not None
+            ):
                 continue
+            if attempt is not None and attempt.status == AttemptStatus.SUBMITTED:
+                # Administrator has approved a NEW makeup after individually
+                # voiding the completed previous sitting.
+                return MakeupQueueResolution(
+                    available=True,
+                    next_candidate_id=candidate.id,
+                    next_exam_id=exam.id,
+                    authorization_id=authorization.id,
+                    academic_level_id=level_id,
+                    pending_count=pending_count,
+                )
 
             if attempt is not None:
                 if attempt.status in {

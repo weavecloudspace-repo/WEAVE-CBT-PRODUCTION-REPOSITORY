@@ -13,6 +13,7 @@ from app.core.exceptions import AcademicAuthorizationError
 from app.domains.academics.electives import ElectiveEligibilityService
 from app.domains.academics.models import StudentEnrollment
 from app.domains.academics.repository import AcademicRepository
+from app.domains.attempts.models import AttemptStatus
 from app.domains.attempts.repository import AttemptRepository
 from app.domains.audit.models import AuditActorType, AuditEvent
 from app.domains.audit.repository import AuditRepository
@@ -39,6 +40,7 @@ from app.domains.exams.execution_models import ExamResultDisposition
 from app.domains.exams.execution_repository import ExamExecutionRepository
 from app.domains.exams.models import Exam, ExamRosterStatus, ExamStatus
 from app.domains.exams.repository import ExamRepository
+from app.domains.results.repository import ResultRepository
 from app.domains.exams.timetable_service import (
     OPERATIONAL_EXAM_STATUSES,
     ExamTimetableService,
@@ -904,16 +906,22 @@ class CandidateService:
             db, candidate_id=candidate_id, lock=True
         )
         if attempt is not None:
-            raise ValueError(
-                "Candidate cannot receive makeup approval because "
-                "an examination attempt was already recorded for candidate"
-            )
+            previous_result = await ResultRepository.get_result_by_attempt_id(db, attempt.id)
+            if (
+                attempt.status != AttemptStatus.SUBMITTED
+                or previous_result is None
+                or previous_result.voided_at is None
+            ):
+                raise ValueError(
+                    "An existing examination attempt permits retake approval only "
+                    "when its submitted result was individually voided"
+                )
 
         existing = await CandidateRepository.get_active_makeup_authorization(
             db, candidate.id, lock=True
         )
-        if existing is not None:
-            raise ValueError("Candidate already has an active makeup authorization")
+        if existing is not None and existing.consumed_at is None:
+            raise ValueError("Candidate already has a pending makeup authorization")
 
         authorization = CandidateMakeupAuthorization(
             candidate_id=candidate.id,

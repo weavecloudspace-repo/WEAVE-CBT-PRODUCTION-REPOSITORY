@@ -429,6 +429,10 @@ class AttemptService:
                 AttemptStatus.IN_PROGRESS,
                 AttemptStatus.INTERRUPTED,
             }:
+                if context.is_makeup and existing.makeup_authorization_id != context.makeup_authorization_id:
+                    raise AttemptStateError("This makeup authorization does not own the active attempt")
+                if not context.is_makeup and existing.makeup_authorization_id is not None:
+                    raise AttemptStateError("Active makeup attempt requires a makeup session")
                 return await cls._build_attempt_response(
                     db,
                     attempt=existing,
@@ -436,7 +440,17 @@ class AttemptService:
                     exam=exam,
                     is_makeup=context.is_makeup,
                 )
-            raise AttemptStateError("Candidate examination attempt has already ended")
+            if not context.is_makeup:
+                raise AttemptStateError("Candidate examination attempt has already ended")
+            from app.domains.results.repository import ResultRepository
+
+            previous_result = await ResultRepository.get_result_by_attempt_id(db, existing.id)
+            if (
+                existing.status != AttemptStatus.SUBMITTED
+                or previous_result is None
+                or previous_result.voided_at is None
+            ):
+                raise AttemptStateError("A new sitting requires an individually voided previous result")
 
         now = datetime.now(UTC)
         if context.is_makeup:
@@ -459,6 +473,8 @@ class AttemptService:
 
         attempt = ExamAttempt(
             candidate_id=candidate.id,
+            attempt_number=(existing.attempt_number + 1) if existing is not None else 1,
+            makeup_authorization_id=authorization.id if context.is_makeup else None,
             status=AttemptStatus.IN_PROGRESS,
             started_at=now,
             time_limit_seconds=exam.duration_minutes * 60,
@@ -694,6 +710,8 @@ class AttemptService:
         )
         if attempt is None:
             raise AttemptStateError("Candidate has not started this examination")
+        if context.is_makeup and attempt.makeup_authorization_id != context.makeup_authorization_id:
+            raise AttemptStateError("Authorized makeup has not started yet")
         return attempt, candidate, exam
 
     @classmethod

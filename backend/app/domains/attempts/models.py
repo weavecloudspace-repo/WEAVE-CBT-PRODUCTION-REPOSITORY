@@ -55,8 +55,17 @@ class ExamAttempt(Base):
     candidate_id: Mapped[UUID] = mapped_column(
         ForeignKey("exam_candidates.id", ondelete="RESTRICT"),
         nullable=False,
-        unique=True,
         index=True,
+    )
+    # Existing attempts are automatically numbered 1 by the additive migration.
+    attempt_number: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default=sql_text("1")
+    )
+    # Each consumed makeup authorization creates at most one examination sitting.
+    makeup_authorization_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("candidate_make_up_authorizations.id", ondelete="RESTRICT"),
+        nullable=True,
+        unique=True,
     )
     status: Mapped[AttemptStatus] = mapped_column(
         SQLEnum(
@@ -107,6 +116,14 @@ class ExamAttempt(Base):
     )
 
     __table_args__ = (
+        UniqueConstraint("candidate_id", "attempt_number", name="uq_exam_attempts_candidate_number"),
+        Index(
+            "uq_exam_attempts_one_active_candidate",
+            "candidate_id",
+            unique=True,
+            postgresql_where=sql_text("status IN ('in_progress', 'interrupted')"),
+        ),
+        CheckConstraint("attempt_number >= 1", name="ck_exam_attempts_attempt_number_positive"),
         CheckConstraint(
             "time_limit_seconds > 0", name="ck_exam_attempts_time_limit_positive"
         ),

@@ -292,10 +292,14 @@ class ExamResult(Base):
             "voided_at IS NULL OR (sync_batch_id IS NULL AND sync_status IN ('pending', 'failed'))",
             name="ck_exam_results_void_unsent",
         ),
-        UniqueConstraint(
+        # Voided historical results remain immutable while one publishable
+        # result at a time is allowed for each candidate/examination.
+        Index(
+            "uq_exam_results_candidate_exam_nonvoided",
             "candidate_id",
             "exam_id",
-            name="uq_exam_results_candidate_exam",
+            unique=True,
+            postgresql_where=sql_text("voided_at IS NULL"),
         ),
         # ========================== #
         # RAW SCORE CONSTRAINTS
