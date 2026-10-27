@@ -66,9 +66,9 @@ class Settings(BaseSettings):
         min_length=1,
         description="Required PostgreSQL connection URL for the local CBT database.",
     )
-    DATABASE_POOL_SIZE: int = Field(default=5, ge=1)
+    DATABASE_POOL_SIZE: int = Field(default=10, ge=1)
     DATABASE_MAX_OVERFLOW: int = Field(default=5, ge=0)
-    DATABASE_POOL_TIMEOUT_SECONDS: int = Field(default=10, ge=1)
+    DATABASE_POOL_TIMEOUT_SECONDS: int = Field(default=20, ge=1)
     DATABASE_POOL_RECYCLE_SECONDS: int = Field(default=1800, ge=60)
 
     # ========================== #
