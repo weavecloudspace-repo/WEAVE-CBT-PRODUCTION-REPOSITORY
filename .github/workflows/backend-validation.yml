@@ -78,7 +78,9 @@ jobs:
         run: uv run ruff check app tests
 
       - name: Ruff format check
-        run: uv run ruff format --check app tests
+        run: |
+          uv run ruff format --diff app tests
+          uv run ruff format --check app tests
 
       - name: Initialize and validate database
         run: |
