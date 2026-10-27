@@ -26,6 +26,11 @@ def upgrade() -> None:
         ["rollback_operation_id"],
     )
     op.drop_constraint("result_sync_status", "exam_results", type_="check")
+    op.alter_column(
+        "exam_results", "sync_status",
+        existing_type=sa.String(length=7), type_=sa.String(length=16),
+        existing_nullable=False,
+    )
     op.create_check_constraint(
         "result_sync_status",
         "exam_results",
