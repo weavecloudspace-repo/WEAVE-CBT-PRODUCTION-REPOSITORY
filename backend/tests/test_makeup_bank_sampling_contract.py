@@ -5,8 +5,9 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from app.domains.candidates.makeup_review_repository import MakeupReviewRepository
 from sqlalchemy.dialects import postgresql
+
+from app.domains.candidates.makeup_review_repository import MakeupReviewRepository
 
 
 @pytest.mark.asyncio

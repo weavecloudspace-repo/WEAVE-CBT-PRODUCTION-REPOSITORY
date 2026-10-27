@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+
 from app.domains.exams.exceptions import ExamStateError
 from app.domains.results.models import ResultSyncStatus
 from app.domains.results.rollback_schemas import (
