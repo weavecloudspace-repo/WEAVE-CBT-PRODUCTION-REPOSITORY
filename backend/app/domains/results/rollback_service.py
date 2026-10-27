@@ -194,7 +194,7 @@ class ResultRollbackService:
 
     @classmethod
     async def poll(cls, db: AsyncSession, *, operation_id: UUID) -> LocalRollbackResponse:
-        batch_id, _ = await cls._payload(db, operation_id)
+        _batch_id, _ = await cls._payload(db, operation_id)
         await db.rollback()
         identity = node_identity_store.load()
         cloud = await weave_result_gateway.rollback_status(

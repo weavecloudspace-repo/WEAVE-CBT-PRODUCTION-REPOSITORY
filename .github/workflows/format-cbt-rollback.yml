@@ -1,4 +1,4 @@
-name: Temporary CBT rollback lint formatting
+name: Temporary CBT rollback lint formatting v2
 on:
   push:
     branches:
