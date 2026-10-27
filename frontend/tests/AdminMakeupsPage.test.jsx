@@ -41,6 +41,16 @@ it('shows blockers and approves selected missed students with a reason, then cle
   await waitFor(() => expect(screen.getByRole('button', { name: 'Approve selected (0)' })).toBeDisabled())
 })
 
+it('shows an individually voided candidate and submits an authorized retake approval', async () => {
+  const api = gateway([row('Ada', { state: 'voided_awaiting_approval', can_approve: true })])
+  render(<AdminMakeupsPage examId="exam" adminData={data} gateway={api} onNavigate={vi.fn()} />)
+  expect(await screen.findByText('Voided — awaiting retake approval')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Approve retake' }))
+  fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Invalid original paper' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm approval' }))
+  await waitFor(() => expect(api.makeups.approveMakeup).toHaveBeenCalledWith('Ada', 'Invalid original paper', { successMessage: false }))
+})
+
 it('keeps a started makeup out of approval and revocation actions', async () => {
   render(<AdminMakeupsPage examId="exam" adminData={data} gateway={gateway([row('Ada', { state: 'writing', can_approve: false, remaining_seconds: 1200 })])} onNavigate={vi.fn()} />)
   expect(await screen.findByText('20 min remaining')).toBeInTheDocument()

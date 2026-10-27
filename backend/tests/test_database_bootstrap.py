@@ -334,3 +334,56 @@ async def test_future_migration_does_not_duplicate_current_model_column(
             await connection.execute(text("SELECT future_probe FROM school_profiles"))
     finally:
         table._columns.remove(probe)
+
+
+@pytest.mark.asyncio
+async def test_existing_baseline_is_upgraded_without_losing_records(fresh_database):
+    """A populated, versioned CBT database upgrades rather than being replaced."""
+    from alembic import command
+    from app.core.migrations import migration_config
+
+    config = migration_config()
+
+    def migrate_baseline(connection):
+        config.attributes["connection"] = connection
+        try:
+            command.upgrade(config, "20261006_initial_schema")
+        finally:
+            config.attributes.pop("connection", None)
+
+    async with fresh_database.begin() as connection:
+        await connection.run_sync(migrate_baseline)
+        await connection.execute(
+            text("CREATE TABLE public.retake_upgrade_sentinel (value text NOT NULL)")
+        )
+        await connection.execute(
+            text(
+                "INSERT INTO public.retake_upgrade_sentinel VALUES ('preserve historical rows')"
+            )
+        )
+
+    # This is the path used by the school's one-shot bootstrap container.
+    assert await bootstrap_database(fresh_database) is False
+    await verify_database_schema(fresh_database)
+    async with fresh_database.connect() as connection:
+        assert (
+            await connection.execute(text("SELECT version_num FROM alembic_version"))
+        ).scalar_one() == migration_head()
+        assert (
+            await connection.execute(text("SELECT value FROM retake_upgrade_sentinel"))
+        ).scalar_one() == "preserve historical rows"
+        assert {"attempt_number", "makeup_authorization_id"} <= {
+            row[0]
+            for row in (
+                await connection.execute(
+                    text("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'exam_attempts' AND table_schema = 'public'
+            """)
+                )
+            ).all()
+        }
+        await connection.execute(
+            text("SELECT 1 FROM exam_attempts WHERE attempt_number = 1")
+        )
+    assert await bootstrap_database(fresh_database) is False

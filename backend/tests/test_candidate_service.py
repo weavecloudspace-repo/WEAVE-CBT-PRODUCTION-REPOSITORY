@@ -865,9 +865,15 @@ class CandidateServiceTests(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 AttemptRepository,
                 "get_attempt_by_candidate_id",
-                new=AsyncMock(return_value=SimpleNamespace(id=uuid4())),
+                new=AsyncMock(
+                    return_value=SimpleNamespace(id=uuid4(), status="submitted")
+                ),
             ),
-            self.assertRaisesRegex(ValueError, "attempt was already recorded"),
+            patch(
+                "app.domains.candidates.service.ResultRepository.get_result_by_attempt_id",
+                new=AsyncMock(return_value=SimpleNamespace(voided_at=None)),
+            ),
+            self.assertRaisesRegex(ValueError, "individually voided"),
         ):
             await CandidateService.approve_makeup(
                 db,
@@ -913,7 +919,7 @@ class CandidateServiceTests(unittest.IsolatedAsyncioTestCase):
                 "get_active_makeup_authorization",
                 new=AsyncMock(return_value=makeup_authorization(candidate_id=row.id)),
             ),
-            self.assertRaisesRegex(ValueError, "already has an active"),
+            self.assertRaisesRegex(ValueError, "already has a pending"),
         ):
             await CandidateService.approve_makeup(
                 db,
@@ -923,6 +929,71 @@ class CandidateServiceTests(unittest.IsolatedAsyncioTestCase):
             )
 
         db.commit.assert_not_awaited()
+
+    async def test_approve_individually_voided_result_for_same_existing_candidate(
+        self,
+    ) -> None:
+        db = AsyncMock()
+        admin = actor()
+        row = candidate()
+        old_attempt = SimpleNamespace(id=uuid4(), status="submitted")
+        old_result = SimpleNamespace(voided_at=datetime.now(UTC))
+        previous = SimpleNamespace(consumed_at=datetime.now(UTC))
+
+        async def add_authorization(_db, item):
+            item.id = uuid4()
+            item.consumed_at = None
+            item.revoked_at = None
+            item.revoked_by_actor_id = None
+            item.revocation_reason = None
+            item.created_at = datetime.now(UTC)
+            item.updated_at = datetime.now(UTC)
+            return item
+
+        with (
+            patch(
+                "app.domains.candidates.service.require_current_makeup_term",
+                AsyncMock(),
+            ),
+            patch(
+                "app.domains.candidates.service.ExamExecutionRepository.get_control",
+                AsyncMock(return_value=None),
+            ),
+            patch.object(
+                CandidateRepository, "get_candidate_by_id", AsyncMock(return_value=row)
+            ),
+            patch.object(
+                ExamRepository,
+                "get_exam_by_id",
+                AsyncMock(return_value=exam(id=row.exam_id, status=ExamStatus.CLOSED)),
+            ),
+            patch.object(
+                AttemptRepository,
+                "get_attempt_by_candidate_id",
+                AsyncMock(return_value=old_attempt),
+            ),
+            patch(
+                "app.domains.candidates.service.ResultRepository.get_result_by_attempt_id",
+                AsyncMock(return_value=old_result),
+            ),
+            patch.object(
+                CandidateRepository,
+                "get_active_makeup_authorization",
+                AsyncMock(return_value=previous),
+            ),
+            patch.object(
+                CandidateRepository,
+                "add_makeup_authorization",
+                AsyncMock(side_effect=add_authorization),
+            ) as add,
+        ):
+            result = await CandidateService.approve_makeup(
+                db, actor=admin, candidate_id=row.id, reason="Original sitting invalid"
+            )
+        self.assertEqual(result.candidate_id, row.id)
+        self.assertEqual(result.reason, "Original sitting invalid")
+        add.assert_awaited_once()
+        db.commit.assert_awaited_once()
 
     async def test_revoke_makeup_success(self) -> None:
         db = AsyncMock()
