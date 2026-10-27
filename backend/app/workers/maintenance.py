@@ -16,20 +16,20 @@ from arq.connections import ArqRedis
 from sqlalchemy import and_, or_, select
 
 from app.core.database import async_session_factory
+from app.domains.exams.exceptions import ExamStateError
 from app.domains.exams.execution_models import (
     ExamExecutionControl,
     ExamResultDisposition,
 )
 from app.domains.exams.lineage import latest_exam_revision_clause
 from app.domains.exams.models import Exam, ExamRosterStatus, ExamStatus
-from app.domains.results.rollback_service import ResultRollbackService
-from app.integrations.weave.exceptions import WeaveIntegrationError
-from app.domains.exams.exceptions import ExamStateError
 from app.domains.results.models import (
     RESULT_SYNC_ERROR_MAX_LENGTH,
     ExamResult,
     ResultSyncStatus,
 )
+from app.domains.results.rollback_service import ResultRollbackService
+from app.integrations.weave.exceptions import WeaveIntegrationError
 
 logger = logging.getLogger(__name__)
 
@@ -334,12 +334,21 @@ async def reconcile_pending_cloud_rollbacks(_ctx: dict[str, Any]) -> dict[str, i
     require a new authorized administrator POST, not an unauthenticated retry.
     """
     async with async_session_factory() as db:
-        operation_ids = list((await db.execute(
-            select(ExamResult.rollback_operation_id).where(
-                ExamResult.sync_status == ResultSyncStatus.ROLLBACK_PENDING,
-                ExamResult.rollback_operation_id.is_not(None),
-            ).distinct().limit(5)
-        )).scalars().all())
+        operation_ids = list(
+            (
+                await db.execute(
+                    select(ExamResult.rollback_operation_id)
+                    .where(
+                        ExamResult.sync_status == ResultSyncStatus.ROLLBACK_PENDING,
+                        ExamResult.rollback_operation_id.is_not(None),
+                    )
+                    .distinct()
+                    .limit(5)
+                )
+            )
+            .scalars()
+            .all()
+        )
         await db.rollback()
 
     reconciled = 0

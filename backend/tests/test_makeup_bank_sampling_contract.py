@@ -1,12 +1,12 @@
 """Makeup readiness uses the full active bank, not only unseen source questions."""
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.dialects import postgresql
-
 from app.domains.candidates.makeup_review_repository import MakeupReviewRepository
+from sqlalchemy.dialects import postgresql
 
 
 @pytest.mark.asyncio
@@ -23,8 +23,10 @@ async def test_makeup_availability_counts_all_active_bank_questions():
 
 
 def test_makeup_bank_sampling_no_longer_excludes_exam_questions():
-    from app.domains.attempts.service import AttemptService
     import inspect
+
+    from app.domains.attempts.service import AttemptService
+
     code = inspect.getsource(AttemptService._allocate_makeup_paper)
     assert "question.id for question in available" in code
     assert "original_source_ids" not in code

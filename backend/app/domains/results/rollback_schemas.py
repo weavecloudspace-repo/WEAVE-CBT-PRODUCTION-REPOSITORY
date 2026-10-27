@@ -1,8 +1,11 @@
 """CBT result rollback request and status contracts."""
+
 from __future__ import annotations
+
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -21,7 +24,9 @@ class CloudRollbackItem(BaseModel):
 class CloudRollbackResponse(BaseModel):
     operation_id: UUID
     source_batch_id: UUID
-    status: Literal["pending", "processing", "completed", "partially_completed", "rejected"]
+    status: Literal[
+        "pending", "processing", "completed", "partially_completed", "rejected"
+    ]
     target_count: int
     completed_count: int
     rejected_count: int

@@ -1,6 +1,7 @@
 """Allow durable CBT result withdrawal and explicit republication."""
-from alembic import op
+
 import sqlalchemy as sa
+from alembic import op
 
 revision = "20261027_result_rollback"
 down_revision = "20261027_individual_retakes"
@@ -19,16 +20,22 @@ def upgrade() -> None:
         ("rollback_reason", sa.Text()),
     ):
         op.add_column("exam_results", sa.Column(name, column, nullable=True))
-    op.create_index("ix_exam_results_rollback_operation_id", "exam_results", ["rollback_operation_id"])
+    op.create_index(
+        "ix_exam_results_rollback_operation_id",
+        "exam_results",
+        ["rollback_operation_id"],
+    )
     op.drop_constraint("result_sync_status", "exam_results", type_="check")
     op.create_check_constraint(
-        "result_sync_status", "exam_results",
-        "sync_status IN ('pending', 'syncing', 'synced', 'failed', 'rollback_pending', 'rolled_back')"
+        "result_sync_status",
+        "exam_results",
+        "sync_status IN ('pending', 'syncing', 'synced', 'failed', 'rollback_pending', 'rolled_back')",
     )
     op.drop_constraint("ck_exam_results_void_unsent", "exam_results", type_="check")
     op.create_check_constraint(
-        "ck_exam_results_void_unsent", "exam_results",
-        "voided_at IS NULL OR (sync_batch_id IS NULL AND sync_status IN ('pending', 'failed', 'rolled_back'))"
+        "ck_exam_results_void_unsent",
+        "exam_results",
+        "voided_at IS NULL OR (sync_batch_id IS NULL AND sync_status IN ('pending', 'failed', 'rolled_back'))",
     )
 
 

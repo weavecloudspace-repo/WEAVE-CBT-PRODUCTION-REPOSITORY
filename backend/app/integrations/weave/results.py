@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from pydantic import SecretStr, ValidationError
 
+from app.domains.results.rollback_schemas import CloudRollbackResponse
 from app.integrations.weave.client import WeaveClient, weave_client
 from app.integrations.weave.exceptions import WeaveContractError
-from app.domains.results.rollback_schemas import CloudRollbackResponse
-from uuid import UUID
 from app.integrations.weave.schemas import (
     WeaveResultBulkRequest,
     WeaveResultBulkResponse,
@@ -42,13 +43,19 @@ class WeaveResultGateway:
                 "Weave returned an invalid CBT result ingestion response."
             ) from exc
 
-
     async def request_rollback(
-        self, *, operation_id: UUID, batch_id: UUID, student_ids: list[UUID],
-        reason: str, server_credential: SecretStr, actor_access_token: str,
+        self,
+        *,
+        operation_id: UUID,
+        batch_id: UUID,
+        student_ids: list[UUID],
+        reason: str,
+        server_credential: SecretStr,
+        actor_access_token: str,
     ) -> CloudRollbackResponse:
         data = await self.client.request_actor_authenticated(
-            "POST", "/api/v1/cbt/results/rollbacks",
+            "POST",
+            "/api/v1/cbt/results/rollbacks",
             server_credential=server_credential,
             actor_access_token=actor_access_token,
             json={
@@ -61,19 +68,27 @@ class WeaveResultGateway:
         try:
             return CloudRollbackResponse.model_validate(data)
         except ValidationError as exc:
-            raise WeaveContractError("Cloud returned an invalid rollback acknowledgment") from exc
+            raise WeaveContractError(
+                "Cloud returned an invalid rollback acknowledgment"
+            ) from exc
 
     async def rollback_status(
-        self, *, operation_id: UUID, server_credential: SecretStr,
+        self,
+        *,
+        operation_id: UUID,
+        server_credential: SecretStr,
     ) -> CloudRollbackResponse:
         data = await self.client.request_authenticated(
-            "GET", f"/api/v1/cbt/results/rollbacks/{operation_id}",
+            "GET",
+            f"/api/v1/cbt/results/rollbacks/{operation_id}",
             server_credential=server_credential,
         )
         try:
             return CloudRollbackResponse.model_validate(data)
         except ValidationError as exc:
-            raise WeaveContractError("Cloud returned an invalid rollback status") from exc
+            raise WeaveContractError(
+                "Cloud returned an invalid rollback status"
+            ) from exc
 
 
 weave_result_gateway = WeaveResultGateway()

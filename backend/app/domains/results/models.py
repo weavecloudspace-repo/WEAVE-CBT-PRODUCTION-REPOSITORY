@@ -253,10 +253,16 @@ class ExamResult(Base):
 
     sync_batch_id: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
 
-    rollback_operation_id: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
+    rollback_operation_id: Mapped[UUID | None] = mapped_column(
+        nullable=True, index=True
+    )
     rollback_original_batch_id: Mapped[UUID | None] = mapped_column(nullable=True)
-    rollback_previous_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    rollback_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rollback_previous_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    rollback_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rollback_error: Mapped[str | None] = mapped_column(Text)
     rollback_reason: Mapped[str | None] = mapped_column(Text)

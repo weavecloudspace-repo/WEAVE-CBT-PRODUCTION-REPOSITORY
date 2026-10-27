@@ -13,6 +13,11 @@ from app.domains.auth.dependencies import CurrentLocalActor, CurrentLocalContext
 from app.domains.exams.exceptions import ExamNotFound, ExamStateError
 from app.domains.results.models import ResultSyncStatus
 from app.domains.results.retry_service import ResultRetryService
+from app.domains.results.rollback_schemas import (
+    LocalRollbackRequest,
+    LocalRollbackResponse,
+)
+from app.domains.results.rollback_service import ResultRollbackService
 from app.domains.results.schemas import (
     ResultListResponse,
     ResultResponse,
@@ -23,46 +28,56 @@ from app.domains.results.schemas import (
     ResultVoidPayload,
 )
 from app.domains.results.service import ResultService
-from app.domains.results.rollback_service import ResultRollbackService
-from app.domains.results.rollback_schemas import LocalRollbackRequest, LocalRollbackResponse
-from app.integrations.weave.exceptions import WeaveIntegrationError
 from app.workers.producer import arq_producer
 
 router = APIRouter(tags=["Results"])
 
 
-
 @router.post("/results/{result_id}/rollback", response_model=LocalRollbackResponse)
 async def rollback_one_result(
-    result_id: UUID, payload: LocalRollbackRequest,
-    db: DbSession, context: CurrentLocalContext,
+    result_id: UUID,
+    payload: LocalRollbackRequest,
+    db: DbSession,
+    context: CurrentLocalContext,
 ):
     operation_id = await ResultRollbackService.begin(
         db, actor=context.actor, reason=payload.reason, result_id=result_id
     )
     return await ResultRollbackService.send(
-        db, operation_id=operation_id, session_id=context.session.id,
+        db,
+        operation_id=operation_id,
+        session_id=context.session.id,
         reason=payload.reason,
     )
 
 
-@router.post("/results/batches/{batch_id}/rollback", response_model=LocalRollbackResponse)
+@router.post(
+    "/results/batches/{batch_id}/rollback", response_model=LocalRollbackResponse
+)
 async def rollback_result_batch(
-    batch_id: UUID, payload: LocalRollbackRequest,
-    db: DbSession, context: CurrentLocalContext,
+    batch_id: UUID,
+    payload: LocalRollbackRequest,
+    db: DbSession,
+    context: CurrentLocalContext,
 ):
     operation_id = await ResultRollbackService.begin(
         db, actor=context.actor, reason=payload.reason, batch_id=batch_id
     )
     return await ResultRollbackService.send(
-        db, operation_id=operation_id, session_id=context.session.id,
+        db,
+        operation_id=operation_id,
+        session_id=context.session.id,
         reason=payload.reason,
     )
 
 
-@router.post("/results/rollbacks/{operation_id}/retry", response_model=LocalRollbackResponse)
+@router.post(
+    "/results/rollbacks/{operation_id}/retry", response_model=LocalRollbackResponse
+)
 async def retry_result_rollback(
-    operation_id: UUID, db: DbSession, context: CurrentLocalContext,
+    operation_id: UUID,
+    db: DbSession,
+    context: CurrentLocalContext,
 ):
     ResultRollbackService._admin(context.actor)
     return await ResultRollbackService.retry(
@@ -72,7 +87,9 @@ async def retry_result_rollback(
 
 @router.get("/results/rollbacks/{operation_id}", response_model=LocalRollbackResponse)
 async def check_result_rollback(
-    operation_id: UUID, db: DbSession, actor: CurrentLocalActor,
+    operation_id: UUID,
+    db: DbSession,
+    actor: CurrentLocalActor,
 ):
     ResultRollbackService._admin(actor)
     return await ResultRollbackService.poll(db, operation_id=operation_id)
@@ -80,11 +97,14 @@ async def check_result_rollback(
 
 @router.post("/results/{result_id}/resync", response_model=ResultSyncRetryResponse)
 async def resync_withdrawn_result(
-    result_id: UUID, db: DbSession, actor: CurrentLocalActor,
+    result_id: UUID,
+    db: DbSession,
+    actor: CurrentLocalActor,
 ):
     exam_id = await ResultRollbackService.resync(db, actor=actor, result_id=result_id)
     queued = await arq_producer.enqueue(
-        "sync_exam_results", str(exam_id),
+        "sync_exam_results",
+        str(exam_id),
         _job_id=f"weave-cbt:resync-result:{result_id}:{uuid4()}",
     )
     return ResultSyncRetryResponse(exam_id=exam_id, reset_count=1, queued=queued)
