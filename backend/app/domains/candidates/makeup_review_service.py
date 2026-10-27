@@ -19,6 +19,10 @@ class MakeupReviewService:
     def state(candidate, authorization, attempt, result=None):
         if candidate.status != CandidateStatus.ELIGIBLE:
             return candidate.status.value
+        if attempt is not None and attempt.status in {
+            AttemptStatus.IN_PROGRESS, AttemptStatus.INTERRUPTED,
+        }:
+            return "writing" if attempt.status == AttemptStatus.IN_PROGRESS else "paused"
         if (
             authorization is not None
             and authorization.revoked_at is None
@@ -105,8 +109,11 @@ class MakeupReviewService:
                     and authorization.consumed_at is None
                     and (
                         attempt is None
-                        or getattr(attempt, "makeup_authorization_id", None)
-                        != authorization.id
+                        or (
+                            attempt.status == AttemptStatus.SUBMITTED
+                            and getattr(attempt, "makeup_authorization_id", None)
+                            != authorization.id
+                        )
                     ),
                     "remaining_seconds": AttemptQueryService._remaining_seconds(
                         attempt, suspensions=suspensions, at=now
