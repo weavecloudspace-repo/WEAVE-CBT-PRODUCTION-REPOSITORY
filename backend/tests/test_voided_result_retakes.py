@@ -133,3 +133,32 @@ async def test_unvoided_historical_result_rejects_another_sitting():
         )
     add.assert_not_awaited()
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.parametrize("session_is_makeup", [True, False])
+async def test_only_exact_makeup_session_can_access_replacement_attempt(session_is_makeup):
+    db = AsyncMock()
+    candidate = SimpleNamespace(id=uuid4())
+    expected_authorization_id = uuid4()
+    attempt = SimpleNamespace(
+        id=uuid4(),
+        makeup_authorization_id=expected_authorization_id,
+    )
+    context = SimpleNamespace(
+        is_makeup=session_is_makeup,
+        makeup_authorization_id=uuid4() if session_is_makeup else None,
+    )
+    with (
+        patch.object(
+            AttemptService,
+            "_get_candidate_and_exam",
+            AsyncMock(return_value=(candidate, SimpleNamespace())),
+        ),
+        patch.object(
+            AttemptRepository,
+            "get_attempt_by_candidate_id",
+            AsyncMock(return_value=attempt),
+        ),
+        pytest.raises(AttemptStateError, match="makeup|Makeup"),
+    ):
+        await AttemptService._get_current_attempt(db, context=context)
