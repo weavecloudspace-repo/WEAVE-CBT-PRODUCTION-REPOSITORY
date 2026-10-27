@@ -61,6 +61,8 @@ class ResultSyncStatus(StrEnum):
     SYNCING = "syncing"
     SYNCED = "synced"
     FAILED = "failed"
+    ROLLBACK_PENDING = "rollback_pending"
+    ROLLED_BACK = "rolled_back"
 
 
 # ========================== #
@@ -251,6 +253,13 @@ class ExamResult(Base):
 
     sync_batch_id: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
 
+    rollback_operation_id: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
+    rollback_original_batch_id: Mapped[UUID | None] = mapped_column(nullable=True)
+    rollback_previous_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rollback_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rollback_error: Mapped[str | None] = mapped_column(Text)
+
     sync_attempts: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
@@ -288,7 +297,7 @@ class ExamResult(Base):
             name="ck_exam_results_void_audit",
         ),
         CheckConstraint(
-            "voided_at IS NULL OR (sync_batch_id IS NULL AND sync_status IN ('pending', 'failed'))",
+            "voided_at IS NULL OR (sync_batch_id IS NULL AND sync_status IN ('pending', 'failed', 'rolled_back'))",
             name="ck_exam_results_void_unsent",
         ),
         # Voided historical results remain immutable while one publishable

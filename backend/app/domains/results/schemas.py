@@ -32,6 +32,11 @@ class ResultResponse(BaseModel):
     last_sync_attempt_at: datetime | None
     synced_at: datetime | None
     sync_error: str | None
+    rollback_operation_id: UUID | None = None
+    rollback_original_batch_id: UUID | None = None
+    rollback_requested_at: datetime | None = None
+    rolled_back_at: datetime | None = None
+    rollback_error: str | None = None
     voided_at: datetime | None = None
     voided_by_actor_id: UUID | None = None
     void_reason: str | None = None

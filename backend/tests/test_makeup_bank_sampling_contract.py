@@ -7,7 +7,6 @@ import pytest
 from sqlalchemy.dialects import postgresql
 
 from app.domains.candidates.makeup_review_repository import MakeupReviewRepository
-from app.domains.questions.models import Question
 
 
 @pytest.mark.asyncio

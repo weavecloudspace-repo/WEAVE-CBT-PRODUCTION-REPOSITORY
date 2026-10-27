@@ -264,6 +264,7 @@ class ResultService:
         if result.sync_batch_id is not None or result.sync_status not in (
             ResultSyncStatus.PENDING,
             ResultSyncStatus.FAILED,
+            ResultSyncStatus.ROLLED_BACK,
         ):
             raise ExamStateError(
                 "This result has entered synchronization. Resolve it in Weave before making a correction"
