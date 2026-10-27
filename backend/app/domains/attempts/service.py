@@ -310,22 +310,16 @@ class AttemptService:
             exam.question_bank_id,
             active_only=True,
         )
-        original_questions = await ExamRepository.list_exam_questions(db, exam.id)
-        original_source_ids = {
-            question.source_question_id for question in original_questions
-        }
-
-        fresh = [
-            question for question in available if question.id not in original_source_ids
-        ]
-        if len(fresh) < exam.question_count:
+        # Sample without replacement from the entire active bank. Original
+        # examination questions remain eligible for every makeup sitting.
+        if len(available) < exam.question_count:
             raise AttemptStateError(
-                "Question bank does not contain enough unused questions "
-                "to generate a fresh makeup paper"
+                "Question bank does not contain enough active questions "
+                "for this makeup examination"
             )
 
         selected_ids = SystemRandom().sample(
-            [question.id for question in fresh],
+            [question.id for question in available],
             exam.question_count,
         )
         selected = await QuestionRepository.list_questions_by_ids(

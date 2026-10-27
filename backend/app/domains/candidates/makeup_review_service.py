@@ -69,7 +69,7 @@ class MakeupReviewService:
             )
         await require_current_makeup_term(db, exam)
         blockers = await MakeupReviewRepository.blockers(db, exam)
-        fresh_count = await MakeupReviewRepository.fresh_question_count(db, exam)
+        active_count = await MakeupReviewRepository.active_question_count(db, exam)
         rows, total = await MakeupReviewRepository.candidates(
             db, exam_id, offset=offset, limit=limit
         )
@@ -81,9 +81,9 @@ class MakeupReviewService:
             "offset": offset,
             "limit": limit,
             "blockers": blockers,
-            "fresh_question_count": fresh_count,
+            "active_question_count": active_count,
             "required_question_count": exam.question_count,
-            "available": not blockers and fresh_count >= exam.question_count,
+            "available": not blockers and active_count >= exam.question_count,
             "candidates": [
                 {
                     "id": candidate.id,

@@ -134,7 +134,7 @@ export function AdminMakeupsPage({ examId, adminData, gateway, onNavigate }) {
           <summary><span aria-hidden="true" className="admin-makeup-info-icon">i</span> Readiness details</summary>
           <div className="admin-makeup-info-content">
         <p>{payload.blockers.length ? `Normal examinations still unfinished: ${payload.blockers.join(', ')}.` : 'The academic level’s scheduled examination cycle is complete.'}</p>
-        <p>{payload.fresh_question_count} unused active questions available · {payload.required_question_count} required.{payload.fresh_question_count < payload.required_question_count ? ' Add enough unused questions before students start.' : ''}</p>
+        <p>{payload.active_question_count} active bank questions available · {payload.required_question_count} required.{payload.active_question_count < payload.required_question_count ? ' Add enough active questions before students start.' : ''}</p>
         <small>Approval does not override these checks. Students receive the original paper’s full duration from their own start time.</small>
           </div>
         </details>
