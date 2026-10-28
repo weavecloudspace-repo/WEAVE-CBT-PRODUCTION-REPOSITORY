@@ -21,7 +21,8 @@
     "@remixicon/react": "^4.9.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.4"
+    "react-router-dom": "^7.18.4",
+    "mathlive": "^0.111.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
