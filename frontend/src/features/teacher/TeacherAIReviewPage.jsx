@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import { RiArrowLeftLine, RiArrowRightLine, RiEyeLine, RiCheckLine, RiDeleteBin6Line, RiEdit2Line, RiRefreshLine, RiFileList3Line } from '@remixicon/react'
 import { FormattedText } from '../../shared/ui/FormattedText'
 import { TeacherGenerationStatus } from './TeacherGenerationStatus'
-import { QuestionPreview } from './QuestionBuilder'
+import { QuestionPreview, RichTextToolbar } from './QuestionBuilder'
+import { MathInsertButton } from '../../shared/math/MathInsertButton'
 import { useTeacherAIController, useTeacherAIQuota, validateAIQuestion } from './teacherAI'
 import './teacher-ai.css'
 
@@ -140,17 +141,78 @@ function DraftImage({ image }) {
   return <figure className="teacher-ai-image"><img src={`data:${image.content_type};base64,${image.data_base64}`} alt={image.alt_text || 'Question illustration'} />{(image.attribution_text || image.creator || image.license_name) && <figcaption>{[image.attribution_text || image.creator, image.license_name].filter(Boolean).join(' · ')}</figcaption>}</figure>
 }
 
+const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+function fileToDraftImage(file) {
+  if (!IMAGE_TYPES.has(file.type)) return Promise.reject(new Error('Choose a PNG, JPEG, or WebP image.'))
+  if (file.size > MAX_IMAGE_BYTES) return Promise.reject(new Error('Images must be 5 MB or smaller.'))
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Could not read this image.'))
+    reader.onload = () => {
+      const encoded = String(reader.result || '')
+      const base64 = encoded.split(',')[1]
+      if (!base64) { reject(new Error('The selected image is empty.')); return }
+      resolve({ content_type: file.type, data_base64: base64, alt_text: file.name || 'Question image' })
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
 function DraftEditor({ question, index, disabled, onCancel, onSave }) {
   const [value, setValue] = useState(() => structuredClone(question))
+  const [uploadError, setUploadError] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const promptRef = useRef(null)
+  const instructionRef = useRef(null)
+  const optionRefs = useRef({})
   const issue = validateAIQuestion(value)
   const changeOption = (position, patch) => setValue((current) => ({ ...current, options: current.options.map((option, i) => i === position ? { ...option, ...patch } : option) }))
-  return <form className="teacher-ai-editor" onSubmit={(event) => { event.preventDefault(); if (!issue) onSave(value) }}><fieldset disabled={disabled}>
-    <label>Question prompt<textarea required maxLength={20000} value={value.prompt} onChange={(event) => setValue({ ...value, prompt: event.target.value })} /></label>
-    <label>Instruction<textarea maxLength={10000} value={value.instruction || ''} onChange={(event) => setValue({ ...value, instruction: event.target.value || null })} /></label>
-    <DraftImage image={value.image} />{value.image && <button type="button" className="text-button" onClick={() => setValue({ ...value, image: null })}>Remove question image</button>}
-    <p>Mark the correct answer{value.question_type === 'multiple_choice' ? 's' : ''}.</p>
-    {value.options.map((option, position) => <div className="teacher-ai-edit-option" key={position}><div><input type={value.question_type === 'single_choice' ? 'radio' : 'checkbox'} name={`correct-${index}`} aria-label={`Option ${position + 1} is correct`} checked={option.is_correct} onChange={(event) => setValue({ ...value, options: value.options.map((item, i) => ({ ...item, is_correct: value.question_type === 'single_choice' ? i === position : i === position ? event.target.checked : item.is_correct })) })} /><input aria-label={`Option ${position + 1} text`} maxLength={10000} value={option.text || ''} onChange={(event) => changeOption(position, { text: event.target.value || null })} /><button type="button" className="teacher-ai-icon-button" aria-label={`Remove option ${position + 1}`} disabled={value.options.length <= 2} onClick={() => setValue({ ...value, options: value.options.filter((_, i) => i !== position) })}><RiDeleteBin6Line size={17} /></button></div><DraftImage image={option.image} />{option.image && <button type="button" className="text-button" onClick={() => changeOption(position, { image: null })}>Remove option image</button>}</div>)}
-    <button type="button" className="text-button" disabled={value.options.length >= 50} onClick={() => setValue({ ...value, options: [...value.options, { text: '', image: null, is_correct: false }] })}>Add answer option</button>
-    {issue && <p className="teacher-ai-error">{issue}</p>}<div className="teacher-ai-editor__actions"><button type="button" className="teacher-secondary-action" onClick={onCancel}>Cancel edit</button><button type="submit" className="teacher-primary-action" disabled={Boolean(issue)}>Keep changes</button></div>
-  </fieldset></form>
+  const uploadImage = async (file, position = null) => {
+    if (!file) return
+    setUploadError('')
+    setUploading(true)
+    try {
+      const image = await fileToDraftImage(file)
+      if (position === null) setValue((current) => ({ ...current, image }))
+      else changeOption(position, { image })
+    } catch (error) { setUploadError(error.message || 'Image upload failed.') }
+    finally { setUploading(false) }
+  }
+  return <form className="teacher-ai-editor" onSubmit={(event) => { event.preventDefault(); if (!issue && !uploading) onSave(value) }}>
+    <fieldset disabled={disabled || uploading}>
+      <div className="teacher-ai-editor-field"><span>Question prompt</span>
+        <RichTextToolbar textareaRef={promptRef} value={value.prompt} onChange={(prompt) => setValue((current) => ({ ...current, prompt }))} />
+        <textarea ref={promptRef} aria-label="Question prompt" required maxLength={20000} value={value.prompt} onChange={(event) => setValue((current) => ({ ...current, prompt: event.target.value }))} />
+      </div>
+      <div className="teacher-ai-editor-field"><span>Instruction</span>
+        <RichTextToolbar textareaRef={instructionRef} value={value.instruction || ''} onChange={(instruction) => setValue((current) => ({ ...current, instruction: instruction || null }))} />
+        <textarea ref={instructionRef} aria-label="Question instruction" maxLength={10000} value={value.instruction || ''} onChange={(event) => setValue((current) => ({ ...current, instruction: event.target.value || null }))} />
+      </div>
+      <div className="teacher-ai-image-controls">
+        <DraftImage image={value.image} />
+        <label className="teacher-secondary-action">{value.image ? 'Replace question image' : 'Upload question image'}<input aria-label="Upload question image" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { void uploadImage(event.target.files?.[0]); event.target.value = '' }} /></label>
+        {value.image && <button type="button" className="text-button" onClick={() => setValue((current) => ({ ...current, image: null }))}>Remove question image</button>}
+      </div>
+      <p>Mark the correct answer{value.question_type === 'multiple_choice' ? 's' : ''}.</p>
+      {value.options.map((option, position) => <div className="teacher-ai-edit-option" key={position}>
+        <div className="teacher-ai-edit-option__row">
+          <input type={value.question_type === 'single_choice' ? 'radio' : 'checkbox'} name={'correct-' + index} aria-label={'Option ' + (position + 1) + ' is correct'} checked={option.is_correct} onChange={(event) => setValue((current) => ({ ...current, options: current.options.map((item, i) => ({ ...item, is_correct: current.question_type === 'single_choice' ? i === position : i === position ? event.target.checked : item.is_correct })) }))} />
+          <input ref={(node) => { optionRefs.current[position] = node }} aria-label={'Option ' + (position + 1) + ' text'} maxLength={10000} value={option.text || ''} onChange={(event) => changeOption(position, { text: event.target.value || null })} />
+          <MathInsertButton compact inputRef={{ get current() { return optionRefs.current[position] } }} value={option.text || ''} onChange={(text) => changeOption(position, { text })} />
+          <button type="button" className="teacher-ai-icon-button" aria-label={'Remove option ' + (position + 1)} disabled={value.options.length <= 2} onClick={() => setValue((current) => ({ ...current, options: current.options.filter((_, i) => i !== position) }))}><RiDeleteBin6Line size={17} /></button>
+        </div>
+        <div className="teacher-ai-image-controls">
+          <DraftImage image={option.image} />
+          <label className="teacher-secondary-action">{option.image ? 'Replace option image' : 'Upload option image'}<input aria-label={'Upload image for option ' + (position + 1)} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { void uploadImage(event.target.files?.[0], position); event.target.value = '' }} /></label>
+          {option.image && <button type="button" className="text-button" onClick={() => changeOption(position, { image: null })}>Remove option image</button>}
+        </div>
+      </div>)}
+      <button type="button" className="text-button" disabled={value.options.length >= 50} onClick={() => setValue((current) => ({ ...current, options: [...current.options, { text: '', image: null, is_correct: false }] }))}>Add answer option</button>
+      {uploadError && <p className="teacher-ai-error" role="alert">{uploadError}</p>}
+      {issue && <p className="teacher-ai-error">{issue}</p>}
+      <div className="teacher-ai-editor__actions"><button type="button" className="teacher-secondary-action" onClick={onCancel}>Cancel edit</button><button type="submit" className="teacher-primary-action" disabled={Boolean(issue) || uploading}>{uploading ? 'Preparing image…' : 'Keep changes'}</button></div>
+    </fieldset>
+  </form>
 }
