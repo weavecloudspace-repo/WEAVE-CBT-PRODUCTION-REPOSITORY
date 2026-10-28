@@ -288,7 +288,7 @@ function StudentWorkspaceContent({ exam, resolution, gateway, dispatch, returnTo
                       <label key={option.id} className={`premium-option ${selected ? 'selected' : ''}`}>
                         <input type={current.question_type === 'multiple_choice' ? 'checkbox' : 'radio'} className="premium-option-input" name={`question-${current.id}`} aria-label={`Option ${optionLetter(index)}: ${option.text || 'Image answer'}`} checked={selected} disabled={savingByQuestion[current.id] === 'Saving...'} onChange={() => saveAnswer({ question: current, optionId: option.id, gateway, setAttempt, setSavingByQuestion, setAttemptError, pendingSaves })} />
                         <div className="premium-option-letter">{optionLetter(index)}</div>
-                        <div className="premium-option-content">{option.text && <div className="premium-option-text">{option.text}</div>}{option.image_asset_id && <div className="premium-option-media"><AttemptMedia gateway={gateway} questionId={current.id} optionId={option.id} alt={`Option ${optionLetter(index)}`} /></div>}</div>
+                        <div className="premium-option-content">{option.text && <div className="premium-option-text"><FormattedText text={option.text} /></div>}{option.image_asset_id && <div className="premium-option-media"><AttemptMedia gateway={gateway} questionId={current.id} optionId={option.id} alt={`Option ${optionLetter(index)}`} /></div>}</div>
                         <span className={`premium-option-indicator${current.question_type === 'multiple_choice' ? ' is-multiple' : ''}`} aria-hidden="true">{selected && <RiCheckboxCircleFill size={22} />}</span>
                       </label>
                     )

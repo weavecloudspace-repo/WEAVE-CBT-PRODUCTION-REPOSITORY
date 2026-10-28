@@ -99,7 +99,7 @@ function SavedQuestionPreview({ gateway, question, selectedBank, options }) {
             <div className="premium-option" key={option.clientId}>
               <div className="premium-option-letter">{optionLetter(index)}</div>
               <div className="premium-option-content">
-                {option.text.trim() && <div className="premium-option-text">{option.text}</div>}
+                {option.text.trim() && <div className="premium-option-text"><FormattedText text={option.text} /></div>}
                 {option.imageAssetId && (
                   <div className="premium-option-media"><QuestionMedia gateway={gateway} questionId={question.id} optionId={option.id} alt={`Option ${optionLetter(index)}`} /></div>
                 )}
