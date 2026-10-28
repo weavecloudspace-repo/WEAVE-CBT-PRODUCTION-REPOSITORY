@@ -257,14 +257,22 @@
   gap: 8px;
 }
 
-.login-field > span:first-child {
+.login-field > label {
   color: rgb(var(--color-text));
   font-size: 14px;
   font-weight: 620;
   letter-spacing: -.01em;
 }
 
+.login-field__control {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
 .login-field__input {
+  box-sizing: border-box;
+  display: block;
   width: 100%;
   min-height: 52px;
   border: 1px solid rgb(var(--color-border-strong));
@@ -287,6 +295,46 @@
   outline: 0;
   border-color: rgb(var(--color-focus-ring));
   box-shadow: 0 0 0 4px rgb(var(--color-focus-ring) / .08);
+}
+
+/* Keep the eye affordance visible regardless of input value, hover, or focus. */
+.login-field__control--password .login-field__input {
+  padding-inline-end: 62px;
+}
+
+.login-field__input::-ms-reveal,
+.login-field__input::-ms-clear {
+  display: none;
+}
+
+.login-field__reveal {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: rgb(var(--color-text-soft));
+  cursor: pointer;
+  opacity: 1;
+  visibility: visible;
+}
+
+.login-field__reveal:hover {
+  background: rgb(var(--color-primary) / .08);
+  color: rgb(var(--color-text));
+}
+
+.login-field__reveal:focus-visible {
+  outline: 2px solid rgb(var(--color-focus-ring));
+  outline-offset: 2px;
 }
 
 .weave-login-submit {
