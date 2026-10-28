@@ -1,6 +1,7 @@
 import { Fragment, useEffect } from 'react'
 import { splitMathSegments } from '../math/mathText'
 import '../math/math-authoring.css'
+import 'mathlive/fonts.css'
 
 const INLINE_FORMAT = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|\^[^^]+\^|\[[^\]]+\]\(https?:\/\/[^)]+\))/g
 
