@@ -43,6 +43,19 @@ export function MathInsertButton({ inputRef, value = '', onChange, compact = fal
     return () => { active = false }
   }, [open])
 
+  // MathLive mounts its virtual keyboard on document.body with z-index 105 by default.
+  // Raise it only while the editor is open so the keyboard stays above the dialog.
+  useEffect(() => {
+    if (!open) return undefined
+    const original = document.body.style.getPropertyValue('--keyboard-zindex')
+    const priority = document.body.style.getPropertyPriority('--keyboard-zindex')
+    document.body.style.setProperty('--keyboard-zindex', '10001')
+    return () => {
+      if (original) document.body.style.setProperty('--keyboard-zindex', original, priority)
+      else document.body.style.removeProperty('--keyboard-zindex')
+    }
+  }, [open])
+
   const remember = () => {
     const el = inputRef?.current
     if (!el) return
