@@ -66,10 +66,10 @@ export function MathInsertButton({ inputRef, value = '', onChange, compact = fal
       el.setSelectionRange(start + text.length, start + text.length)
     })
   }
-  const closeEditor = () => {
+  const closeEditor = useCallback(() => {
     setOpen(false)
     triggerRef.current?.focus()
-  }
+  }, [])
   const insertSymbol = (symbol) => {
     replace(symbol)
     closeEditor()
@@ -89,7 +89,7 @@ export function MathInsertButton({ inputRef, value = '', onChange, compact = fal
     closeEditor()
   }
 
-useEffect(() => {
+  useEffect(() => {
     if (!open) return undefined
 
     const handleKeyDown = (event) => {
@@ -115,7 +115,7 @@ useEffect(() => {
     document.addEventListener('keydown', handleKeyDown)
     dialogRef.current?.querySelector('.weave-math-tool__close')?.focus()
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [open])
+  }, [open, closeEditor])
 
   return <span className="weave-math-tool">
     <button
@@ -138,7 +138,6 @@ useEffect(() => {
           className="weave-math-tool__popover"
           role="dialog"
           aria-modal="true"
-          aria-label="Mathematics editor"
           aria-labelledby={dialogId}
         >
           <div className="weave-math-tool__header">
