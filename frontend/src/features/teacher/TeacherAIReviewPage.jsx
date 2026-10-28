@@ -144,20 +144,26 @@ function DraftImage({ image }) {
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
-function fileToDraftImage(file) {
+export async function fileToDraftImage(file) {
   if (!IMAGE_TYPES.has(file.type)) return Promise.reject(new Error('Choose a PNG, JPEG, or WebP image.'))
   if (file.size > MAX_IMAGE_BYTES) return Promise.reject(new Error('Images must be 5 MB or smaller.'))
-  return new Promise((resolve, reject) => {
+  if (!globalThis.crypto?.subtle) return Promise.reject(new Error('Image verification requires a secure browser connection.'))
+  const fileBytes = await new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onerror = () => reject(new Error('Could not read this image.'))
-    reader.onload = () => {
-      const encoded = String(reader.result || '')
-      const base64 = encoded.split(',')[1]
-      if (!base64) { reject(new Error('The selected image is empty.')); return }
-      resolve({ content_type: file.type, data_base64: base64, alt_text: file.name || 'Question image' })
-    }
+    reader.onload = () => resolve(reader.result)
+    reader.readAsArrayBuffer(file)
+  })
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', fileBytes)
+  const sha256 = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  const data_base64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Could not read this image.'))
+    reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '')
     reader.readAsDataURL(file)
   })
+  if (!data_base64) throw new Error('The selected image is empty.')
+  return { content_type: file.type, data_base64, sha256, source: 'uploaded', alt_text: file.name || 'Question image' }
 }
 
 function DraftEditor({ question, index, disabled, onCancel, onSave }) {
