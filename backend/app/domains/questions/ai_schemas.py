@@ -15,7 +15,7 @@ from app.domains.questions.schemas import QuestionResponse
 AIQuestionType = Literal["single_choice", "multiple_choice"]
 AIQuestionDifficulty = Literal["easy", "medium", "difficult"]
 AIVisualMode = Literal["text_only", "auto"]
-AIImageSource = Literal["search", "generated"]
+AIImageSource = Literal["search", "generated", "uploaded"]
 
 MAX_AI_QUESTION_COUNT = 50
 MAX_AI_IMAGE_BYTES = 5 * 1024 * 1024

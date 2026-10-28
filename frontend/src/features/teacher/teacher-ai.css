@@ -120,3 +120,16 @@
 .teacher-generation-status small { display: block; margin-top: 3px; font-size: 12px; line-height: 1.6; color: rgb(var(--color-text-muted)); }
 @keyframes teacher-generation-turn { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .teacher-generation-status__indicator { animation: none; } }
+
+/* Shared manual/AI question editing controls */
+.teacher-ai-editor-field { display: grid; gap: 7px; min-width: 0; }
+.teacher-ai-editor-field > span { font-size: 12px; font-weight: 700; }
+.teacher-ai-editor-field .question-format-toolbar { flex-wrap: wrap; }
+.teacher-ai-edit-option { display: grid; gap: 8px; min-width: 0; }
+.teacher-ai-edit-option .teacher-ai-edit-option__row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.teacher-ai-edit-option .teacher-ai-edit-option__row > input:not([type=radio]):not([type=checkbox]) { flex: 1; min-width: 0; }
+.teacher-ai-image-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.teacher-ai-image-controls > label { display: inline-flex; cursor: pointer; align-items: center; width: auto; }
+.teacher-ai-image-controls > label > input[type=file] { display: none; }
+.teacher-ai-image-controls figure { margin: 0; }
+.teacher-ai-image-controls .teacher-ai-image img { max-width: 150px; max-height: 100px; object-fit: contain; }

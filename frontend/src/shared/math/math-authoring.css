@@ -1,0 +1,25 @@
+.weave-math-tool { position: relative; display: inline-flex; flex: 0 0 auto; }
+.weave-math-tool__trigger { font: inherit; font-size: 13px; font-weight: 700; border: 1px solid rgb(var(--color-border)); border-radius: 8px; background: rgb(var(--color-surface)); color: rgb(var(--color-text)); min-height: 32px; padding: 4px 9px; cursor: pointer; }
+.weave-math-tool__trigger--compact { min-width: 32px; padding: 4px 7px; }
+.weave-math-tool__popover { position: absolute; z-index: 60; top: calc(100% + 7px); right: 0; width: min(380px, 85vw); padding: 14px; display: grid; gap: 10px; text-align: left; border-radius: 12px; background: rgb(var(--color-surface)); border: 1px solid rgb(var(--color-border)); box-shadow: 0 16px 50px rgba(0,0,0,.2); white-space: normal; }
+.weave-math-tool__heading { font-weight: 700; font-size: 12px; color: rgb(var(--color-text)); }
+.weave-math-tool__symbols, .weave-math-tool__templates { display: flex; flex-wrap: wrap; gap: 5px; }
+.weave-math-tool__symbols button, .weave-math-tool__templates button, .weave-math-tool__actions button { border: 1px solid rgb(var(--color-border)); border-radius: 6px; background: rgb(var(--color-surface)); color: rgb(var(--color-text)); padding: 5px 8px; font: inherit; cursor: pointer; }
+.weave-math-tool__symbols button { min-width: 31px; }
+.weave-math-tool__templates button { font-size: 11px; }
+.weave-math-tool__popover math-field { width: 100%; box-sizing: border-box; min-height: 48px; background: rgb(var(--color-surface)); color: rgb(var(--color-text)); border: 1px solid rgb(var(--color-border)); border-radius: 7px; }
+.weave-math-tool__actions { display: flex; justify-content: flex-end; gap: 8px; }
+.weave-math-tool__actions button:last-child { color: white; background: rgb(var(--color-primary)); }
+.weave-math-tool__loading, .weave-math-tool__error { font-size: 12px; }
+.weave-math-tool__error { color: #c2410c; }
+.weave-math-render { vertical-align: middle; overflow-wrap: anywhere; }
+.weave-math-render--display { display: block; overflow-x: auto; max-width: 100%; padding-block: 6px; }
+@media (max-width: 600px) { .weave-math-tool__popover { width: min(320px, 90vw); } }
+
+/* Keep the shared Maths action intact inside the existing text toolbar. */
+.question-format-toolbar > .weave-math-tool { width: auto; height: auto; margin: 0 2px; background: transparent; }
+.question-format-toolbar .weave-math-tool__trigger { width: auto; min-width: 46px; height: 34px; padding: 4px 9px; display: inline-flex; font-size: 12px; font-weight: 700; }
+.question-format-toolbar .weave-math-tool__symbols button,
+.question-format-toolbar .weave-math-tool__templates button,
+.question-format-toolbar .weave-math-tool__actions button { width: auto; height: auto; min-height: 29px; padding: 5px 8px; display: inline-flex; border: 1px solid rgb(var(--color-border)); background: rgb(var(--color-surface)); }
+.question-format-toolbar .weave-math-tool__actions button:last-child { background: rgb(var(--color-primary)); color: white; }

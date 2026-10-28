@@ -6,6 +6,8 @@ import { Icon } from '../../shared/icons/Icon'
 import { Notice, PageTitle, Panel, SegmentedControl, StatusBadge } from '../../shared/ui'
 import './questions-page.css'
 import './question-lifecycle-modal.css'
+import { RichTextToolbar } from './QuestionBuilder'
+import { MathInsertButton } from '../../shared/math/MathInsertButton'
 
 const MAX_QUESTION_IMAGE_SIZE = 5 * 1024 * 1024
 const QUESTION_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
@@ -466,6 +468,9 @@ export function CreateQuestionPage({ state, dispatch, teacherData, gateway }) {
   const [saving, setSaving] = useState(false)
   const [saveStage, setSaveStage] = useState('')
   const imageInputRef = useRef(null)
+  const promptRef = useRef(null)
+  const instructionRef = useRef(null)
+  const optionRefs = useRef({})
 
 
   const toggleCorrect = (id) => {
@@ -552,8 +557,8 @@ export function CreateQuestionPage({ state, dispatch, teacherData, gateway }) {
       <div className="authoring-grid">
         <Panel title="Question content">
           <label className="field-stack"><span>Question Bank</span><select aria-label="Question Bank" value={bankId} disabled={isEditing} onChange={(event) => setBankId(event.target.value)}>{teacherData.banks.map((bank) => <option key={bank.id} value={bank.id}>{bank.name}</option>)}</select></label>
-          <label className="field-stack"><span>Prompt</span><textarea aria-label="Question prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} /></label>
-          <label className="field-stack"><span>Instruction</span><textarea aria-label="Question instruction" value={instruction} onChange={(event) => setInstruction(event.target.value)} /></label>
+          <div className="field-stack"><span>Prompt</span><RichTextToolbar textareaRef={promptRef} value={prompt} onChange={setPrompt} /><textarea ref={promptRef} aria-label="Question prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} /></div>
+          <div className="field-stack"><span>Instruction</span><RichTextToolbar textareaRef={instructionRef} value={instruction} onChange={setInstruction} /><textarea ref={instructionRef} aria-label="Question instruction" value={instruction} onChange={(event) => setInstruction(event.target.value)} /></div>
           <div className="field-stack">
             <span>Question image <small>(optional)</small></span>
             <div className="upload-zone question-image-upload">
@@ -586,7 +591,8 @@ export function CreateQuestionPage({ state, dispatch, teacherData, gateway }) {
               <label key={id} className="answer-option-row">
                 <input type={type === 'single' ? 'radio' : 'checkbox'} checked={correct.includes(id)} onChange={() => toggleCorrect(id)} />
                 <span>{id}</span>
-                <input aria-label={`Option ${id}`} value={text} onChange={(event) => setOptions((current) => current.map((item, itemIndex) => itemIndex === index ? [id, event.target.value] : item))} />
+                <input ref={(node) => { optionRefs.current[id] = node }} aria-label={`Option ${id}`} value={text} onChange={(event) => setOptions((current) => current.map((item, itemIndex) => itemIndex === index ? [id, event.target.value] : item))} />
+                <MathInsertButton compact inputRef={{ get current() { return optionRefs.current[id] } }} value={text} onChange={(next) => setOptions((current) => current.map((item, itemIndex) => itemIndex === index ? [id, next] : item))} />
                 <button type="button" aria-label={`Delete option ${id}`} onClick={() => setOptions((current) => current.filter((item) => item[0] !== id))}><Icon name="trash" size={16} /></button>
               </label>
             ))}
