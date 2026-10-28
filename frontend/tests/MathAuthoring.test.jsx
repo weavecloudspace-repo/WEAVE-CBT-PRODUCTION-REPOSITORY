@@ -15,6 +15,32 @@ describe('shared CBT mathematical text normalization', () => {
     expect(splitMathSegments(value).filter((part) => part.math)).toHaveLength(3)
   })
 
+  it('recognizes bare AI trigonometry and logarithms without changing ordinary words', () => {
+    const parts = splitMathSegments(String.raw`Calculate \sin 30^\circ and \log_{10}(100) then solve $ximport { useRef, useState } from 'react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { FormattedText } from '../src/shared/ui/FormattedText'
+import { MathInsertButton } from '../src/shared/math/MathInsertButton'
+import { equationAtCursor, normalizeMathText, splitMathSegments } from '../src/shared/math/mathText'
+
+describe('shared CBT mathematical text normalization', () => {
+  it('normalizes AI dollar math, display math, and bare mathematical commands', () => {
+    const value = String.raw`Calculate $\frac{2}{3}$, $$x^2=4$$ and \sqrt{9}`
+    const result = normalizeMathText(value)
+    expect(result).toContain(String.raw`\(\frac{2}{3}\)`)
+    expect(result).toContain(String.raw`\[x^2=4\]`)
+    expect(result).toContain(String.raw`\(\sqrt{9}\)`)
+    expect(splitMathSegments(value).filter((part) => part.math)).toHaveLength(3)
+  })
+
+)
+    expect(parts.filter((part) => part.math).map((part) => part.text)).toEqual([
+      String.raw`\sin 30^\circ`,
+      String.raw`\log_{10}(100)`,
+      'x',
+    ])
+  })
+
   it('preserves currency and ordinary formatting', () => {
     expect(splitMathSegments('The price is $10 and $20 today').filter((part) => part.math)).toHaveLength(0)
     const { container } = render(<FormattedText text="This is **important** and x²" />)
