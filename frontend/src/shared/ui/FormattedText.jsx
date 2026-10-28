@@ -15,7 +15,7 @@ export function FormattedText({ text, placeholder = '' }) {
   const content = text?.trim() || placeholder
   if (!content) return null
   return splitMathSegments(content).map((part, index) => part.math
-    ? <MathToken key={index} latex={part.text} display={part.display} />
+    ? <MathToken key={index + '-' + part.text} latex={part.text} display={part.display} />
     : <Fragment key={index}>{part.text.split('\n').map((line, lineIndex) => <Fragment key={lineIndex}>{lineIndex > 0 && <br />}{renderInline(line)}</Fragment>)}</Fragment>)
 }
 

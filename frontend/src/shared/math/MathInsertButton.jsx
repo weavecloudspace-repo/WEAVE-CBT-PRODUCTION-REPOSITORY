@@ -34,10 +34,6 @@ export function MathInsertButton({ inputRef, value = '', onChange, compact = fal
     return () => { active = false }
   }, [open])
 
-  useEffect(() => {
-    if (open && ready && mathField.current) mathField.current.value = latex
-  }, [open, ready]) // Initial value only: updates from the mathfield itself.
-
   const remember = () => {
     const el = inputRef?.current
     if (!el) return
@@ -87,7 +83,10 @@ export function MathInsertButton({ inputRef, value = '', onChange, compact = fal
       <span className="weave-math-tool__heading">Equation templates</span>
       <span className="weave-math-tool__templates">{TEMPLATES.map(([label, template]) => <button key={label} type="button" onClick={() => addTemplate(template)}>{label}</button>)}</span>
       <span className="weave-math-tool__heading">Visual equation editor</span>
-      {ready ? <math-field ref={mathField} aria-label="Equation" onInput={(event) => setLatex(event.target.value)} /> : <span className="weave-math-tool__loading">Loading equation editor…</span>}
+      {ready ? <math-field ref={(element) => {
+        if (element && mathField.current !== element) { mathField.current = element; element.value = latex }
+        else if (!element) mathField.current = null
+      }} aria-label="Equation" onInput={(event) => setLatex(event.target.value)} /> : <span className="weave-math-tool__loading">Loading equation editor…</span>}
       {error && <span role="alert" className="weave-math-tool__error">{error}</span>}
       <span className="weave-math-tool__actions"><button type="button" onClick={() => setOpen(false)}>Cancel</button><button type="button" onClick={insertEquation} disabled={!ready}>Insert equation</button></span>
     </span>}

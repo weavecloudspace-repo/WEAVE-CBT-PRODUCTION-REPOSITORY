@@ -144,7 +144,7 @@ function DraftImage({ image }) {
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
-export async function fileToDraftImage(file) {
+async function fileToDraftImage(file) {
   if (!IMAGE_TYPES.has(file.type)) return Promise.reject(new Error('Choose a PNG, JPEG, or WebP image.'))
   if (file.size > MAX_IMAGE_BYTES) return Promise.reject(new Error('Images must be 5 MB or smaller.'))
   if (!globalThis.crypto?.subtle) return Promise.reject(new Error('Image verification requires a secure browser connection.'))
