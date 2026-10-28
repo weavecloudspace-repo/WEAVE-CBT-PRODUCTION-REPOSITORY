@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { RiGraduationCapLine } from '@remixicon/react'
 import { getLocalBrandLogoSrc } from '../../api/branding'
 import { Pictogram } from '../../shared/icons/Pictogram'
+import { Icon } from '../../shared/icons/Icon'
 import { Notice } from '../../shared/ui'
 import './auth.css'
 
@@ -48,20 +49,39 @@ function LoginTypewriterText({ text, className, as: Tag = 'p', pauseMs = LOCKUP_
 }
 
 export function LoginField({ label, type = 'text', value, onChange, placeholder, autoComplete = 'off', name, required = true }) {
+  const fieldId = useId()
+  const [visible, setVisible] = useState(false)
+  const isPassword = type === 'password'
+
   return (
-    <label className="login-field">
-      <span>{label}</span>
-      <input
-        className="login-field__input"
-        name={name}
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        autoComplete={autoComplete}
-        required={required}
-      />
-    </label>
+    <div className="login-field">
+      <label htmlFor={fieldId}>{label}</label>
+      <span className={isPassword ? 'login-field__control login-field__control--password' : 'login-field__control'}>
+        <input
+          id={fieldId}
+          className="login-field__input"
+          name={name}
+          type={isPassword && visible ? 'text' : type}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          required={required}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            className="login-field__reveal"
+            aria-label={visible ? 'Hide password' : 'Show password'}
+            aria-pressed={visible}
+            title={visible ? 'Hide password' : 'Show password'}
+            onClick={() => setVisible((current) => !current)}
+          >
+            <Icon name={visible ? 'eyeOff' : 'eye'} size={20} />
+          </button>
+        )}
+      </span>
+    </div>
   )
 }
 
