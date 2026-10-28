@@ -63,7 +63,7 @@ async def test_makeup_readiness_and_candidate_permissions(blockers, fresh, avail
         ),
         patch.object(
             MakeupReviewRepository,
-            "fresh_question_count",
+            "active_question_count",
             AsyncMock(return_value=fresh),
         ),
         patch.object(

@@ -16,6 +16,7 @@ from arq.connections import ArqRedis
 from sqlalchemy import and_, or_, select
 
 from app.core.database import async_session_factory
+from app.domains.exams.exceptions import ExamStateError
 from app.domains.exams.execution_models import (
     ExamExecutionControl,
     ExamResultDisposition,
@@ -27,6 +28,8 @@ from app.domains.results.models import (
     ExamResult,
     ResultSyncStatus,
 )
+from app.domains.results.rollback_service import ResultRollbackService
+from app.integrations.weave.exceptions import WeaveIntegrationError
 
 logger = logging.getLogger(__name__)
 
@@ -322,3 +325,41 @@ async def recover_background_work(ctx: dict[str, Any]) -> dict[str, int]:
         "result_jobs_enqueued": len(result_exam_ids),
         "stale_result_exams_recovered": len(stale_result_exam_ids),
     }
+
+
+async def reconcile_pending_cloud_rollbacks(_ctx: dict[str, Any]) -> dict[str, int]:
+    """Independently recover Cloud-accepted withdrawals after local network failure.
+
+    The local PostgreSQL ledger owns retryable work; missing Cloud operations
+    require a new authorized administrator POST, not an unauthenticated retry.
+    """
+    async with async_session_factory() as db:
+        operation_ids = list(
+            (
+                await db.execute(
+                    select(ExamResult.rollback_operation_id)
+                    .where(
+                        ExamResult.sync_status == ResultSyncStatus.ROLLBACK_PENDING,
+                        ExamResult.rollback_operation_id.is_not(None),
+                    )
+                    .distinct()
+                    .limit(5)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        await db.rollback()
+
+    reconciled = 0
+    for operation_id in operation_ids:
+        async with async_session_factory() as db:
+            try:
+                await ResultRollbackService.poll(db, operation_id=operation_id)
+                reconciled += 1
+            except (WeaveIntegrationError, ExamStateError):
+                await db.rollback()
+                logger.info(
+                    "Cloud result rollback is not yet reconcilable: %s", operation_id
+                )
+    return {"checked": len(operation_ids), "reconciled": reconciled}

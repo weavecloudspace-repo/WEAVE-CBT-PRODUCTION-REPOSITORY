@@ -13,7 +13,7 @@ from app.domains.academics.models import (
 from app.domains.attempts.models import ExamAttempt
 from app.domains.candidates.models import CandidateMakeupAuthorization, ExamCandidate
 from app.domains.exams.lineage import latest_exam_revision_clause
-from app.domains.exams.models import Exam, ExamQuestion, ExamStatus
+from app.domains.exams.models import Exam, ExamStatus
 from app.domains.questions.models import Question
 from app.domains.results.models import ExamResult
 
@@ -214,17 +214,12 @@ class MakeupReviewRepository:
         )
 
     @staticmethod
-    async def fresh_question_count(db, exam):
-        used = exists().where(
-            ExamQuestion.exam_id == exam.id,
-            ExamQuestion.source_question_id == Question.id,
-        )
+    async def active_question_count(db, exam):
         return int(
             await db.scalar(
                 select(func.count(Question.id)).where(
                     Question.bank_id == exam.question_bank_id,
                     Question.is_active.is_(True),
-                    ~used,
                 )
             )
             or 0
