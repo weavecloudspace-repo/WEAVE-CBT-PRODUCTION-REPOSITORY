@@ -236,6 +236,8 @@ export function FormField({ label, value, onChange, type = 'text', icon, placeho
             type="button"
             className="form-field__reveal"
             aria-label={visible ? 'Hide password' : 'Show password'}
+            aria-pressed={visible}
+            title={visible ? 'Hide password' : 'Show password'}
             onClick={() => setVisible((current) => !current)}
           >
             <Icon name={visible ? 'eyeOff' : 'eye'} size={20} />
