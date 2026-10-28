@@ -85,7 +85,7 @@ export function MathInsertButton({ inputRef, value = '', onChange, compact = fal
     <button type="button" className={compact ? 'weave-math-tool__trigger weave-math-tool__trigger--compact' : 'weave-math-tool__trigger'} aria-label="Insert mathematics" title="Insert mathematics" disabled={disabled} aria-expanded={open} onClick={remember}>∑{compact ? '' : ' Math'}</button>
     {open && <span className="weave-math-tool__popover" role="dialog" aria-label="Mathematics editor" onKeyDown={(event) => { if (event.key === 'Escape') setOpen(false) }}>
       <span className="weave-math-tool__heading">Quick symbols</span>
-      <span className="weave-math-tool__symbols">{SYMBOLS.map((symbol) => <button key={symbol} type="button" title={'Insert ' + symbol} onMouseDown={(e) => e.preventDefault()} onClick={() => insertSymbol(symbol)}>{symbol}</button>)}</span>
+      <span className="weave-math-tool__symbols">{SYMBOLS.map((symbol) => <button key={symbol} type="button" title={'Insert ' + symbol} aria-label={'Insert ' + symbol} onMouseDown={(e) => e.preventDefault()} onClick={() => insertSymbol(symbol)}>{symbol}</button>)}</span>
       <span className="weave-math-tool__heading">Equation templates</span>
       <span className="weave-math-tool__templates">{TEMPLATES.map(([label, template]) => <button key={label} type="button" onClick={() => addTemplate(template)}>{label}</button>)}</span>
       <span className="weave-math-tool__heading">Visual equation editor</span>

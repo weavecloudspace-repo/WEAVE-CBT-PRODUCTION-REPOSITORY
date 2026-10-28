@@ -1,5 +1,5 @@
 // Mathematics is normalized for display only; question text remains intact in storage.
-const MATH_PATTERN = /(\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|\$[^\n$]+?\$|\\(?:dfrac|tfrac|frac)\{[^{}]*\}\{[^{}]*\}|\\sqrt(?:\[[^\]]+\])?\{[^{}]*\}|\\(?:sin|cos|tan|log|ln|lim)(?:_\{?[\w\d]+\}?)?(?:\s*\([^()]*\)|\s*\d+(?:\.\d+)?(?:\s*\\circ)?)?|\\(?:sum|int|pi|theta|alpha|beta)(?:_\{?[\w\d]+\}?)?)/g
+const MATH_PATTERN = /(\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|\$[^\n$]+?\$|\\(?:dfrac|tfrac|frac)\{[^{}]*\}\{[^{}]*\}|\\sqrt(?:\[[^\]]+\])?\{[^{}]*\}|\\(?:sin|cos|tan|log|ln|lim)(?:_\{?[\w\d]+\}?)?(?:\s*\([^()]*\)|\s*\d+(?:\.\d+)?(?:\s*\^?\s*\\circ)?)?|\\(?:sum|int|pi|theta|alpha|beta)(?:_\{?[\w\d]+\}?)?)/g
 const MATH_SIGNAL = /\\[a-zA-Z]+|[=+*/^_{}]|[a-zA-Z]\s*[-+]\s*\d/
 
 export function splitMathSegments(value) {
