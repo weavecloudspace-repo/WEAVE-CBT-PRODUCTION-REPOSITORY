@@ -64,3 +64,52 @@ describe('manual and AI editor mathematics insertion', () => {
     vi.unstubAllGlobals()
   })
 })
+
+
+describe('responsive mathematics dialog', () => {
+  it('renders outside the toolbar with readable template labels', () => {
+    const { container } = render(<EditorHarness />)
+    fireEvent.click(screen.getByRole('button', { name: 'Insert mathematics' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Equation editor' })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(dialog.parentElement).toHaveClass('weave-math-tool__backdrop')
+    expect(container.querySelector('.weave-math-tool__popover')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Square root' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Natural log' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Insert equation' })).toBeDisabled()
+  })
+
+  it('closes with Escape and restores focus to the trigger', () => {
+    render(<EditorHarness />)
+    const trigger = screen.getByRole('button', { name: 'Insert mathematics' })
+    fireEvent.click(trigger)
+    expect(screen.getByRole('button', { name: 'Close equation editor' })).toHaveFocus()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Equation editor' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('keeps keyboard focus inside the dialog', () => {
+    render(<EditorHarness />)
+    fireEvent.click(screen.getByRole('button', { name: 'Insert mathematics' }))
+    const close = screen.getByRole('button', { name: 'Close equation editor' })
+    expect(close).toHaveFocus()
+
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
+    // The final enabled control is Cancel while the math library is loading.
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+  })
+
+  it('closes on backdrop clicks without changing the question', () => {
+    render(<EditorHarness />)
+    const prompt = screen.getByRole('textbox', { name: 'Question prompt' })
+    fireEvent.click(screen.getByRole('button', { name: 'Insert mathematics' }))
+    const backdrop = screen.getByRole('dialog', { name: 'Equation editor' }).parentElement
+
+    fireEvent.mouseDown(backdrop)
+    expect(screen.queryByRole('dialog', { name: 'Equation editor' })).not.toBeInTheDocument()
+    expect(prompt).toHaveValue('Calculate  now')
+  })
+})
