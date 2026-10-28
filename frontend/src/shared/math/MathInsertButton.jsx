@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { equationAtCursor } from './mathText'
 import './math-authoring.css'
 
@@ -24,6 +24,11 @@ export function MathInsertButton({ inputRef, value = '', onChange, compact = fal
   const [ready, setReady] = useState(false)
   const [error, setError] = useState('')
   const mathField = useRef(null)
+  const initialEquation = useRef('')
+  const attachMathField = useCallback((element) => {
+    mathField.current = element
+    if (element) element.value = initialEquation.current
+  }, [])
   const selection = useRef({ start: 0, end: 0 })
 
   useEffect(() => {
@@ -41,7 +46,8 @@ export function MathInsertButton({ inputRef, value = '', onChange, compact = fal
     const end = el.selectionEnd ?? start
     const existing = start === end ? equationAtCursor(value, start) : null
     selection.current = existing ? { start: existing.start, end: existing.end } : { start, end }
-    setLatex(existing?.latex || '')
+    initialEquation.current = existing?.latex || ''
+    setLatex(initialEquation.current)
     setError('')
     setOpen(true)
   }
@@ -83,10 +89,7 @@ export function MathInsertButton({ inputRef, value = '', onChange, compact = fal
       <span className="weave-math-tool__heading">Equation templates</span>
       <span className="weave-math-tool__templates">{TEMPLATES.map(([label, template]) => <button key={label} type="button" onClick={() => addTemplate(template)}>{label}</button>)}</span>
       <span className="weave-math-tool__heading">Visual equation editor</span>
-      {ready ? <math-field ref={(element) => {
-        if (element && mathField.current !== element) { mathField.current = element; element.value = latex }
-        else if (!element) mathField.current = null
-      }} aria-label="Equation" onInput={(event) => setLatex(event.target.value)} /> : <span className="weave-math-tool__loading">Loading equation editor…</span>}
+      {ready ? <math-field ref={attachMathField} aria-label="Equation" onInput={(event) => setLatex(event.target.value)} /> : <span className="weave-math-tool__loading">Loading equation editor…</span>}
       {error && <span role="alert" className="weave-math-tool__error">{error}</span>}
       <span className="weave-math-tool__actions"><button type="button" onClick={() => setOpen(false)}>Cancel</button><button type="button" onClick={insertEquation} disabled={!ready}>Insert equation</button></span>
     </span>}

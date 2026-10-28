@@ -15,3 +15,11 @@
 .weave-math-render { vertical-align: middle; overflow-wrap: anywhere; }
 .weave-math-render--display { display: block; overflow-x: auto; max-width: 100%; padding-block: 6px; }
 @media (max-width: 600px) { .weave-math-tool__popover { width: min(320px, 90vw); } }
+
+/* Keep the shared Maths action intact inside the existing text toolbar. */
+.question-format-toolbar > .weave-math-tool { width: auto; height: auto; margin: 0 2px; background: transparent; }
+.question-format-toolbar .weave-math-tool__trigger { width: auto; min-width: 46px; height: 34px; padding: 4px 9px; display: inline-flex; font-size: 12px; font-weight: 700; }
+.question-format-toolbar .weave-math-tool__symbols button,
+.question-format-toolbar .weave-math-tool__templates button,
+.question-format-toolbar .weave-math-tool__actions button { width: auto; height: auto; min-height: 29px; padding: 5px 8px; display: inline-flex; border: 1px solid rgb(var(--color-border)); background: rgb(var(--color-surface)); }
+.question-format-toolbar .weave-math-tool__actions button:last-child { background: rgb(var(--color-primary)); color: white; }
