@@ -18,7 +18,10 @@ from app.workers.exams import (
     finalize_exam_close,
     finalize_expired_attempts,
 )
-from app.workers.maintenance import recover_background_work
+from app.workers.maintenance import (
+    reconcile_pending_cloud_rollbacks,
+    recover_background_work,
+)
 from app.workers.results import sync_exam_results
 
 logger = logging.getLogger(__name__)
@@ -52,12 +55,18 @@ class WorkerSettings:
 
     cron_jobs: ClassVar[list] = [
         cron(
+            coroutine=reconcile_pending_cloud_rollbacks,
+            minute=set(range(1, 60, 4)),
+            second=0,
+            unique=True,
+        ),
+        cron(
             coroutine=recover_background_work,
             minute=set(range(0, 60, 2)),
             second=0,
             run_at_startup=True,
             unique=True,
-        )
+        ),
     ]
 
     max_jobs = 10

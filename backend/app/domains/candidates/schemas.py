@@ -190,6 +190,7 @@ class MakeupReviewCounts(OutputBase):
     exam_id: UUID
     total: int
     awaiting_approval: int
+    voided_awaiting_approval: int = 0
     approved: int
     writing: int
     paused: int
@@ -226,7 +227,7 @@ class MakeupReviewResponse(OutputBase):
     offset: int
     limit: int
     blockers: list[str]
-    fresh_question_count: int
+    active_question_count: int
     required_question_count: int
     available: bool
     candidates: list[MakeupReviewCandidate]

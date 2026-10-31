@@ -235,10 +235,10 @@ class CandidateMakeupAuthorization(Base):
 
     __table_args__ = (
         Index(
-            "uq_candidate_makeup_one_active",
+            "uq_candidate_makeup_one_pending",
             "candidate_id",
             unique=True,
-            postgresql_where=sql_text("revoked_at IS NULL"),
+            postgresql_where=sql_text("revoked_at IS NULL AND consumed_at IS NULL"),
         ),
         CheckConstraint(
             "consumed_at IS NULL OR consumed_at >= approved_at",

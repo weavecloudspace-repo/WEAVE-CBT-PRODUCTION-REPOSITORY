@@ -94,9 +94,18 @@ class ResultRepository:
         *,
         lock: bool = False,
     ) -> ExamResult | None:
-        query = select(ExamResult).where(
-            ExamResult.candidate_id == candidate_id,
-            ExamResult.exam_id == exam_id,
+        query = (
+            select(ExamResult)
+            .where(
+                ExamResult.candidate_id == candidate_id,
+                ExamResult.exam_id == exam_id,
+            )
+            .order_by(
+                ExamResult.voided_at.is_(None).desc(),
+                ExamResult.calculated_at.desc(),
+                ExamResult.id.desc(),
+            )
+            .limit(1)
         )
         if lock:
             query = query.with_for_update(of=ExamResult)

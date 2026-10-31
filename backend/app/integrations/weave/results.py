@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from pydantic import SecretStr, ValidationError
 
+from app.domains.results.rollback_schemas import CloudRollbackResponse
 from app.integrations.weave.client import WeaveClient, weave_client
 from app.integrations.weave.exceptions import WeaveContractError
 from app.integrations.weave.schemas import (
@@ -38,6 +41,53 @@ class WeaveResultGateway:
         except ValidationError as exc:
             raise WeaveContractError(
                 "Weave returned an invalid CBT result ingestion response."
+            ) from exc
+
+    async def request_rollback(
+        self,
+        *,
+        operation_id: UUID,
+        batch_id: UUID,
+        student_ids: list[UUID],
+        reason: str,
+        server_credential: SecretStr,
+        actor_access_token: str,
+    ) -> CloudRollbackResponse:
+        data = await self.client.request_actor_authenticated(
+            "POST",
+            "/api/v1/cbt/results/rollbacks",
+            server_credential=server_credential,
+            actor_access_token=actor_access_token,
+            json={
+                "operation_id": str(operation_id),
+                "source_batch_id": str(batch_id),
+                "student_ids": [str(student) for student in student_ids],
+                "reason": reason,
+            },
+        )
+        try:
+            return CloudRollbackResponse.model_validate(data)
+        except ValidationError as exc:
+            raise WeaveContractError(
+                "Cloud returned an invalid rollback acknowledgment"
+            ) from exc
+
+    async def rollback_status(
+        self,
+        *,
+        operation_id: UUID,
+        server_credential: SecretStr,
+    ) -> CloudRollbackResponse:
+        data = await self.client.request_authenticated(
+            "GET",
+            f"/api/v1/cbt/results/rollbacks/{operation_id}",
+            server_credential=server_credential,
+        )
+        try:
+            return CloudRollbackResponse.model_validate(data)
+        except ValidationError as exc:
+            raise WeaveContractError(
+                "Cloud returned an invalid rollback status"
             ) from exc
 
 

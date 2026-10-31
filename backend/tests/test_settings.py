@@ -67,6 +67,54 @@ class DatabaseSettingsTests(unittest.TestCase):
             "postgresql+asyncpg://user:password@localhost/cbt",
         )
 
+    def test_production_database_pool_defaults(self):
+        settings = Settings(
+            _env_file=None,
+            DATABASE_URL="postgresql+asyncpg://user:password@localhost/cbt",
+            **self.required_settings,
+        )
+
+        self.assertEqual(settings.DATABASE_POOL_SIZE, 10)
+        self.assertEqual(settings.DATABASE_MAX_OVERFLOW, 5)
+        self.assertEqual(settings.DATABASE_POOL_TIMEOUT_SECONDS, 20)
+        self.assertEqual(settings.DATABASE_POOL_RECYCLE_SECONDS, 1800)
+
+    def test_database_pool_settings_accept_runtime_overrides(self):
+        settings = Settings(
+            _env_file=None,
+            DATABASE_URL="postgresql+asyncpg://user:password@localhost/cbt",
+            DATABASE_POOL_SIZE=8,
+            DATABASE_MAX_OVERFLOW=3,
+            DATABASE_POOL_TIMEOUT_SECONDS=25,
+            DATABASE_POOL_RECYCLE_SECONDS=600,
+            **self.required_settings,
+        )
+
+        self.assertEqual(settings.DATABASE_POOL_SIZE, 8)
+        self.assertEqual(settings.DATABASE_MAX_OVERFLOW, 3)
+        self.assertEqual(settings.DATABASE_POOL_TIMEOUT_SECONDS, 25)
+        self.assertEqual(settings.DATABASE_POOL_RECYCLE_SECONDS, 600)
+
+    def test_compose_passes_pool_defaults_and_overrides_to_database_services(self):
+        import yaml
+
+        compose_file = (
+            Path(__file__).resolve().parents[2] / "deployment" / "compose.yaml"
+        )
+        compose = yaml.safe_load(compose_file.read_text(encoding="utf-8"))
+        defaults = {
+            "DATABASE_POOL_SIZE": 10,
+            "DATABASE_MAX_OVERFLOW": 5,
+            "DATABASE_POOL_TIMEOUT_SECONDS": 20,
+            "DATABASE_POOL_RECYCLE_SECONDS": 1800,
+        }
+
+        for service in ("bootstrap", "api", "worker"):
+            with self.subTest(service=service):
+                environment = compose["services"][service]["environment"]
+                for key, default in defaults.items():
+                    self.assertEqual(environment[key], f"${{{key}:-{default}}}")
+
     def test_identity_storage_path_can_be_overridden_from_environment(self):
         settings = Settings(
             _env_file=None,

@@ -17,7 +17,7 @@ from pathlib import Path
 import typer
 
 from weave_cli.commands._shared import get_stack, error, success, info, warning
-from weave_cli.commands import lan, lan_tls
+from weave_cli.commands import lan, lan_tls, network_mirrored
 from weave_cli.networking.state import load_or_import, save
 from weave_cli.networking.deployment import _atomic_bytes, _atomic_json
 
@@ -86,40 +86,70 @@ def _socket_open(ip: str, port: int) -> bool:
         return False
 
 
-def _mirror_rules(ip: str, subnet: str, *, remove: bool = False) -> None:
-    ipq, netq = lan._private_address(ip), lan._private_subnet(subnet, ip)
-    if remove:
-        for rule in (WINDOWS_RULE,):
-            lan._powershell(
-                f"Get-NetFirewallRule -Name '{rule}' -ErrorAction SilentlyContinue | Remove-NetFirewallRule",
-                context="Remove WEAVE mirrored firewall",
-            )
-        lan._powershell(
-            f"Get-NetFirewallHyperVRule -Name '{HYPERV_RULE}' -ErrorAction SilentlyContinue | Remove-NetFirewallHyperVRule",
-            context="Remove WEAVE Hyper-V firewall",
-        )
-    else:
-        lan._powershell(
-            "$ErrorActionPreference='Stop';"
-            f"if(Get-NetFirewallRule -Name '{WINDOWS_RULE}' -ErrorAction SilentlyContinue) {{ throw 'Mirrored firewall rule already exists' }};"
-            f"New-NetFirewallRule -Name '{WINDOWS_RULE}' -DisplayName '{WINDOWS_RULE}' "
-            f"-Direction Inbound -Action Allow -Protocol TCP -LocalPort 80,443 "
-            f"-LocalAddress '{ipq}' -RemoteAddress '{netq}' -Profile Private | Out-Null",
-            context="Configure scoped mirrored LAN firewall",
-        )
-        lan._powershell(
-            "$ErrorActionPreference='Stop';"
-            f"if(Get-NetFirewallHyperVRule -Name '{HYPERV_RULE}' -ErrorAction SilentlyContinue) {{ throw 'Hyper-V rule already exists' }};"
-            f"New-NetFirewallHyperVRule -Name '{HYPERV_RULE}' -DisplayName '{HYPERV_RULE}' "
-            f"-Direction Inbound -VMCreatorId '{GUID}' -Protocol TCP -LocalPorts 80,443 | Out-Null",
-            context="Configure scoped WSL Hyper-V ports",
-        )
+
+def _recover_unstarted_mirror(owner: Path, previous_owner: dict, current: bytes | None, state: dict) -> bool:
+    """Clear only a stale journal when the host is still byte-for-byte unchanged.
+
+    A completed/partially applied migration must go through explicit rollback;
+    never discard its original configuration backup.
+    """
+    import base64
+    if (previous_owner.get("target") != "mirrored"
+            or state["transport"] != "nat"):
+        return False
+    try:
+        original = base64.b64decode(previous_owner["original"], validate=True)
+        existed = previous_owner["original_exists"]
+        if type(existed) is not bool:
+            return False
+    except (KeyError, TypeError, ValueError):
+        return False
+    if (current is not None) != existed or (current or b"") != original:
+        return False
+    if owner.is_symlink() or not owner.is_file():
+        raise ModeError("Unsafe WSL migration ownership record.")
+    owner.unlink()
+    return True
 
 
 def _restart_wsl(stack) -> None:
     _run(["wsl.exe", "--shutdown"])
     stack.platform.start_docker_engine()
     stack.compose.start()
+
+
+def restore_owned_wsl_config(stack, *, check_only: bool = False) -> bool:
+    """Restore only the byte-verified .wslconfig that WEAVE changed.
+
+    Never shut down unrelated WSL distributions during uninstall; the restored
+    configuration takes effect on their next normal WSL start.
+    """
+    import base64
+    owner = stack.installation.data_directory / OWNER
+    if not owner.exists():
+        return False
+    if owner.is_symlink() or not owner.is_file():
+        raise ModeError("Unsafe WSL network ownership journal.")
+    try:
+        record = json.loads(owner.read_text(encoding="utf-8"))
+        if record.get("target") != "mirrored" or type(record.get("original_exists")) is not bool:
+            raise ValueError("Unknown ownership journal")
+        original = base64.b64decode(record["original"], validate=True)
+        previous_text = original.decode("utf-8-sig") if record["original_exists"] else ""
+        expected = edit_config(previous_text, "mirrored").encode("utf-8")
+        path = _config()
+        if path.is_symlink() or not path.is_file() or path.read_bytes() != expected:
+            raise ValueError("Global WSL config differs from WEAVE-owned mirrored change")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ModeError("Refusing to overwrite modified or unrecognized .wslconfig; manual review required.") from exc
+    if check_only:
+        return True
+    if record["original_exists"]:
+        _atomic_bytes(path, original)
+    else:
+        path.unlink()
+    owner.unlink()
+    return True
 
 
 @app.command("status")
@@ -207,6 +237,12 @@ def mode_set(
         previous_owner = json.loads(owner.read_text(encoding="utf-8")) if owner.exists() else None
         old_nat = (stack.installation.data_directory / "lan.json").is_file()
         old_https = (stack.installation.data_directory / "tls-lan.json").is_file()
+        if previous_owner and target == "mirrored":
+            if _recover_unstarted_mirror(owner, previous_owner, previous, state):
+                previous_owner = None
+                warning("Recovered an unstarted mirrored migration; retrying with the original configuration.")
+            else:
+                raise ModeError("An owned mirrored WSL change is already recorded; inspect or roll back before retrying.")
         if previous_owner:
             if target != "nat" or previous_owner.get("target") != "mirrored":
                 raise ModeError("An owned mirrored WSL change is already recorded.")
@@ -228,20 +264,22 @@ def mode_set(
             })
         try:
             if target == "mirrored":
+                network_mirrored._approved(stack, state)
                 if old_nat:
                     lan.configure(stack.installation.data_directory, remove=True)
-                _mirror_rules(state["address"], state["subnet"])
+                network_mirrored.configure(stack, state)
             _atomic_bytes(wslconfig, updated.encode("utf-8"))
             _restart_wsl(stack)
             if target == "nat":
-                _mirror_rules(state["address"], state["subnet"], remove=True)
+                network_mirrored.remove(state["address"], state["subnet"])
                 lan.configure(
                     stack.installation.data_directory,
                     listen_address=state["address"], client_subnet=state["subnet"],
                 )
                 if old_https or (stack.installation.data_directory / "tls.enabled").exists():
                     lan_tls.reconcile(stack.installation.data_directory)
-            if not all(_socket_open(state["address"], port) for port in (80, 443)):
+            from weave_cli.commands.network import _expected_ports
+            if not all(_socket_open(state["address"], port) for port in _expected_ports(stack.installation.data_directory)):
                 raise ModeError("School IP ports 80/443 did not pass host verification.")
             if not client_verified and not typer.confirm(
                 "Did a separate school computer successfully open the HTTPS student URL?",
@@ -261,8 +299,10 @@ def mode_set(
                 else:
                     wslconfig.unlink(missing_ok=True)
                 _restart_wsl(stack)
+                if target == "nat":
+                    network_mirrored.configure(stack, state)
                 if target == "mirrored":
-                    _mirror_rules(state["address"], state["subnet"], remove=True)
+                    network_mirrored.remove(state["address"], state["subnet"])
                     if old_nat:
                         lan.configure(
                             stack.installation.data_directory,

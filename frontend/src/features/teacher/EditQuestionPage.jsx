@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { RiCloseLine, RiImageAddLine } from '@remixicon/react'
 import { Icon } from '../../shared/icons/Icon'
 import { Notice, PageTitle, Panel } from '../../shared/ui'
+import { RichTextToolbar } from './QuestionBuilder'
+import { MathInsertButton } from '../../shared/math/MathInsertButton'
 
 const MAX_QUESTION_IMAGE_SIZE = 5 * 1024 * 1024
 const QUESTION_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
@@ -49,6 +51,9 @@ function EditQuestionContent({ state, dispatch, teacherData, gateway }) {
   const [saving, setSaving] = useState(false)
   const [saveStage, setSaveStage] = useState('')
   const imageInputRef = useRef(null)
+  const promptRef = useRef(null)
+  const instructionRef = useRef(null)
+  const optionRefs = useRef({})
 
   useEffect(() => {
     if (!questionId) return undefined
@@ -227,12 +232,14 @@ function EditQuestionContent({ state, dispatch, teacherData, gateway }) {
 
           <label className="field-stack">
             <span>Prompt</span>
-            <textarea aria-label="Question prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} />
+            <RichTextToolbar textareaRef={promptRef} value={prompt} onChange={setPrompt} />
+            <textarea ref={promptRef} aria-label="Question prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} />
           </label>
 
           <label className="field-stack">
             <span>Instruction</span>
-            <textarea aria-label="Question instruction" value={instruction} onChange={(event) => setInstruction(event.target.value)} />
+            <RichTextToolbar textareaRef={instructionRef} value={instruction} onChange={setInstruction} />
+            <textarea ref={instructionRef} aria-label="Question instruction" value={instruction} onChange={(event) => setInstruction(event.target.value)} />
           </label>
 
           <div className="field-stack">
@@ -272,7 +279,8 @@ function EditQuestionContent({ state, dispatch, teacherData, gateway }) {
                     onChange={() => toggleCorrect(index)}
                   />
                   <span>{optionLabel}</span>
-                  <input aria-label={`Option ${optionLabel}`} value={option.text} onChange={(event) => updateOptionText(index, event.target.value)} />
+                  <input ref={(node) => { optionRefs.current[index] = node }} aria-label={`Option ${optionLabel}`} value={option.text} onChange={(event) => updateOptionText(index, event.target.value)} />
+                  <MathInsertButton compact inputRef={{ get current() { return optionRefs.current[index] } }} value={option.text} onChange={(text) => updateOptionText(index, text)} />
                   <button type="button" aria-label={`Delete option ${optionLabel}`} onClick={() => removeOption(index)}><Icon name="trash" size={16} /></button>
                 </label>
               )

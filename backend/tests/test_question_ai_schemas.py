@@ -28,3 +28,12 @@ def test_ai_draft_image_rejects_tampered_browser_payload() -> None:
     payload["data_base64"] = base64.b64encode(b"tampered").decode("ascii")
     with pytest.raises(ValidationError, match="SHA-256"):
         QuestionAIImage.model_validate(payload)
+
+
+def test_ai_draft_image_accepts_teacher_uploaded_source() -> None:
+    payload = _image_payload(b"teacher-uploaded-question-diagram")
+    payload["source"] = "uploaded"
+    payload["alt_text"] = "Triangle diagram"
+    image = QuestionAIImage.model_validate(payload)
+    assert image.source == "uploaded"
+    assert image.alt_text == "Triangle diagram"

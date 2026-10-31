@@ -19,9 +19,12 @@ from app.integrations.weave.exceptions import (
     WeaveUnavailableError,
 )
 
-AI_AUTHORING_REQUEST_TIMEOUT_SECONDS = 120.0
-AI_AUTHORING_IN_PROGRESS_POLL_INTERVAL_SECONDS = 1.0
-AI_AUTHORING_IN_PROGRESS_MAX_WAIT_SECONDS = 120.0
+# Large hybrid batches can take several minutes. Keep one synchronous request;
+# if the transport fails, recover using WEAVE's existing idempotency replay.
+AI_AUTHORING_REQUEST_TIMEOUT_SECONDS = 600.0
+AI_AUTHORING_IN_PROGRESS_POLL_INTERVAL_SECONDS = 5.0
+AI_AUTHORING_IN_PROGRESS_MAX_POLL_INTERVAL_SECONDS = 20.0
+AI_AUTHORING_IN_PROGRESS_MAX_WAIT_SECONDS = 600.0
 AI_AUTHORING_TRANSIENT_RETRY_DELAY_SECONDS = 0.2
 AI_AUTHORING_MAX_TRANSIENT_RETRIES = 1
 AI_REQUEST_IN_PROGRESS_CODE = "AI_REQUEST_IN_PROGRESS"
@@ -36,11 +39,23 @@ class WeaveAIQuestionAuthoringGateway:
         *,
         request_timeout_seconds: float = AI_AUTHORING_REQUEST_TIMEOUT_SECONDS,
         in_progress_poll_interval_seconds: float = AI_AUTHORING_IN_PROGRESS_POLL_INTERVAL_SECONDS,
+        in_progress_max_poll_interval_seconds: float = AI_AUTHORING_IN_PROGRESS_MAX_POLL_INTERVAL_SECONDS,
         in_progress_max_wait_seconds: float = AI_AUTHORING_IN_PROGRESS_MAX_WAIT_SECONDS,
     ) -> None:
         self.gateway = gateway
         self.request_timeout_seconds = request_timeout_seconds
+        if request_timeout_seconds <= 0 or in_progress_poll_interval_seconds <= 0:
+            raise ValueError("AI request timeout and poll interval must be positive.")
+        if in_progress_max_poll_interval_seconds < in_progress_poll_interval_seconds:
+            raise ValueError(
+                "Maximum AI poll interval must not be shorter than its initial interval."
+            )
+        if in_progress_max_wait_seconds <= 0:
+            raise ValueError("AI recovery wait must be positive.")
         self.in_progress_poll_interval_seconds = in_progress_poll_interval_seconds
+        self.in_progress_max_poll_interval_seconds = (
+            in_progress_max_poll_interval_seconds
+        )
         self.in_progress_max_wait_seconds = in_progress_max_wait_seconds
 
     async def generate_questions(
@@ -100,6 +115,7 @@ class WeaveAIQuestionAuthoringGateway:
 
         transient_retries = 0
         in_progress_started_at: float | None = None
+        in_progress_attempts = 0
         loop = asyncio.get_running_loop()
 
         while True:
@@ -130,17 +146,23 @@ class WeaveAIQuestionAuthoringGateway:
                     if remaining <= 0:
                         raise
 
-                    retry_delay = (
-                        float(exc.retry_after)
-                        if exc.retry_after is not None
-                        else self.in_progress_poll_interval_seconds
+                    # Exponential, bounded polling prevents 409 storms while
+                    # WEAVE is still producing Qwen images. Keep exactly the
+                    # same idempotency key and request body for each replay.
+                    retry_delay = min(
+                        self.in_progress_poll_interval_seconds
+                        * (2 ** min(in_progress_attempts, 2)),
+                        self.in_progress_max_poll_interval_seconds,
                     )
-                    retry_delay = min(max(retry_delay, 0.05), remaining)
-                    await asyncio.sleep(retry_delay)
+                    if exc.retry_after is not None:
+                        retry_delay = max(retry_delay, float(exc.retry_after))
+                    in_progress_attempts += 1
+                    await asyncio.sleep(min(retry_delay, remaining))
                     continue
 
                 if (
                     exc.status_code in {502, 503, 504}
+                    and exc.payload.get("retryable") is not False
                     and transient_retries < AI_AUTHORING_MAX_TRANSIENT_RETRIES
                 ):
                     transient_retries += 1

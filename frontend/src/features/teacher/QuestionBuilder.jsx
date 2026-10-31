@@ -4,6 +4,7 @@ import { RiAddLine, RiArrowLeftLine, RiBold, RiDeleteBin6Line, RiEyeLine, RiImag
 import { buildAcademicLevels, findSubjectScope, humanizeAcademicCategory, listBanksForSubject, listSubjectsForLevel } from '../../shared/academics/authoringScope'
 import { Notice, SelectControl, StatusBadge } from '../../shared/ui'
 import { FormattedText } from '../../shared/ui/FormattedText'
+import { MathInsertButton } from '../../shared/math/MathInsertButton'
 import '../student/student.css'
 import './question-builder.css'
 import { TeacherAIComposer } from './TeacherAIComposer'
@@ -35,6 +36,7 @@ export function QuestionBuilder({ enableAI = false, mode = 'create', state, disp
   const questionId = state.staff.selectedQuestionId
   const initializedQuestionRef = useRef(null)
   const promptRef = useRef(null)
+  const optionInputRefs = useRef({})
   const instructionRef = useRef(null)
   const instructionTriggerRef = useRef(null)
   const initialBank = teacherData.banks.find((bank) => bank.id === state.staff.selectedBankId) || teacherData.banks[0] || null
@@ -400,7 +402,8 @@ export function QuestionBuilder({ enableAI = false, mode = 'create', state, disp
                       <div className="question-option-editor__row">
                         <button className="question-option-correct" type="button" onClick={() => markCorrect(option.clientId)} aria-label={`Mark option ${optionLetter(index)} correct`} aria-pressed={option.isCorrect}><span>{option.isCorrect ? '✓' : ''}</span></button>
                         <strong className="question-option-letter">{optionLetter(index)}</strong>
-                        <input className="question-option-text-input" value={option.text} onChange={(event) => updateOption(option.clientId, { text: event.target.value })} placeholder={`Enter option ${optionLetter(index)}…`} />
+                        <input ref={(node) => { optionInputRefs.current[option.clientId] = node }} className="question-option-text-input" value={option.text} onChange={(event) => updateOption(option.clientId, { text: event.target.value })} placeholder={`Enter option ${optionLetter(index)}…`} />
+                        <MathInsertButton compact inputRef={{ get current() { return optionInputRefs.current[option.clientId] } }} value={option.text} onChange={(text) => updateOption(option.clientId, { text })} />
                         <label className={`question-option-image-button ${hasImage ? 'active' : ''}`} title={hasImage ? 'Replace image' : 'Upload image'} aria-label={hasImage ? `Replace image for option ${optionLetter(index)}` : `Upload image for option ${optionLetter(index)}`}><RiImageAddLine size={21} /><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => event.target.files?.[0] && onOptionImage(option.clientId, event.target.files[0])} /></label>
                         <button type="button" className="question-option-delete" disabled={options.length <= 2} onClick={() => removeOption(option.clientId)} aria-label={`Remove option ${optionLetter(index)}`}><RiDeleteBin6Line size={18} /></button>
                       </div>
@@ -473,7 +476,7 @@ function validateImage(file) {
   return ''
 }
 
-function RichTextToolbar({ textareaRef, value, onChange, onImage, hasImage = false, onRemoveImage }) {
+export function RichTextToolbar({ textareaRef, value, onChange, onImage, hasImage = false, onRemoveImage }) {
   const apply = (kind) => applyTextFormat({ textarea: textareaRef.current, value, onChange, kind })
   return (
     <div className="question-format-toolbar" role="toolbar" aria-label="Text formatting">
@@ -487,6 +490,7 @@ function RichTextToolbar({ textareaRef, value, onChange, onImage, hasImage = fal
       {onImage && <label className={hasImage ? 'active' : ''} title={hasImage ? 'Replace question image' : 'Add question image'} aria-label={hasImage ? 'Replace question image' : 'Add question image'}><RiImageLine size={18} /><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => event.target.files?.[0] && onImage(event.target.files[0])} /></label>}
       {hasImage && <button className="question-format-toolbar__remove-image" type="button" title="Remove question image" aria-label="Remove question image" onClick={onRemoveImage}><RiDeleteBin6Line size={17} /></button>}
       <button type="button" title="Superscript" aria-label="Superscript" onClick={() => apply('superscript')}><RiSuperscript2 size={18} /></button>
+      <MathInsertButton inputRef={textareaRef} value={value} onChange={onChange} />
     </div>
   )
 }

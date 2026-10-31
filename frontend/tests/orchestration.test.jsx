@@ -49,7 +49,7 @@ async function openStaff() {
   const staffLoginButton = await screen.findByRole('button', { name: /login as staff/i })
   fireEvent.click(staffLoginButton)
   fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'admin@school.test' } })
-  fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'secret' } })
+  fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'secret' } })
   fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
 }
 

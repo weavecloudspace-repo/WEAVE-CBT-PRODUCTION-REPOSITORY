@@ -18,6 +18,13 @@ app = typer.Typer(help="Show or plan WSL networking mode changes.")
 
 
 
+def _reconcile_mirrored_firewall(stack, state: dict) -> None:
+    """Apply only approved WEAVE-owned Windows and WSL Hyper-V rules."""
+    from weave_cli.commands.network_mirrored import configure
+    configure(stack, state)
+    info("WEAVE mirrored firewall rules match the approved school network.")
+
+
 def reconcile_access(stack) -> None:
     """Heal network on manual start/restart without running asset migration twice."""
     from weave_cli.commands.network_prefer import restore
@@ -33,6 +40,11 @@ def reconcile_access(stack) -> None:
             stack.installation.data_directory,
             runtime_type=stack.installation.runtime_type,
         )
+    if state["transport"] == "mirrored":
+        try:
+            _reconcile_mirrored_firewall(stack, state)
+        except Exception as exc:
+            warning("Mirrored firewall reconciliation needs attention: " + str(exc))
     try:
         start_remote(stack)
     except Exception as exc:
@@ -52,8 +64,12 @@ def reconcile(stack) -> None:
     if state["transport"] == "nat":
         _startup_reconcile(stack)
     elif state["transport"] == "mirrored":
-        # Never run the NAT/portproxy maintenance algorithm on mirrored WSL.
-        info("Using approved mirrored WSL transport; skipping portproxy repair.")
+        # Never run NAT/portproxy maintenance on mirrored WSL.
+        info("Using mirrored WSL transport; skipping NAT portproxy repair.")
+        try:
+            _reconcile_mirrored_firewall(stack, state)
+        except Exception as exc:
+            warning("Mirrored firewall reconciliation needs attention: " + str(exc))
     try:
         start_remote(stack)
     except Exception as exc:

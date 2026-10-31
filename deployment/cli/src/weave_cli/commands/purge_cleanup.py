@@ -20,6 +20,7 @@ class HostSnapshot:
     runtime_type: str
     http_addresses: tuple[str, ...] = ()
     https_addresses: tuple[str, ...] = ()
+    mirrored: bool = False
 
 
 def _tls_address(path: Path) -> str:
@@ -89,6 +90,7 @@ def preflight(stack) -> HostSnapshot:
     addresses: set[str] = set()
     http_addresses: set[str] = set()
     https_addresses: set[str] = set()
+    mirrored = False
     if runtime_type == "wsl2" and sys.platform == "win32":
         state = lan._read_state(data)
         if state:
@@ -99,6 +101,13 @@ def preflight(stack) -> HostSnapshot:
             addresses.add(address)
             https_addresses.add(address)
         _windows_unowned_resources(data, addresses)
+        from weave_cli.networking.state import load
+        policy = load(data)
+        if policy and policy["transport"] == "mirrored":
+            from weave_cli.commands import network_mirrored, network_mode
+            network_mirrored.verify(policy["address"], policy["subnet"])
+            network_mode.restore_owned_wsl_config(stack, check_only=True)
+            mirrored = True
     else:
         # Check configured native DNS ownership before deleting Docker data.
         from weave_cli.commands import network_dns_linux
@@ -108,6 +117,7 @@ def preflight(stack) -> HostSnapshot:
         addresses=tuple(sorted(addresses)), runtime_type=runtime_type,
         http_addresses=tuple(sorted(http_addresses)),
         https_addresses=tuple(sorted(https_addresses)),
+        mirrored=mirrored,
     )
 
 
@@ -117,6 +127,13 @@ def cleanup_host(stack, *, purge_files: bool = True) -> None:
     from weave_cli.commands.network_ngrok import remove as remove_ngrok
     remove_ngrok(stack, purge=True)
     remove_if_configured(stack, purge_files=purge_files)
+    if stack.installation.runtime_type == "wsl2" and sys.platform == "win32":
+        from weave_cli.networking.state import load
+        policy = load(data)
+        if policy and policy["transport"] == "mirrored":
+            from weave_cli.commands import network_mirrored, network_mode
+            network_mirrored.remove(policy["address"], policy["subnet"])
+            network_mode.restore_owned_wsl_config(stack)
     if stack.installation.runtime_type == "wsl2":
         # HTTPS removal must work even when lan.json is missing.
         if (data / "tls-lan.json").exists():
@@ -143,6 +160,13 @@ def verify_host(stack, snapshot: HostSnapshot) -> None:
                 raise lan.LanError(f"TCP/443 forwarding remains at {address}; inspect ownership.")
         if lan._firewall_exists() or lan_tls._firewall_exists():
             raise lan.LanError("WEAVE HTTP/HTTPS firewall rule remains after cleanup.")
+        if snapshot.mirrored:
+            from weave_cli.commands import network_mirrored, network_mode
+            rules = network_mirrored._snapshot()
+            if rules["windows"] is not None or rules["hyperv"] is not None or rules.get("orphan") is not None:
+                raise lan.LanError("WEAVE mirrored firewall rules remain after cleanup.")
+            if (data / network_mode.OWNER).exists():
+                raise lan.LanError("WEAVE WSL networking ownership journal remains after cleanup.")
         if network_dns._service_exists():
             raise lan.LanError("CoreDNS service remains after WEAVE cleanup.")
     elif snapshot.runtime_type == "native" and sys.platform.startswith("linux"):
@@ -186,6 +210,7 @@ def clear_active_config(data: Path, install: Path) -> None:
     """
     targets = (
         data / "network-policy.json",
+        data / "wsl-network-owner.json",
         data / "deployment-assets.json",
         data / "deployment-upgrade.json",
         install / "ngrok" / "ngrok.yml",

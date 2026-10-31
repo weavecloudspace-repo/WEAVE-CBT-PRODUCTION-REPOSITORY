@@ -106,14 +106,27 @@ def _get_ip_and_hostname(stack) -> tuple[str, str, str]:
         raise DNSError("WEAVE-managed CoreDNS setup currently supports Windows WSL2 only.")
     if not (stack.installation.data_directory / "tls.enabled").is_file():
         raise DNSError("Pair the CBT server and activate HTTPS before setting up school DNS.")
-    mapped = lan._read_state(stack.installation.data_directory)
-    if mapped is None:
-        raise DNSError("Configure the trusted school network first: weave network setup.")
+    from weave_cli.networking.state import load_or_import
+    policy = load_or_import(
+        stack.installation.data_directory, runtime_type="wsl2"
+    )
+    if policy["transport"] == "mirrored":
+        from weave_cli.commands.network_mirrored import _approved
+        address, subnet, _ = _approved(stack, policy, require_admin=False)
+        # Windows CoreDNS binds to the physical school adapter in both modes.
+        # Mirrored WSL has no NAT lan.json record or Windows portproxy.
+    elif policy["transport"] == "nat":
+        mapped = lan._read_state(stack.installation.data_directory)
+        if mapped is None:
+            raise DNSError("Configure the trusted school network first: weave network setup.")
+        address, subnet = mapped["listen_address"], mapped["client_subnet"]
+    else:
+        raise DNSError("Unsupported school network mode for Windows CoreDNS.")
     from weave_cli.commands.network import _https_hostname
     hostname = _https_hostname(stack)
     if not hostname or not HOST_RE.fullmatch(hostname):
         raise DNSError("Cannot verify the HTTPS hostname assigned during pairing.")
-    return hostname, mapped["listen_address"], mapped["client_subnet"]
+    return hostname, address, subnet
 
 
 def _read_exact(sock: socket.socket, length: int) -> bytes:

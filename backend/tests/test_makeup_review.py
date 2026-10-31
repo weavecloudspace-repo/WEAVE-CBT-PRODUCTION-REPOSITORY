@@ -63,7 +63,7 @@ async def test_makeup_readiness_and_candidate_permissions(blockers, fresh, avail
         ),
         patch.object(
             MakeupReviewRepository,
-            "fresh_question_count",
+            "active_question_count",
             AsyncMock(return_value=fresh),
         ),
         patch.object(
@@ -89,6 +89,27 @@ async def test_makeup_readiness_and_candidate_permissions(blockers, fresh, avail
     assert not writing["can_approve"] and not writing["can_revoke"]
 
 
+async def test_individually_voided_original_result_can_be_approved_without_duplicate_candidate():
+    candidate = SimpleNamespace(status=CandidateStatus.ELIGIBLE)
+    old_attempt = SimpleNamespace(status=AttemptStatus.SUBMITTED)
+    old_result = SimpleNamespace(voided_at=datetime.now(UTC))
+    assert (
+        MakeupReviewService.state(candidate, None, old_attempt, old_result)
+        == "voided_awaiting_approval"
+    )
+    pending = SimpleNamespace(id=uuid4(), revoked_at=None, consumed_at=None)
+    assert (
+        MakeupReviewService.state(candidate, pending, old_attempt, old_result)
+        == "approved"
+    )
+    assert (
+        MakeupReviewService.state(
+            candidate, None, old_attempt, SimpleNamespace(voided_at=None)
+        )
+        == "completed"
+    )
+
+
 async def test_makeup_review_is_admin_only():
     with pytest.raises(AcademicAuthorizationError):
         await MakeupReviewService.overview(
@@ -105,6 +126,7 @@ def test_candidate_projection_compiles_for_postgres():
     assert "academic_classes.display_name" in sql
     assert "ORDER BY" in sql
     assert "exam_attempts" in sql
+    assert "exam_results.voided_at IS NOT NULL" in sql
     overview = str(
         MakeupReviewRepository.overview_query().compile(dialect=postgresql.dialect())
     )
