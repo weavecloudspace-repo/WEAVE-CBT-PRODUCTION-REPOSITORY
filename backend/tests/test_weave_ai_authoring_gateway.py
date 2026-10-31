@@ -6,10 +6,10 @@ import pytest
 from pydantic import SecretStr
 
 from app.integrations.weave.ai_authoring import (
-    AI_AUTHORING_REQUEST_TIMEOUT_SECONDS,
-    AI_AUTHORING_IN_PROGRESS_POLL_INTERVAL_SECONDS,
     AI_AUTHORING_IN_PROGRESS_MAX_POLL_INTERVAL_SECONDS,
     AI_AUTHORING_IN_PROGRESS_MAX_WAIT_SECONDS,
+    AI_AUTHORING_IN_PROGRESS_POLL_INTERVAL_SECONDS,
+    AI_AUTHORING_REQUEST_TIMEOUT_SECONDS,
     WeaveAIQuestionAuthoringGateway,
 )
 from app.integrations.weave.ai_authoring_schemas import AIGenerateQuestionsRequest
