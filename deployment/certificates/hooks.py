@@ -150,6 +150,20 @@ server {{
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 1d;
     client_max_body_size 10m;
+    # Keep long-running AI requests alive without affecting ordinary routes.
+    location ~ ^/api/v1/questions/(?:banks/[^/]+/ai/(?:generate|regenerate)|[^/]+/ai/regenerate)$ {{
+        proxy_pass http://weave_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Connection "";
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 1300s;
+        proxy_send_timeout 1300s;
+        proxy_next_upstream off;
+    }}
     location / {{
         proxy_pass http://weave_api;
         proxy_http_version 1.1;
@@ -195,6 +209,12 @@ def renew() -> None:
     result = subprocess.run(["certbot", "renew", "--non-interactive", "--quiet"], check=False)
     if result.returncode:
         raise RuntimeError("Certificate renewal failed")
+    # Certificates and generated vhost snippets persist across upgrades.
+    # Refresh the vhost after successful renewal checks so existing installations
+    # receive the long-running AI location without reissuing certificates.
+    certificate = Path("/etc/letsencrypt/live/weave-cbt-node/fullchain.pem")
+    if certificate.is_file():
+        _write_nginx(_identity()["hostname"])
 
 
 if __name__ == "__main__":
