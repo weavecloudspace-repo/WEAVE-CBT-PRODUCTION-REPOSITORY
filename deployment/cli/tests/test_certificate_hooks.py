@@ -164,3 +164,35 @@ class CertificateHookTests(unittest.TestCase):
         with patch.object(hooks.subprocess, "run", return_value=Mock(returncode=2)):
             with self.assertRaises(RuntimeError):
                 hooks.renew()
+
+    def test_tls_generation_route_has_extended_timeout_without_affecting_other_paths(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(
+            hooks, "SNIPPET", pathlib.Path(folder) / "node.conf"
+        ):
+            hooks._write_nginx(self.hostname)
+            config = hooks.SNIPPET.read_text(encoding="utf-8")
+
+        self.assertIn("proxy_read_timeout 1300s;", config)
+        self.assertIn("proxy_send_timeout 1300s;", config)
+        self.assertIn("proxy_next_upstream off;", config)
+        self.assertIn("banks/[^/]+/ai/(?:generate|regenerate)", config)
+        self.assertIn("proxy_read_timeout 120s;", config)
+
+    def test_successful_renewal_refreshes_existing_https_vhost(self):
+        with (
+            patch.object(hooks.subprocess, "run", return_value=Mock(returncode=0)),
+            patch.object(pathlib.Path, "is_file", return_value=True),
+            patch.object(hooks, "_identity", return_value=self.identity),
+            patch.object(hooks, "_write_nginx") as write_nginx,
+        ):
+            hooks.renew()
+        write_nginx.assert_called_once_with(self.hostname)
+
+    def test_renew_without_certificate_does_not_create_https_vhost(self):
+        with (
+            patch.object(hooks.subprocess, "run", return_value=Mock(returncode=0)),
+            patch.object(pathlib.Path, "is_file", return_value=False),
+            patch.object(hooks, "_write_nginx") as write_nginx,
+        ):
+            hooks.renew()
+        write_nginx.assert_not_called()
