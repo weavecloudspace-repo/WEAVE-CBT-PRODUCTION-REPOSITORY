@@ -47,11 +47,15 @@ class WeaveAIQuestionAuthoringGateway:
         if request_timeout_seconds <= 0 or in_progress_poll_interval_seconds <= 0:
             raise ValueError("AI request timeout and poll interval must be positive.")
         if in_progress_max_poll_interval_seconds < in_progress_poll_interval_seconds:
-            raise ValueError("Maximum AI poll interval must not be shorter than its initial interval.")
+            raise ValueError(
+                "Maximum AI poll interval must not be shorter than its initial interval."
+            )
         if in_progress_max_wait_seconds <= 0:
             raise ValueError("AI recovery wait must be positive.")
         self.in_progress_poll_interval_seconds = in_progress_poll_interval_seconds
-        self.in_progress_max_poll_interval_seconds = in_progress_max_poll_interval_seconds
+        self.in_progress_max_poll_interval_seconds = (
+            in_progress_max_poll_interval_seconds
+        )
         self.in_progress_max_wait_seconds = in_progress_max_wait_seconds
 
     async def generate_questions(
