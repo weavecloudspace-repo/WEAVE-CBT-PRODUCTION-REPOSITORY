@@ -191,7 +191,9 @@ async def test_recovery_polling_backs_off_instead_of_spamming_weave() -> None:
         gateway=type("Gateway", (), {"client": client})(),
     )
 
-    with patch("app.integrations.weave.ai_authoring.asyncio.sleep", new_callable=AsyncMock) as sleep:
+    with patch(
+        "app.integrations.weave.ai_authoring.asyncio.sleep", new_callable=AsyncMock
+    ) as sleep:
         result = await gateway.generate_questions(
             payload=_request(),
             idempotency_key="replay-the-same-operation",
@@ -202,11 +204,16 @@ async def test_recovery_polling_backs_off_instead_of_spamming_weave() -> None:
     assert result.charge.credits_charged == 1
     assert sleep.await_args_list[0].args == (0.2,)
     assert [call.args[0] for call in sleep.await_args_list[1:]] == [
-        5.0, 10.0, 20.0, 20.0
+        5.0,
+        10.0,
+        20.0,
+        20.0,
     ]
     assert len(client.request_actor_authenticated.await_args_list) == 6
     for request in client.request_actor_authenticated.await_args_list:
-        assert request.kwargs["headers"]["Idempotency-Key"] == "replay-the-same-operation"
+        assert (
+            request.kwargs["headers"]["Idempotency-Key"] == "replay-the-same-operation"
+        )
         assert request.kwargs["timeout_seconds"] == 600.0
 
 
@@ -236,7 +243,9 @@ async def test_cloud_retry_after_is_honored_without_one_second_polling() -> None
 
 
 @pytest.mark.asyncio
-async def test_non_retryable_ai_validation_502_is_not_masked_by_a_replay_conflict() -> None:
+async def test_non_retryable_ai_validation_502_is_not_masked_by_a_replay_conflict() -> (
+    None
+):
     client = AsyncMock()
     failure = WeaveRequestRejectedError(
         status_code=502,
