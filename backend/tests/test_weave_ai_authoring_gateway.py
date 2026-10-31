@@ -232,7 +232,9 @@ async def test_cloud_retry_after_is_honored_without_one_second_polling() -> None
     gateway = WeaveAIQuestionAuthoringGateway(
         gateway=type("Gateway", (), {"client": client})(),
     )
-    with patch("app.integrations.weave.ai_authoring.asyncio.sleep", new_callable=AsyncMock) as sleep:
+    with patch(
+        "app.integrations.weave.ai_authoring.asyncio.sleep", new_callable=AsyncMock
+    ) as sleep:
         await gateway.generate_questions(
             payload=_request(),
             idempotency_key="operation-retry-after",
