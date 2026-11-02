@@ -23,6 +23,7 @@ export function TeacherLayout({ state, dispatch, signOut, children }) {
     ['question-banks', 'bank', 'Question Banks'],
     ['questions', 'fileText', 'Questions'],
     ['exams', 'calendar', 'Exams'],
+    ['ai-usage', 'ai', 'AI Usage'],
   ]
 
   useEffect(() => {

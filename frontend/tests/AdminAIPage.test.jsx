@@ -32,7 +32,7 @@ describe('Admin AI management', () => {
     for (const section of ['ai-usage', 'ai-credit-requests', 'ai-credit-purchases']) {
       expect(parseStaffPath(`/admin/${section}`).staffSection).toBe(section)
       expect(pathForStaffState({ session: { role: 'admin' }, staff: { section } })).toBe(`/admin/${section}`)
-      expect(staffSectionForRole('teacher', section)).toBe('overview')
+      expect(staffSectionForRole('teacher', section)).toBe(section === 'ai-usage' ? 'ai-usage' : 'overview')
     }
   })
 
