@@ -6,6 +6,7 @@ import { TeacherLayout } from "./TeacherLayout";
 import { OverviewPage } from "./OverviewPage";
 import { BankDetailPage, QuestionBanksPage } from "./QuestionBanksPage";
 import { TeacherAIReviewPage } from "./TeacherAIReviewPage";
+import { TeacherAIUsagePage } from "./TeacherAIUsagePage";
 import { QuestionBuilder } from "./QuestionBuilder";
 import { TeacherExamsPage } from "./TeacherExamsPage";
 import { ExamAuthoringPage } from "../../shared/exams/ExamAuthoringPage";
@@ -62,6 +63,7 @@ export function TeacherWorkspace({
           teacherData={teacherData}
         />
       )}
+      {state.staff.section === "ai-usage" && <TeacherAIUsagePage api={gateway.ai} />}
       {state.staff.section === "question-banks" && (
         <QuestionBanksPage dispatch={workspaceDispatch} teacherData={teacherData} />
       )}

@@ -23,6 +23,23 @@ export function cancelAIQuotaRequest(requestId, options = {}) {
   })
 }
 
+// Teachers purchase their personal credits; school-reserve routes remain admin-only.
+export function quoteTeacherAICredits(credits, options = {}) {
+  return weaveRequest('/ai/teacher/purchases/quote', { ...options, method: 'POST', body: { credits } })
+}
+
+export function checkoutTeacherAICredits(credits, options = {}) {
+  return weaveRequest('/ai/teacher/purchases/checkout', { ...options, method: 'POST', body: { credits } })
+}
+
+export function listTeacherAICreditPurchases(params = {}, options = {}) {
+  return weaveRequest(`/ai/teacher/purchases${queryString(params)}`, options)
+}
+
+export function verifyTeacherAICreditPurchase(reference, options = {}) {
+  return weaveRequest(`/ai/teacher/purchases/${encodeURIComponent(reference)}/verify`, { ...options, method: 'POST' })
+}
+
 export function getAIQuotaSummary(options = {}) {
   return weaveRequest('/ai/admin/quota/summary', options)
 }
