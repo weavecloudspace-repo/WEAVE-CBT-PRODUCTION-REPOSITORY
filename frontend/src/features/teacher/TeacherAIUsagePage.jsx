@@ -57,8 +57,11 @@ export function TeacherAIUsagePage({ api }) {
   }, [api, page])
 
   useEffect(() => {
-    void refresh()
-    return () => { generation.current += 1 }
+    const timer = window.setTimeout(() => { void refresh() }, 0)
+    return () => {
+      window.clearTimeout(timer)
+      generation.current += 1
+    }
   }, [refresh])
 
   const verifyApi = useMemo(() => ({
